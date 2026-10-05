@@ -5,6 +5,7 @@ mod git;
 mod git_runtime_tests;
 
 mod acp;
+mod agent_questions;
 mod config;
 mod edit_routing;
 mod engram_fetch;
@@ -4121,6 +4122,9 @@ async fn run_harness(
         tracing::warn!("grace period expired, aborting remaining tasks");
         pool.join_set.shutdown().await;
     }
+    // Turns aborted above dropped any open question; give their cards a
+    // moment to be withdrawn before the runtime exits.
+    agent_questions::drain_withdrawals(Duration::from_secs(5)).await;
     // Drain any remaining results that arrived after join_set drained but
     // before tasks were aborted.
     while let Ok(mut pr) = pool.result_rx_try_recv() {

@@ -349,6 +349,7 @@ fn stop_reasons_failures_and_permission_exchange_are_explicit() {
         ("normal", "max_tokens", 0, "completed"),
         ("error", "", 1, "failed"),
         ("permission", "end_turn", 0, "completed"),
+        ("elicitation", "end_turn", 0, "completed"),
     ] {
         let f = Fixture::new();
         let mut command = f.command();
@@ -374,6 +375,14 @@ fn stop_reasons_failures_and_permission_exchange_are_explicit() {
                 .wire()
                 .iter()
                 .any(|v| v["id"] == "permission" && v.get("result").is_some()));
+        }
+        if mode == "elicitation" {
+            let wire = f.wire();
+            assert!(wire.iter().any(|v| v["method"] == "initialize"
+                && v["params"]["clientCapabilities"]["elicitation"]["form"] == json!({})));
+            assert!(wire
+                .iter()
+                .any(|v| v["id"] == "elicitation" && v["result"]["action"] == "decline"));
         }
     }
 }

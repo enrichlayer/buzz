@@ -48,6 +48,15 @@ for line in sys.stdin:
                 "sessionId": "fresh-" + str(os.getpid()), "toolCall": {"toolCallId": "tool-1", "title": "Test tool"},
                 "options": [{"optionId": "allow", "name": "Allow", "kind": "allow_once"}]}}), flush=True)
             continue
+        if mode == "elicitation":
+            # claude-agent-acp's AskUserQuestion shape; a local task has no
+            # conversation to ask in, so buzz-acp must decline it.
+            print(json.dumps({"jsonrpc": "2.0", "id": "elicitation", "method": "elicitation/create", "params": {
+                "mode": "form", "sessionId": "fresh-" + str(os.getpid()), "message": "Which auth method?",
+                "requestedSchema": {"type": "object", "properties": {
+                    "question_0": {"type": "string", "title": "Auth", "oneOf": [{"const": "OAuth", "title": "OAuth"}]},
+                    "question_0_custom": {"type": "string", "title": "Other"}}}}}), flush=True)
+            continue
         if mode == "error":
             print(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "error": {"code": -32000, "message": "SECRET_TASK_TEXT"}}), flush=True)
             continue
@@ -57,7 +66,7 @@ for line in sys.stdin:
             continue
         print(json.dumps({"jsonrpc": "2.0", "id": prompt_id, "result": {"stopReason": "end_turn"}}), flush=True)
         continue
-    elif msg.get("id") == "permission":
+    elif msg.get("id") in ("permission", "elicitation"):
         print(json.dumps({"jsonrpc": "2.0", "id": prompt_id, "result": {"stopReason": "end_turn"}}), flush=True)
         continue
     if "id" in msg:
