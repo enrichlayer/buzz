@@ -1,3 +1,4 @@
+import * as React from "react";
 import { CheckCircle2 } from "lucide-react";
 
 import { useUserProfileQuery } from "@/features/profile/hooks";
@@ -11,19 +12,28 @@ import { AgentPromptCardFrame } from "./AgentPromptCardFrame";
 
 /** The winning answer, the same for every viewer. */
 export function AgentPromptAnswered({
+  answeredBy,
   currentPubkey,
+  focusOnMount,
   lostRace,
   profiles,
   prompt,
 }: {
+  /** The answered revision's signer — never the writer-controlled content. */
+  answeredBy: string;
   currentPubkey?: string;
+  /** Move focus here: the viewer's submit just replaced the focused form. */
+  focusOnMount: boolean;
   /** Our own answer was rejected because this one landed first. */
   lostRace: boolean;
   profiles?: UserProfileLookup;
   prompt: AgentPrompt;
 }) {
-  const answeredBy = prompt.answeredBy ?? "";
   const profile = useUserProfileQuery(answeredBy);
+  const headerRef = React.useRef<HTMLParagraphElement | null>(null);
+  React.useEffect(() => {
+    if (focusOnMount) headerRef.current?.focus();
+  }, [focusOnMount]);
   const name = resolveUserLabel({
     pubkey: answeredBy,
     currentPubkey,
@@ -34,8 +44,11 @@ export function AgentPromptAnswered({
   return (
     <AgentPromptCardFrame state="answered">
       <p
-        className="flex items-center gap-1.5 text-sm font-medium text-foreground"
+        className="flex items-center gap-1.5 text-sm font-medium text-foreground focus-visible:outline-hidden"
         data-testid="agent-prompt-answered-by"
+        ref={headerRef}
+        role="status"
+        tabIndex={-1}
       >
         <CheckCircle2 aria-hidden className="size-4 text-primary" />
         {lostRace ? `Already answered by ${name}` : `Answered by ${name}`}

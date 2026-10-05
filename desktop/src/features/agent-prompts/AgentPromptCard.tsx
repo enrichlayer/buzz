@@ -31,18 +31,21 @@ export function AgentPromptCard({
   profiles,
 }: ArtifactTypeCardProps) {
   const prompt = React.useMemo(
-    () => parseAgentPrompt(artifact.content),
-    [artifact.content],
+    () => parseAgentPrompt(artifact.content, artifact.pubkey),
+    [artifact.content, artifact.pubkey],
   );
   const identity = useIdentityQuery();
   const myPubkey = identity.data?.pubkey ?? currentPubkey;
   const [submit, setSubmit] = React.useState<SubmitState>({ status: "idle" });
   /** Set when our answer lost the race, so the winner's answer is explained. */
   const [lostRace, setLostRace] = React.useState(false);
+  /** This viewer submitted, so the answered card should take focus. */
+  const submittedRef = React.useRef(false);
 
   const handleSubmit = React.useCallback(
     async (answer: AgentPromptAnswer) => {
       if (!prompt || !myPubkey) return;
+      submittedRef.current = true;
       setSubmit({ status: "submitting" });
       try {
         await publishArtifactUpdate(
@@ -52,16 +55,14 @@ export function AgentPromptCard({
         setSubmit({ status: "idle" });
       } catch (error) {
         if (!isArtifactConflict(error)) {
-          setSubmit({
-            status: "error",
-            message:
-              error instanceof Error ? error.message : "Could not send answer.",
-          });
+          setSubmit({ status: "error", message: describeSubmitError(error) });
           return;
         }
         try {
           const head = await refreshArtifactHead(channelId, artifact.d);
-          const latest = head ? parseAgentPrompt(head.content) : null;
+          const latest = head
+            ? parseAgentPrompt(head.content, head.pubkey)
+            : null;
           setLostRace(latest?.state === "answered");
           setSubmit(
             latest?.state === "answered"
@@ -101,7 +102,9 @@ export function AgentPromptCard({
   if (prompt.state === "answered") {
     return (
       <AgentPromptAnswered
+        answeredBy={artifact.pubkey}
         currentPubkey={myPubkey}
+        focusOnMount={submittedRef.current}
         lostRace={lostRace}
         profiles={profiles}
         prompt={prompt}
@@ -119,4 +122,18 @@ export function AgentPromptCard({
       submitting={submit.status === "submitting"}
     />
   );
+}
+
+/** Relay rejection prefixes that mean "you may not write here". */
+const PERMISSION_PREFIXES = ["restricted:", "blocked:", "auth-required:"];
+
+function describeSubmitError(error: unknown): string {
+  const message = error instanceof Error ? error.message : "";
+  if (
+    PERMISSION_PREFIXES.some((prefix) => message.startsWith(prefix)) ||
+    /permission/i.test(message)
+  ) {
+    return "You can't post in this channel, so you can't answer here.";
+  }
+  return message || "Could not send the answer. Try again.";
 }

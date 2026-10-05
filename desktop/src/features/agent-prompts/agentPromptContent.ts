@@ -143,7 +143,15 @@ function parseAnswer(
   return answer;
 }
 
-export function parseAgentPrompt(content: string): AgentPrompt | null {
+/**
+ * Parse prompt content from a revision signed by `signer`. An answered
+ * revision must name its own signer as `answeredBy`: content is
+ * writer-controlled, so the signature is the only proof of who answered.
+ */
+export function parseAgentPrompt(
+  content: string,
+  signer: string,
+): AgentPrompt | null {
   let raw: unknown;
   try {
     raw = JSON.parse(content);
@@ -169,7 +177,9 @@ export function parseAgentPrompt(content: string): AgentPrompt | null {
   }
   const answer = parseAnswer(raw.answer, questions);
   const answeredBy =
-    typeof raw.answeredBy === "string" && PUBKEY_RE.test(raw.answeredBy)
+    typeof raw.answeredBy === "string" &&
+    PUBKEY_RE.test(raw.answeredBy) &&
+    raw.answeredBy === signer.toLowerCase()
       ? raw.answeredBy
       : null;
   if (!answer || !answeredBy) return null;

@@ -15,6 +15,7 @@ import {
 } from "./questionDraft";
 
 const ANSWERER = "c".repeat(64);
+const AGENT = "a".repeat(64);
 
 function question(overrides = {}) {
   return {
@@ -46,7 +47,7 @@ function content(overrides = {}) {
 }
 
 test("parses the plan's example prompt", () => {
-  const prompt = parseAgentPrompt(content());
+  const prompt = parseAgentPrompt(content(), AGENT);
   assert.equal(prompt?.state, "open");
   assert.equal(prompt.questions[0].options[0].label, "API key (Recommended)");
   assert.equal(prompt.questions[0].options[0].preview, null);
@@ -59,7 +60,7 @@ test("parses the plan's example prompt", () => {
 
 test("defaults: single-select, Other allowed", () => {
   const { multiSelect: _m, allowOther: _a, ...bare } = question();
-  const prompt = parseAgentPrompt(content({ questions: [bare] }));
+  const prompt = parseAgentPrompt(content({ questions: [bare] }), AGENT);
   assert.equal(prompt?.questions[0].multiSelect, false);
   assert.equal(prompt?.questions[0].allowOther, true);
 });
@@ -112,12 +113,31 @@ test("malformed content yields null", () => {
     }),
   };
   for (const [name, value] of Object.entries(cases)) {
-    assert.equal(parseAgentPrompt(value), null, name);
+    assert.equal(parseAgentPrompt(value, AGENT), null, name);
   }
 });
 
+test("an answer only counts when its signer is the named answerer", () => {
+  const answered = (answeredBy) =>
+    content({
+      state: "answered",
+      answer: { question_0: ["OAuth"] },
+      answeredBy,
+    });
+  assert.equal(
+    parseAgentPrompt(answered(ANSWERER), ANSWERER)?.state,
+    "answered",
+  );
+  // A channel writer signing with their own key cannot credit someone else.
+  assert.equal(parseAgentPrompt(answered(ANSWERER), AGENT), null);
+  assert.equal(
+    parseAgentPrompt(answered(ANSWERER), ANSWERER.toUpperCase())?.answeredBy,
+    ANSWERER,
+  );
+});
+
 test("answers validate against options and Other", () => {
-  const q = parseAgentPrompt(content()).questions[0];
+  const q = parseAgentPrompt(content(), AGENT).questions[0];
   assert.ok(isValidQuestionAnswer(q, ["OAuth"]));
   assert.ok(isValidQuestionAnswer(q, ["Session cookies"]));
   assert.ok(!isValidQuestionAnswer(q, []));
@@ -132,13 +152,13 @@ test("answers validate against options and Other", () => {
 });
 
 test("answered content round-trips and keeps unfamiliar fields", () => {
-  const prompt = parseAgentPrompt(content({ agentSession: "s-1" }));
+  const prompt = parseAgentPrompt(content({ agentSession: "s-1" }), AGENT);
   const answered = buildAnsweredContent(
     prompt,
     { question_0: ["OAuth"] },
     ANSWERER,
   );
-  const parsed = parseAgentPrompt(answered);
+  const parsed = parseAgentPrompt(answered, ANSWERER);
   assert.equal(parsed?.state, "answered");
   assert.deepEqual(parsed.answer, { question_0: ["OAuth"] });
   assert.equal(parsed.answeredBy, ANSWERER);
@@ -146,7 +166,7 @@ test("answered content round-trips and keeps unfamiliar fields", () => {
 });
 
 test("drafts: single-select replaces, Other is exclusive, multi toggles", () => {
-  const prompt = parseAgentPrompt(content());
+  const prompt = parseAgentPrompt(content(), AGENT);
   const q = prompt.questions[0];
   let draft = toggleOption(q, EMPTY_DRAFT, "OAuth");
   draft = toggleOption(q, draft, "API key (Recommended)");
@@ -173,7 +193,10 @@ test("drafts: single-select replaces, Other is exclusive, multi toggles", () => 
 
 test("the answer map exists only once every question is answered", () => {
   const second = question({ id: "question_1", header: "Scope" });
-  const prompt = parseAgentPrompt(content({ questions: [question(), second] }));
+  const prompt = parseAgentPrompt(
+    content({ questions: [question(), second] }),
+    AGENT,
+  );
   const [q0, q1] = prompt.questions;
   const drafts = { question_0: toggleOption(q0, EMPTY_DRAFT, "OAuth") };
   assert.equal(buildDraftAnswer(prompt.questions, drafts), null);
