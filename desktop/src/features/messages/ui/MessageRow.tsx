@@ -28,6 +28,7 @@ import {
   THREAD_REPLY_LINE_WIDTH_REM,
 } from "@/features/messages/lib/threadTreeLayout";
 import { getMessageKindCard } from "@/shared/plugins/messageKinds/cards";
+import { ArtifactAttachments } from "@/features/artifacts/ArtifactAttachments";
 import { getConfigNudgeAuthorPubkey } from "@/features/messages/ui/configNudgeAuthPubkey";
 import { cn } from "@/shared/lib/cn";
 import { useMeasuredCssVariable } from "@/shared/layout/useMeasuredCssVariable";
@@ -651,6 +652,14 @@ export const MessageRow = React.memo(
       <>
         <SentFromThreadLine channelId={channelId} tags={message.tags} />
         {renderBody()}
+        {channelId && !message.pending ? (
+          <ArtifactAttachments
+            channelId={channelId}
+            currentPubkey={currentPubkey}
+            profiles={profiles}
+            rootId={message.id}
+          />
+        ) : null}
         {continuationMetadataNode}
         <MessageReactions
           messageId={message.id}
