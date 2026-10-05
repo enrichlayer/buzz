@@ -58,6 +58,14 @@ test("parses the plan's example prompt", () => {
   assert.equal(prompt.answer, null);
 });
 
+test("a cancelled prompt parses without an answer", () => {
+  const prompt = parseAgentPrompt(content({ state: "cancelled" }), AGENT);
+  assert.equal(prompt?.state, "cancelled");
+  assert.equal(prompt.answer, null);
+  assert.equal(prompt.answeredBy, null);
+  assert.equal(prompt.questions[0].header, "Auth method");
+});
+
 test("defaults: single-select, Other allowed", () => {
   const { multiSelect: _m, allowOther: _a, ...bare } = question();
   const prompt = parseAgentPrompt(content({ questions: [bare] }), AGENT);

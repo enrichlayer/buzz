@@ -1,5 +1,5 @@
 import * as React from "react";
-import { CircleHelp } from "lucide-react";
+import { CircleHelp, CircleSlash } from "lucide-react";
 
 import { refreshArtifactHead } from "@/features/artifacts/channelArtifactSubscriptions";
 import {
@@ -65,7 +65,7 @@ export function AgentPromptCard({
             : null;
           setLostRace(latest?.state === "answered");
           setSubmit(
-            latest?.state === "answered"
+            latest?.state === "answered" || latest?.state === "cancelled"
               ? { status: "idle" }
               : {
                   status: "error",
@@ -95,6 +95,22 @@ export function AgentPromptCard({
         <p className="mt-1 text-xs text-muted-foreground">
           This question can't be shown in this version of Buzz.
         </p>
+      </AgentPromptCardFrame>
+    );
+  }
+
+  if (prompt.state === "cancelled") {
+    return (
+      <AgentPromptCardFrame state="cancelled">
+        <p
+          className="flex items-center gap-1.5 text-sm font-medium text-foreground"
+          data-testid="agent-prompt-cancelled"
+          role="status"
+        >
+          <CircleSlash aria-hidden className="size-4 text-muted-foreground" />
+          Question cancelled
+        </p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{artifact.title}</p>
       </AgentPromptCardFrame>
     );
   }
