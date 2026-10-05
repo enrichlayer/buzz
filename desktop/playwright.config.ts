@@ -44,6 +44,7 @@ export default defineConfig({
         "**/invites-settings-screenshots.spec.ts",
         "**/messaging.spec.ts",
         "**/code-fence-plugins.spec.ts",
+        "**/question-card.spec.ts",
         "**/bestie.spec.ts",
         "**/message-feedback-snapshots.spec.ts",
         "**/message-copy-link.spec.ts",

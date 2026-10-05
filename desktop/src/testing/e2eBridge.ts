@@ -33,6 +33,8 @@ import { switchManagedAgentModel } from "@/shared/api/agentControl";
 import { getAudioMediaLoadSchedulerSnapshot } from "@/features/messages/lib/audioMediaLoadScheduler";
 import { mockSearchHitMatches } from "./e2eBridgeSearch.ts";
 import { selectMockHistory } from "./e2eBridgeHistory.ts";
+import { applyMockArtifactRevision } from "./e2eBridgeArtifacts.ts";
+import { KIND_ARTIFACT } from "@/features/artifacts/artifactEnvelope";
 import {
   createMockSubscription,
   hasMockSubscription,
@@ -1319,6 +1321,16 @@ declare global {
     /** Prepend `count` synthetic older messages to a channel's mock store so
      *  an older-history fetch has something to paginate. Mirrors how the real
      *  relay backfills history. Returns the created events. */
+    /** Store a kind-45010 revision under the mock head lock (throws on
+     *  rejection). `live: false` stores it without live delivery, so a
+     *  client still holding the old head hits `conflict:` on its next write. */
+    __BUZZ_E2E_EMIT_MOCK_ARTIFACT__?: (input: {
+      channelName: string;
+      content: string;
+      tags: string[][];
+      pubkey?: string;
+      live?: boolean;
+    }) => RelayEvent;
     __BUZZ_E2E_PREPEND_MOCK_HISTORY__?: (input: {
       channelName: string;
       count: number;
@@ -11378,6 +11390,16 @@ function sendToMockSocket(args: {
       return;
     }
 
+    if (event.kind === KIND_ARTIFACT) {
+      const rejection = applyMockArtifactRevision(
+        getMockMessageStore(channelId),
+        event,
+      );
+      if (!rejection) emitMockLiveEvent(channelId, event);
+      sendWsText(socket.handler, ["OK", event.id, !rejection, rejection ?? ""]);
+      return;
+    }
+
     const sendMessageError =
       event.kind === 9 ? getConfig()?.mock?.sendMessageErrors?.shift() : null;
     if (sendMessageError) {
@@ -11667,6 +11689,31 @@ export function maybeInstallE2eTauriMocks() {
     );
     recordMockUserStatus(event);
     emitMockGlobalEvent(event);
+    return event;
+  };
+  window.__BUZZ_E2E_EMIT_MOCK_ARTIFACT__ = ({
+    channelName,
+    content,
+    tags,
+    pubkey,
+    live = true,
+  }) => {
+    const channel = mockChannels.find(
+      (candidate) => candidate.name === channelName,
+    );
+    if (!channel) throw new Error(`Mock channel ${channelName} not found.`);
+    const event = createMockEvent(
+      KIND_ARTIFACT,
+      content,
+      [...tags.filter((tag) => tag[0] !== "h"), ["h", channel.id]],
+      pubkey,
+    );
+    const rejection = applyMockArtifactRevision(
+      getMockMessageStore(channel.id),
+      event,
+    );
+    if (rejection) throw new Error(rejection);
+    if (live) emitMockLiveEvent(channel.id, event);
     return event;
   };
   window.__BUZZ_E2E_PREPEND_MOCK_HISTORY__ = prependMockHistory;
