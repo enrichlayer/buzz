@@ -83,19 +83,50 @@ pub fn build_prompt_content(input: &str) -> Result<(String, String), CliError> {
     Ok((content, title))
 }
 
+/// The desktop's per-field caps (`agentPromptContent.ts`), in UTF-16 code
+/// units as JavaScript counts them. Text over a cap would make the whole card
+/// fall back to its title, so reject it here.
+const MAX_ID: usize = 64;
+const MAX_HEADER: usize = 40;
+const MAX_QUESTION: usize = 2000;
+const MAX_LABEL: usize = 200;
+const MAX_DESCRIPTION: usize = 1000;
+const MAX_PREVIEW: usize = 10_000;
+
+/// A required (or, with `optional`, absent-or-null) string field that is
+/// non-blank and within `max` once trimmed. Previews keep their whitespace,
+/// so they are measured untrimmed.
+fn check_text(
+    value: Option<&Value>,
+    path: &str,
+    max: usize,
+    optional: bool,
+    trim: bool,
+) -> Result<(), CliError> {
+    let text = match value {
+        None | Some(Value::Null) if optional => return Ok(()),
+        Some(Value::String(text)) => text,
+        _ => return Err(usage(&format!("{path} must be a non-empty string"))),
+    };
+    if text.trim().is_empty() {
+        return Err(usage(&format!("{path} must not be blank")));
+    }
+    let measured = if trim { text.trim() } else { text.as_str() };
+    if measured.encode_utf16().count() > max {
+        return Err(usage(&format!("{path} must be at most {max} characters")));
+    }
+    Ok(())
+}
+
 fn check_question(index: usize, question: &Value) -> Result<String, CliError> {
     let at = |field: &str| format!("questions[{index}].{field}");
-    let text = |field: &str| {
-        question
-            .get(field)
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| usage(&format!("{} must be a non-empty string", at(field))))
-    };
-    let id = text("id")?.to_string();
-    text("header")?;
-    text("question")?;
+    for (field, max) in [
+        ("id", MAX_ID),
+        ("header", MAX_HEADER),
+        ("question", MAX_QUESTION),
+    ] {
+        check_text(question.get(field), &at(field), max, false, true)?;
+    }
     for flag in ["multiSelect", "allowOther"] {
         if question.get(flag).is_some_and(|v| !v.is_boolean()) {
             return Err(usage(&format!("{} must be a boolean", at(flag))));
@@ -113,34 +144,39 @@ fn check_question(index: usize, question: &Value) -> Result<String, CliError> {
         })?;
     let mut labels: Vec<&str> = Vec::new();
     for (option_index, option) in options.iter().enumerate() {
+        let path = |field: &str| format!("{}[{option_index}].{field}", at("options"));
+        check_text(option.get("label"), &path("label"), MAX_LABEL, false, true)?;
+        let description = option.get("description");
+        check_text(
+            description,
+            &path("description"),
+            MAX_DESCRIPTION,
+            true,
+            true,
+        )?;
+        check_text(
+            option.get("preview"),
+            &path("preview"),
+            MAX_PREVIEW,
+            true,
+            false,
+        )?;
         let label = option
             .get("label")
             .and_then(Value::as_str)
             .map(str::trim)
-            .filter(|label| !label.is_empty())
-            .ok_or_else(|| {
-                usage(&format!(
-                    "{}[{option_index}].label must be a non-empty string",
-                    at("options")
-                ))
-            })?;
-        for field in ["description", "preview"] {
-            if option
-                .get(field)
-                .is_some_and(|v| !v.is_string() && !v.is_null())
-            {
-                return Err(usage(&format!(
-                    "{}[{option_index}].{field} must be a string",
-                    at("options")
-                )));
-            }
-        }
+            .unwrap_or_default();
         if labels.contains(&label) {
             return Err(usage(&format!("{} labels must be unique", at("options"))));
         }
         labels.push(label);
     }
-    Ok(id)
+    Ok(question
+        .get("id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_string())
 }
 
 fn truncate_to_bytes(text: &str, max: usize) -> String {
@@ -186,9 +222,10 @@ pub async fn cmd_ask(
 ) -> Result<(), CliError> {
     validate_uuid(channel)?;
     validate_hex64(root)?;
+    let root = root.to_lowercase();
     let (content, title) = build_prompt_content(&read_file_or_stdin(file)?)?;
     let d = uuid::Uuid::new_v4().to_string();
-    let tags = build_prompt_tags(&d, &channel.to_lowercase(), root, &title)?;
+    let tags = build_prompt_tags(&d, &channel.to_lowercase(), &root, &title)?;
     let event =
         client.sign_event(EventBuilder::new(Kind::Custom(KIND_ARTIFACT), content).tags(tags))?;
     let resp = client.submit_event(event).await?;
@@ -279,6 +316,34 @@ mod tests {
                 "already answered",
                 QUESTION.replace(r#""session""#, r#""state":"answered","session""#),
             ),
+            (
+                "long question",
+                QUESTION.replace("Which auth method?", &"q".repeat(2001)),
+            ),
+            (
+                "long header",
+                QUESTION.replace("Auth method", &"h".repeat(41)),
+            ),
+            (
+                "long label",
+                QUESTION.replace("OAuth", &"o".repeat(201)),
+            ),
+            (
+                "long description",
+                QUESTION.replace("Matches v2", &"d".repeat(1001)),
+            ),
+            (
+                "blank description",
+                QUESTION.replace("Matches v2", "  "),
+            ),
+            (
+                "blank preview",
+                QUESTION.replace("Authorization: Bearer ...", " "),
+            ),
+            (
+                "long preview",
+                QUESTION.replace("Authorization: Bearer ...", &"p".repeat(10_001)),
+            ),
             ("wrong version", QUESTION.replace(r#"{"questions""#, r#"{"version":2,"questions""#)),
         ] {
             assert!(
@@ -286,6 +351,21 @@ mod tests {
                 "{name} should be rejected"
             );
         }
+    }
+
+    #[test]
+    fn limits_match_the_desktop_at_the_boundary() {
+        // JavaScript counts UTF-16 units: 20 astral emoji are 40 units.
+        let input = QUESTION
+            .replace("Auth method", &"🔑".repeat(20))
+            .replace("OAuth", &"o".repeat(200))
+            .replace(
+                "Authorization: Bearer ...",
+                &format!("  {}", "p".repeat(9_998)),
+            );
+        assert!(build_prompt_content(&input).is_ok());
+        let over = QUESTION.replace("Auth method", &format!("{}x", "🔑".repeat(20)));
+        assert!(build_prompt_content(&over).is_err());
     }
 
     #[test]
