@@ -38,12 +38,18 @@ Decisions:
 - Mermaid runs at `securityLevel: "strict"` and is lazy-loaded; the app CSP
   already forbids inline scripts.
 - Desktop only. Mobile keeps rendering Mermaid fences as code.
+- Known gap: the Rust side (`channel_window.rs`, `messages.rs`,
+  `event_batch.rs`, `channel_reconnect_repair.rs`) and `e2eBridge.ts` still
+  list timeline kinds by hand. A new plugin kind arrives live but is not
+  fetched after a reload until those lists include it. Fix before the first
+  new card kind ships (add a TS/Rust sync test or derive the Rust list).
 
 ## Status
 
 - [x] Message-kind registry with policies and type-checked card map
 - [x] Diff and huddle-started moved in with unchanged behaviour
-- [x] All kind checks routed through the registry
+- [x] All TypeScript kind checks routed through the registry
+- [x] Review fixes: no stray DOM on draw errors, no blank flash on re-render, size caps, code-block fallback
 - [x] Code-fence registry and Mermaid plugin with error fallback
 - [x] Unit tests (`policies.test.mjs`) and e2e (`code-fence-plugins.spec.ts`)
 - [x] Desktop typecheck, lint, file-size check, unit suite, messaging e2e
@@ -54,6 +60,7 @@ Decisions:
 
 ## Next
 
-1. Question card plugin (`buzz.agent_prompt` artifact) on this registry.
-2. Approval and plan cards.
-3. Mobile parity for code-fence plugins.
+1. Close the Rust kind-list gap above.
+2. Question card plugin (`buzz.agent_prompt` artifact) on this registry.
+3. Approval and plan cards.
+4. Mobile parity for code-fence plugins.

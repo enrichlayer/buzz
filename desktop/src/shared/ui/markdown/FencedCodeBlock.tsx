@@ -1,6 +1,10 @@
 import * as React from "react";
 import { getCodeFenceRenderer } from "@/shared/plugins/codeFences";
-import { extractLanguage, MarkdownCodeBlock } from "./CodeBlock";
+import {
+  extractLanguage,
+  getCodeBlockText,
+  MarkdownCodeBlock,
+} from "./CodeBlock";
 
 /**
  * Markdown `pre` body: a fence whose language has a code-fence plugin renders
@@ -8,14 +12,12 @@ import { extractLanguage, MarkdownCodeBlock } from "./CodeBlock";
  */
 export function FencedCodeBlock({ children }: { children?: React.ReactNode }) {
   let language = "";
-  let code = "";
   React.Children.forEach(children, (child) => {
     if (
       React.isValidElement<Record<string, unknown>>(child) &&
       typeof child.props?.className === "string"
     ) {
       language = extractLanguage(child.props.className);
-      code = String(child.props.children ?? "").replace(/\n$/, "");
     }
   });
 
@@ -26,7 +28,7 @@ export function FencedCodeBlock({ children }: { children?: React.ReactNode }) {
   if (!FenceRenderer) return codeBlock;
   return (
     <React.Suspense fallback={codeBlock}>
-      <FenceRenderer code={code} />
+      <FenceRenderer code={getCodeBlockText(children)} fallback={codeBlock} />
     </React.Suspense>
   );
 }

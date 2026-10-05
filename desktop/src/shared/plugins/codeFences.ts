@@ -3,6 +3,8 @@ import * as React from "react";
 export type CodeFenceRendererProps = {
   /** The fence body, without the trailing newline. */
   code: string;
+  /** The plain code block, for a renderer that cannot draw this source. */
+  fallback: React.ReactNode;
 };
 
 type CodeFenceRenderer = React.LazyExoticComponent<

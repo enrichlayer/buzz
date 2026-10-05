@@ -27,18 +27,21 @@ test("a mermaid fence renders as a diagram", async ({ page }) => {
     "```mermaid\nflowchart LR\n  Start --> Review --> Ship\n```",
   );
 
-  const diagram = page.getByRole("img", { name: "Diagram" });
+  const row = page.getByTestId("message-row").last();
+  const diagram = row.getByRole("img", { name: "Diagram" });
   await expect(diagram.locator("svg")).toBeVisible();
   await expect(diagram).toContainText("Review");
-  await expect(page.locator("[data-code-block]")).toHaveCount(0);
+  await expect(row.locator("[data-code-block]")).toHaveCount(0);
   await diagram.screenshot({ path: `${SHOTS}/01-flowchart.png` });
 });
 
 test("an invalid mermaid fence falls back to its source", async ({ page }) => {
   await sendFromClipboard(page, "```mermaid\nnot a diagram ->\n```");
 
-  await expect(page.getByText("Could not draw this diagram")).toBeVisible();
-  await expect(
-    page.locator("code", { hasText: "not a diagram ->" }),
-  ).toBeVisible();
+  const row = page.getByTestId("message-row").last();
+  await expect(row.getByText("Could not draw this diagram")).toBeVisible();
+  // The fallback is the normal code block, copy button included.
+  await expect(row.locator("[data-code-block]")).toContainText(
+    "not a diagram ->",
+  );
 });

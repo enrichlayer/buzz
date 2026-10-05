@@ -1,7 +1,6 @@
 import mermaid from "mermaid";
 import * as React from "react";
 import type { CodeFenceRendererProps } from "@/shared/plugins/codeFences";
-import { CODE_BLOCK_CLASS } from "@/shared/ui/markdown/CodeBlock";
 import { useTheme } from "@/shared/theme/ThemeProvider";
 
 type RenderState =
@@ -9,43 +8,55 @@ type RenderState =
   | { status: "ready"; svg: string }
   | { status: "error"; message: string };
 
+// Caps keep one oversized diagram from stalling the timeline on every mount.
+const MAX_TEXT_SIZE = 20_000;
+const MAX_EDGES = 200;
+
 /**
  * Renders a ```mermaid fence as a diagram. Message content is untrusted, so
  * mermaid runs at `securityLevel: "strict"` (labels sanitised, click handlers
- * disabled); the app CSP also forbids inline scripts. Invalid source falls
- * back to the raw fence with the parse error.
+ * disabled); the app CSP also forbids inline scripts. Source that cannot be
+ * drawn shows the error above the plain code block.
  */
-export default function MermaidDiagram({ code }: CodeFenceRendererProps) {
+export default function MermaidDiagram({
+  code,
+  fallback,
+}: CodeFenceRendererProps) {
   const { isDark } = useTheme();
   const id = `mermaid-${React.useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const attempt = React.useRef(0);
   const [state, setState] = React.useState<RenderState>({
     status: "rendering",
   });
 
   React.useEffect(() => {
     let cancelled = false;
+    // A fresh id per attempt: mermaid deletes any element carrying the id it
+    // renders under, which would blank the diagram still on screen.
+    attempt.current += 1;
+    const renderId = `${id}-${attempt.current}`;
     mermaid.initialize({
       startOnLoad: false,
       securityLevel: "strict",
+      // Throw instead of drawing an error graphic into a stray body node.
+      suppressErrorRendering: true,
+      maxTextSize: MAX_TEXT_SIZE,
+      maxEdges: MAX_EDGES,
       theme: isDark ? "dark" : "default",
     });
-    // Parse first: a failed render leaves mermaid's error graphic in the DOM.
-    mermaid
-      .parse(code)
-      .then(() => mermaid.render(id, code))
-      .then(
-        ({ svg }) => {
-          if (!cancelled) setState({ status: "ready", svg });
-        },
-        (error: unknown) => {
-          if (!cancelled) {
-            setState({
-              status: "error",
-              message: error instanceof Error ? error.message : String(error),
-            });
-          }
-        },
-      );
+    mermaid.render(renderId, code).then(
+      ({ svg }) => {
+        if (!cancelled) setState({ status: "ready", svg });
+      },
+      (error: unknown) => {
+        if (!cancelled) {
+          setState({
+            status: "error",
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      },
+    );
     return () => {
       cancelled = true;
     };
@@ -57,9 +68,7 @@ export default function MermaidDiagram({ code }: CodeFenceRendererProps) {
         <p className="mb-1 text-xs text-destructive">
           Could not draw this diagram: {state.message}
         </p>
-        <pre className="overflow-x-auto">
-          <code className={CODE_BLOCK_CLASS}>{code}</code>
-        </pre>
+        {fallback}
       </div>
     );
   }
