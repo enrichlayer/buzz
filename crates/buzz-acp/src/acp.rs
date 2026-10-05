@@ -1487,6 +1487,7 @@ impl AcpClient {
                 } else {
                     let silence = Instant::now().saturating_duration_since(last_activity_at);
                     tracing::warn!("hard turn timeout exceeded (silence {silence:?})");
+                    self.abandon_pending_question().await;
                     return Err(AcpError::HardTimeout { silence });
                 }
             }
@@ -1628,6 +1629,7 @@ impl AcpClient {
                     } else {
                         let silence = Instant::now().saturating_duration_since(last_activity_at);
                         tracing::warn!("hard turn timeout exceeded (silence {silence:?})");
+                        self.abandon_pending_question().await;
                         return Err(AcpError::HardTimeout { silence });
                     }
                 }

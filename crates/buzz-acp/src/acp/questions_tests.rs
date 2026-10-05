@@ -13,7 +13,8 @@ use buzz_sdk::agent_prompt::{parse_prompt_state, PromptState};
 /// Agent script. After the prompt it sends the elicitation, then acts on
 /// `mode`: `wait` reads Buzz's reply and ends the turn; `cancel-request`
 /// abandons the elicitation with `$/cancel_request` first; `session-cancel`
-/// reads the reply, then answers `session/cancel` with a cancelled turn.
+/// reads the reply, then answers `session/cancel` with a cancelled turn;
+/// `twice` sends a second elicitation before reading both replies.
 const AGENT: &str = r#"
 import json, sys, time
 log, mode, request = open(sys.argv[1], "a"), sys.argv[2], json.loads(sys.argv[3])
@@ -27,6 +28,9 @@ send({"jsonrpc": "2.0", "id": "ask-1", "method": "elicitation/create", "params":
 if mode == "cancel-request":
     time.sleep(0.5)  # let the card be posted first
     send({"jsonrpc": "2.0", "method": "$/cancel_request", "params": {"requestId": "ask-1"}})
+if mode == "twice":
+    send({"jsonrpc": "2.0", "id": "ask-2", "method": "elicitation/create", "params": request})
+    recv()
 recv()
 if mode == "session-cancel":
     recv()
@@ -67,9 +71,32 @@ impl Agent {
     }
 
     async fn prompt(&mut self, idle: Duration) -> Result<StopReason, super::super::AcpError> {
+        self.prompt_capped(idle, Duration::from_secs(10)).await
+    }
+
+    async fn prompt_capped(
+        &mut self,
+        idle: Duration,
+        cap: Duration,
+    ) -> Result<StopReason, super::super::AcpError> {
         self.client
-            .session_prompt_with_idle_timeout("s-1", "hi", idle, Duration::from_secs(10))
+            .session_prompt_with_idle_timeout("s-1", "hi", idle, cap)
             .await
+    }
+
+    /// Wait (bounded) until the script has logged `count` replies.
+    async fn wait_for_replies(&self, count: usize) -> Vec<Value> {
+        for _ in 0..200 {
+            let replies = self.replies();
+            if replies.len() >= count {
+                return replies;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        panic!(
+            "agent did not receive {count} replies: {:?}",
+            self.replies()
+        );
     }
 }
 
@@ -184,5 +211,50 @@ async fn ending_the_turn_withdraws_an_unanswered_card() {
     }
     agent.client.end_question_turn();
     assert!(agent.client.question_asker.is_none());
+    wait_for_cancelled_card(&relay).await;
+}
+
+#[tokio::test]
+async fn a_second_question_while_one_is_open_is_an_error_not_a_skip() {
+    let relay = FakeRelay::new(
+        5,
+        Some((nostr::Keys::generate(), json!({"question_0": ["OAuth"]}))),
+    );
+    let mut agent = Agent::spawn("twice").await;
+    agent
+        .client
+        .install_question_asker(Some(asker(relay.clone(), None)));
+    let stop = agent.prompt(Duration::from_secs(5)).await;
+    assert_eq!(stop.expect("turn completes"), StopReason::EndTurn);
+    assert_eq!(
+        agent.replies(),
+        vec![
+            json!({"jsonrpc": "2.0", "id": "ask-2", "error": {"code": -32603,
+                "message": "another question is already open"}}),
+            json!({"jsonrpc": "2.0", "id": "ask-1",
+                "result": {"action": "accept", "content": {"question_0": "OAuth"}}}),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn the_hard_cap_answers_the_open_question_cancel_and_withdraws_it() {
+    let relay = FakeRelay::new(0, None);
+    let mut agent = Agent::spawn("wait").await;
+    agent
+        .client
+        .install_question_asker(Some(asker(relay.clone(), None)));
+    let stop = agent
+        .prompt_capped(Duration::from_secs(30), Duration::from_secs(2))
+        .await;
+    assert!(
+        matches!(stop, Err(super::super::AcpError::HardTimeout { .. })),
+        "hard cap reported: {stop:?}"
+    );
+    assert!(agent.client.pending_question.is_none());
+    assert_eq!(
+        agent.wait_for_replies(1).await,
+        vec![json!({"jsonrpc": "2.0", "id": "ask-1", "result": {"action": "cancel"}})]
+    );
     wait_for_cancelled_card(&relay).await;
 }

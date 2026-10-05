@@ -27,6 +27,9 @@ pub(super) struct PendingQuestion {
     cancel_tx: oneshot::Sender<()>,
 }
 
+/// Bound on the `cancel` reply written when a turn times out.
+const ABANDON_WRITE_LIMIT: std::time::Duration = std::time::Duration::from_secs(1);
+
 /// Receiver the read loop awaits for the pending question's outcome.
 pub(super) type QuestionRx = oneshot::Receiver<QuestionOutcome>;
 
@@ -68,8 +71,12 @@ impl AcpClient {
         let Some(id) = msg.get("id").cloned() else {
             return Ok(None);
         };
+        // A second question while one is open gets an error, not `decline`:
+        // claude-agent-acp reports decline to the model as "the user
+        // skipped", but this question was never shown.
         let response = if self.pending_question.is_some() {
-            decline(&id, "another question is already open")
+            tracing::info!(target: "acp::question", "refusing elicitation id={id}: another question is already open");
+            error(&id, "another question is already open".to_string())
         } else if let Some(asker) = &self.question_asker {
             match ask_prompt_from_request(&msg["params"]) {
                 Ok(prompt) => {
@@ -134,6 +141,25 @@ impl AcpClient {
         tracing::info!(target: "acp::question", "question cancelled id={}", pending.request_id);
         self.write_ndjson(&result(&pending.request_id, json!({"action": "cancel"})))
             .await
+    }
+
+    /// The turn hit its hard cap with a question open: withdraw the card and
+    /// answer the agent `cancel`, so its tool call does not wait on a
+    /// request nobody will answer. Bounded and best effort — the agent may
+    /// have stopped reading — and the timeout is still what gets reported.
+    pub(super) async fn abandon_pending_question(&mut self) {
+        if self.pending_question.is_none() {
+            return;
+        }
+        match tokio::time::timeout(ABANDON_WRITE_LIMIT, self.cancel_pending_question()).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => {
+                tracing::warn!(target: "acp::question", "could not answer cancel at hard timeout: {e}")
+            }
+            Err(_) => {
+                tracing::warn!(target: "acp::question", "cancel reply at hard timeout timed out")
+            }
+        }
     }
 
     /// Decline an elicitation outside a prompt turn.
