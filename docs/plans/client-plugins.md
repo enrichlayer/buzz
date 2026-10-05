@@ -55,7 +55,7 @@ Decisions:
 - [x] Desktop typecheck, lint, file-size check, unit suite, messaging e2e
 - [x] Human test: Mermaid block renders as a diagram in the desktop app (2026-10-05)
 - [ ] Human test: diff and huddle cards unchanged
-- [ ] Agent review per AGENTS.md
+- [x] Agent review per AGENTS.md (no blockers; fixes in f294484)
 - [ ] Review on the enrichlayer/buzz fork PR
 
 ## Next
