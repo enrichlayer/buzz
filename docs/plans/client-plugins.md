@@ -47,7 +47,9 @@ Decisions:
 - [x] Code-fence registry and Mermaid plugin with error fallback
 - [x] Unit tests (`policies.test.mjs`) and e2e (`code-fence-plugins.spec.ts`)
 - [x] Desktop typecheck, lint, file-size check, unit suite, messaging e2e
-- [ ] Human test in the desktop app (post a Mermaid block, check diff and huddle cards)
+- [x] Human test: Mermaid block renders as a diagram in the desktop app (2026-10-05)
+- [ ] Human test: diff and huddle cards unchanged
+- [ ] Agent review per AGENTS.md
 - [ ] Review on the enrichlayer/buzz fork PR
 
 ## Next
