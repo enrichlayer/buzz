@@ -75,16 +75,41 @@ Decisions made while building (DEV-11200):
   survive, as NIP-AR requires of editors.
 - **Content limits.** 1–4 questions, 1–8 options (options plus "Other" fit
   number keys 1–9); `multiSelect` defaults to false, `allowOther` to true. An
-  answered revision must carry a valid answer for every question and a hex
-  `answeredBy`, or the card falls back to the title.
+  answered revision must carry a valid answer for every question, or the card
+  falls back to the title. The CLI enforces the desktop's per-field caps
+  (header 40, question 2000, label 200, description 1000, preview 10000,
+  counted as JavaScript does), so it cannot post a card that won't render.
+- **Who answered comes from the signature.** "Answered by" shows the answered
+  revision's signer. Content is writer-controlled, so the parser rejects an
+  answered revision whose `answeredBy` is not its own signer; the field stays
+  in the content for agents reading it.
+- **"First answer wins" holds for honest clients only.** The relay's head lock
+  stops two answers to the same open revision, but any channel writer can
+  publish a later revision (a new answer, or reopen it). This client never
+  edits an answered prompt; agents should treat the answered revision they
+  see first as the answer, and NIP-AR history keeps every revision.
 - **Conflict.** On `conflict:` the card fetches the head with
   `{kinds:[45010], #h, #d}` (single-letter tags are fine on WS REQ) and folds
   it into the store. If it is answered, the card shows "Already answered by X"
   and "Your answer was not sent"; if it changed but is still open, it asks the
-  viewer to review and submit again.
+  viewer to review and submit again. If the relay returns no head (moved,
+  deleted, redacted) the card is removed. A permission rejection
+  (`restricted:`/`blocked:`/`auth-required:`) says "You can't post in this
+  channel".
 - **Subscription lifetime.** Message rows acquire the channel's artifact
-  subscription by reference count and release it after a 1 s grace, so
-  timeline virtualization does not churn the REQ.
+  subscription (`kinds:[45010,45011]`) by reference count and release it
+  after a 1 s grace, so timeline virtualization does not churn the REQ. A
+  45011 removal marker for the current head hides an artifact that moved out.
+  The registry is community-scoped: `resetChannelArtifactSubscriptions()`
+  runs in `resetCommunityState()`, because `relayClient.disconnect()` kills
+  live REQs without telling their owners. Not handled: a terminal `CLOSED`
+  (auth/access) on the artifact REQ leaves the entry thinking it is
+  subscribed until its rows unmount. `subscribeLive` exposes no removal hook,
+  and `relayClientSession.ts` sits at the 1200-line cap.
+- **Keyboard.** Number keys pick, Tab/Shift+Tab move between questions,
+  plain Enter on an option toggles it like a click, and Ctrl/⌘+Enter (or
+  Enter outside an option) submits. After the viewer's own submit, focus
+  moves to the `role="status"` result line.
 - **Self label.** "Answered by You" for the viewer's own answer, matching
   `resolveUserLabel` elsewhere; others see their display name.
 - **Posting.** `buzz prompts ask --channel <uuid> --root <event-id> --file q.json`
@@ -120,7 +145,7 @@ Decisions made while building (DEV-11200):
 3. `BUZZ_RELAY_URL=<relay> BUZZ_PRIVATE_KEY=<a member's key> buzz prompts ask --channel <channel-uuid> --root <event-id> --file .tmp/q.json`
 4. Working looks like: a card appears under the message with two tabs;
    hovering OAuth shows the preview; `2` picks OAuth and moves to Clients;
-   `1`, `3`, `4` + text pick Web, Mobile and Other; Enter submits; the card
+   `1`, `3`, `4` + text pick Web, Mobile and Other; Ctrl/⌘+Enter submits; the card
    turns into "Answered by You" with the choices, and a second viewer sees
    "Answered by <your name>". Answering from two clients at once: the loser
    sees "Already answered by …".
