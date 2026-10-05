@@ -2,6 +2,8 @@ import type { RelayEvent } from "@/shared/api/types";
 
 /** NIP-AR channel artifact revision (see docs/nips/NIP-AR.md). */
 export const KIND_ARTIFACT = 45010;
+/** Relay-signed marker that an artifact moved out of a channel. */
+export const KIND_ARTIFACT_REMOVAL = 45011;
 
 export type ArtifactOp = "create" | "update" | "move" | "delete" | "restore";
 

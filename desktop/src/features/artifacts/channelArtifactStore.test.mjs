@@ -119,7 +119,13 @@ test("deletes, other channels, unregistered types and other roots stay out", () 
   assert.equal(s.getForRoot(ROOT).length, 1);
 
   const other = "11111111-1111-4111-8111-111111111111";
-  s.ingest(revision({ id: hex(4), op: "create", d: other, type: "buzz.task" }));
+  assert.equal(
+    s.ingest(
+      revision({ id: hex(4), op: "create", d: other, type: "buzz.task" }),
+    ),
+    false,
+    "unregistered types are not retained",
+  );
   s.ingest(
     revision({ id: hex(5), op: "create", d: other.replace("1", "2"), h: "x" }),
   );
@@ -162,4 +168,58 @@ test("update tags chain to the head and keep annotations, not auth", () => {
     ["agent", "x"],
   ]);
   assert.ok(parseArtifactRevision({ ...revision({ id: hex(2) }), tags }));
+});
+
+test("a relay removal marker hides an artifact that moved out", () => {
+  const s = store();
+  s.ingest(revision({ id: hex(1), op: "create" }));
+  const marker = (prev) => ({
+    id: hex(90),
+    pubkey: "f".repeat(64),
+    created_at: 300,
+    kind: 45011,
+    tags: [
+      ["ar", "1"],
+      ["d", D],
+      ["h", CHANNEL],
+      ["reason", "moved"],
+      ["prev", prev],
+    ],
+    content: "",
+    sig: "",
+  });
+  // A marker for an older revision changes nothing visible.
+  assert.equal(s.ingest(marker(hex(7))), false);
+  assert.equal(s.getForRoot(ROOT).length, 1);
+  assert.equal(s.ingest(marker(hex(1))), true);
+  assert.equal(s.getForRoot(ROOT).length, 0);
+  assert.equal(s.getHead(D), undefined);
+  // The stale revision cannot come back; a move back (unlinked) can.
+  s.ingest(revision({ id: hex(1), op: "create" }));
+  assert.equal(s.getForRoot(ROOT).length, 0);
+  s.ingest(revision({ id: hex(3), op: "move", prev: hex(2) }));
+  assert.equal(s.getForRoot(ROOT)[0].id, hex(3));
+});
+
+test("remove() hides an artifact a refetch could not find", () => {
+  const s = store();
+  s.ingest(revision({ id: hex(1), op: "create" }));
+  s.remove(D);
+  assert.equal(s.getForRoot(ROOT).length, 0);
+  assert.equal(s.ingest(revision({ id: hex(1), op: "create" })), false);
+});
+
+test("the superseded set per artifact stays bounded", () => {
+  const s = store();
+  s.ingest(revision({ id: hex(1), op: "create", createdAt: 1 }));
+  for (let i = 2; i < 200; i++) {
+    s.ingest(revision({ id: hex(i), prev: hex(i - 1), createdAt: i }));
+  }
+  assert.equal(s.getHead(D)?.id, hex(199));
+  // The oldest ids were pruned: a very late delivery loses on created_at.
+  assert.equal(
+    s.ingest(revision({ id: hex(1), op: "create", createdAt: 1 })),
+    false,
+  );
+  assert.equal(s.getHead(D)?.id, hex(199));
 });
