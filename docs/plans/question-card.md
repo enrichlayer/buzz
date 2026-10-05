@@ -114,6 +114,10 @@ Decisions made while building (DEV-11200):
   `resolveUserLabel` elsewhere; others see their display name.
 - **Posting.** `buzz prompts ask --channel <uuid> --root <event-id> --file q.json`
   (crates/buzz-cli) creates the artifact; the file needs only `questions`.
+  The content builder and caps live in `buzz_sdk::agent_prompt`, shared with
+  buzz-acp.
+- **Cancelled.** `state: "cancelled"` (added by DEV-11266) means the asking
+  agent withdrew the card; it renders as "Question cancelled" with no form.
 
 ## Status
 
@@ -153,5 +157,6 @@ Decisions made while building (DEV-11200):
 ## Next (separate issues)
 
 1. `buzz-acp`: advertise ACP `elicitation.form`, turn elicitations into prompt
-   artifacts, wait for the answer, reply to the agent.
+   artifacts, wait for the answer, reply to the agent — DEV-11266,
+   [agent-questions.md](agent-questions.md).
 2. Approval and plan cards on the same registry.

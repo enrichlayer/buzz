@@ -312,6 +312,38 @@ Each channel has at most one prompt in flight. Multiple channels can be processe
 
 > **Note:** On startup, the harness replays all unprocessed @mentions since the last run. Expect a burst of activity if there are stale events in the channel.
 
+## Agent Questions (AskUserQuestion)
+
+`buzz-acp` advertises the ACP client capability `elicitation.form`. With it,
+claude-agent-acp enables Claude Code's AskUserQuestion tool and sends each call
+as an `elicitation/create` request; without it the adapter disables the tool.
+
+- **Asking.** During a channel turn, an AskUserQuestion form becomes a question
+  card: the agent posts a short kind-9 message (`<agent> asks: <first question>`)
+  in the thread it was told to reply in, then a `buzz.agent_prompt` artifact
+  rooted at that message. Anyone who can post in the channel can answer; the
+  first valid answer (its `answeredBy` must be the revision's signer) is
+  returned to the agent as the selected option labels, multi-select arrays, or
+  typed "Other" text, in the shape claude-agent-acp expects.
+- **Declining.** Other form elicitations (MCP server forms, the model-fallback
+  consent dialog), URL elicitations, a second question while one is open, and
+  turns with no conversation (heartbeats, `buzz-acp run --task`) are answered
+  `decline` at once. A question the card cannot hold (more than 4 questions,
+  more than 8 options, an over-long or duplicate label) gets an error, so the
+  agent hears it was not shown.
+- **Waiting.** While a card is open the idle timeout (`BUZZ_ACP_IDLE_TIMEOUT`)
+  is paused; it restarts when the answer arrives. The absolute turn cap
+  (`BUZZ_ACP_MAX_TURN_DURATION`, default 2 h) still applies, so an unanswered
+  question ends with the turn. The card is polled every 2 s (backing off to
+  30 s on relay errors).
+- **Cancelling.** When the turn is cancelled (`!cancel`, Stop, interrupt),
+  times out, ends, the agent abandons the request (`$/cancel_request`), or the
+  harness shuts down, the card is updated to `state: "cancelled"` (shown as
+  "Question cancelled") and the agent is answered `cancel`. A card that was
+  already answered is left alone.
+
+Design and status: [`docs/plans/agent-questions.md`](../../docs/plans/agent-questions.md).
+
 ## Bring Your Own Harness (BYOH)
 
 Buzz Desktop supports registering any ACP-speaking agent tool as a selectable runtime without a PR.

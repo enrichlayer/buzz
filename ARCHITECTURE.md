@@ -782,6 +782,7 @@ Buzz Relay ──WS──→ buzz-acp ──stdio (ACP/JSON-RPC)──→ Agent 
 - Pool of 1–32 agent subprocesses with claim/return lifecycle.
 - Per-channel queuing: at most one prompt in-flight per channel; subsequent @mentions queue until the agent responds.
 - Crash recovery: agent subprocess crashes are detected and the agent is respawned.
+- Agent questions: advertises ACP `elicitation.form`; an AskUserQuestion elicitation becomes a `buzz.agent_prompt` question card in the turn's thread and the first answer is returned to the agent (`agent_questions.rs`, `acp/questions.rs`).
 - Depends on `buzz-core` (kind constants) and `buzz-sdk` (relay/REST utilities).
 
 **Does NOT:** persist state.
