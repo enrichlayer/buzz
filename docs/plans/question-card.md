@@ -125,7 +125,7 @@ Decisions made while building (DEV-11200):
 - [x] e2e: render, submit, conflict (mock bridge) — `question-card.spec.ts` (smoke)
 - [x] A way to post a prompt for a human test (`buzz prompts ask`)
 - [ ] Human test in the desktop app
-- [ ] Agent review per AGENTS.md
+- [x] Agent review per AGENTS.md (2 blockers fixed: signer as answerer, subscription reset on community switch)
 
 ## Human test
 
