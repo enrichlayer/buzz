@@ -120,11 +120,11 @@ fn answers_map_back_to_the_shape_claude_reads() {
     let single = ask_prompt_from_request(&single_question_request()).expect("card");
     assert_eq!(
         accept_content(&single.questions, &answer(&[("question_0", &["OAuth"])])),
-        Some(json!({"question_0": "OAuth"}))
+        json!({"question_0": "OAuth"})
     );
     assert_eq!(
         accept_content(&single.questions, &answer(&[("question_0", &["mTLS"])])),
-        Some(json!({"question_0_custom": "mTLS"}))
+        json!({"question_0_custom": "mTLS"})
     );
     let two = ask_prompt_from_request(&two_question_request()).expect("card");
     assert_eq!(
@@ -135,24 +135,73 @@ fn answers_map_back_to_the_shape_claude_reads() {
                 ("question_1", &["Web", "Mobile", "Desktop app"]),
             ])
         ),
-        Some(json!({
+        json!({
             "question_0": " Padded ",
             "question_1": ["Web", "Mobile"],
             "question_1_custom": "Desktop app",
-        }))
+        })
     );
     assert_eq!(
         accept_content(
             &two.questions,
             &answer(&[("question_0", &["OAuth"]), ("question_1", &["Only typed"])])
         ),
-        Some(json!({"question_0": "OAuth", "question_1_custom": "Only typed"}))
+        json!({"question_0": "OAuth", "question_1_custom": "Only typed"})
     );
-    // An answer to different questions is not an answer to these.
-    assert_eq!(
-        accept_content(&two.questions, &answer(&[("question_0", &["OAuth"])])),
-        None
-    );
+}
+
+#[test]
+fn only_answers_to_the_agents_own_questions_conform() {
+    let two = ask_prompt_from_request(&two_question_request()).expect("card");
+    let conforms = |pairs: &[(&str, &[&str])]| answer_conforms(&two.questions, &answer(pairs));
+    assert!(conforms(&[
+        ("question_0", &["OAuth"]),
+        ("question_1", &["Web", "Mobile", "Desktop app"]),
+    ]));
+    assert!(conforms(&[
+        ("question_0", &["mTLS"]),
+        ("question_1", &["CLI"])
+    ]));
+    // A different set of questions.
+    assert!(!conforms(&[("question_0", &["OAuth"])]));
+    assert!(!conforms(&[
+        ("question_0", &["OAuth"]),
+        ("question_1", &["Web"]),
+        ("question_2", &["Web"]),
+    ]));
+    // Single-select rewritten as multi-select.
+    assert!(!conforms(&[
+        ("question_0", &["Padded", "OAuth"]),
+        ("question_1", &["Web"]),
+    ]));
+    // Empty, duplicated, or two typed answers.
+    assert!(!conforms(&[
+        ("question_0", &["OAuth"]),
+        ("question_1", &[])
+    ]));
+    assert!(!conforms(&[
+        ("question_0", &["OAuth"]),
+        ("question_1", &["Web", "Web"])
+    ]));
+    assert!(!conforms(&[
+        ("question_0", &["OAuth"]),
+        ("question_1", &["Desktop", "Watch"]),
+    ]));
+    // An invented label where "Other" is not allowed.
+    let mut request = single_question_request();
+    request["requestedSchema"]["properties"]
+        .as_object_mut()
+        .expect("properties")
+        .remove("question_0_custom");
+    let closed = ask_prompt_from_request(&request).expect("card");
+    assert!(answer_conforms(
+        &closed.questions,
+        &answer(&[("question_0", &["OAuth"])])
+    ));
+    assert!(!answer_conforms(
+        &closed.questions,
+        &answer(&[("question_0", &["mTLS"])])
+    ));
 }
 
 #[test]
@@ -228,6 +277,9 @@ pub(crate) struct FakeRelay {
     head_reads: Mutex<usize>,
     answer_after: usize,
     answer: Option<(Keys, Value)>,
+    /// Applied to the answered revision's content, to play a client that
+    /// rewrites the questions while answering.
+    rewrite: Option<fn(&mut serde_json::Map<String, Value>)>,
 }
 
 impl FakeRelay {
@@ -237,6 +289,20 @@ impl FakeRelay {
             head_reads: Mutex::new(0),
             answer_after,
             answer,
+            rewrite: None,
+        })
+    }
+
+    fn rewriting(
+        answer: (Keys, Value),
+        rewrite: fn(&mut serde_json::Map<String, Value>),
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            events: Mutex::new(Vec::new()),
+            head_reads: Mutex::new(0),
+            answer_after: 1,
+            answer: Some(answer),
+            rewrite: Some(rewrite),
         })
     }
 
@@ -261,6 +327,9 @@ impl FakeRelay {
         content.insert("state".into(), "answered".into());
         content.insert("answer".into(), answer.clone());
         content.insert("answeredBy".into(), keys.public_key().to_hex().into());
+        if let Some(rewrite) = self.rewrite {
+            rewrite(&mut content);
+        }
         let tags =
             build_prompt_update_tags(d, CHANNEL, "t", None, &head.id.to_hex()).expect("tags");
         let content = serde_json::to_string(&content).expect("json");
@@ -402,6 +471,44 @@ async fn an_answer_not_signed_by_its_answerer_is_ignored() {
         waited.is_err(),
         "a forged answer must not resolve the question"
     );
+}
+
+async fn assert_unresolved(request: Value, relay: Arc<dyn QuestionRelay>) {
+    let prompt = ask_prompt_from_request(&request).expect("card");
+    let handle = asker(relay, None).ask(&prompt);
+    let waited = tokio::time::timeout(Duration::from_millis(300), handle.outcome_rx).await;
+    assert!(
+        waited.is_err(),
+        "a rewritten card must not resolve the question"
+    );
+}
+
+#[tokio::test]
+async fn an_answer_that_makes_a_single_select_multi_select_is_ignored() {
+    let both = json!({"question_0": ["API key (Recommended)", "OAuth"]});
+    let relay = FakeRelay::rewriting((Keys::generate(), both), |content| {
+        content["questions"][0]["multiSelect"] = true.into();
+    });
+    assert_unresolved(single_question_request(), relay).await;
+}
+
+#[tokio::test]
+async fn an_answer_with_an_invented_option_is_ignored() {
+    // The agent's question does not allow "Other", so a label it did not
+    // offer can only be an option the answering client added.
+    let mut request = single_question_request();
+    request["requestedSchema"]["properties"]
+        .as_object_mut()
+        .expect("properties")
+        .remove("question_0_custom");
+    let invented = json!({"question_0": ["Basic auth"]});
+    let relay = FakeRelay::rewriting((Keys::generate(), invented), |content| {
+        content["questions"][0]["options"]
+            .as_array_mut()
+            .expect("options")
+            .push(json!({"label": "Basic auth"}));
+    });
+    assert_unresolved(request, relay).await;
 }
 
 #[tokio::test]

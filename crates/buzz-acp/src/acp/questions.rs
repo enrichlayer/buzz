@@ -105,12 +105,10 @@ impl AcpClient {
         };
         let id = &pending.request_id;
         let response = match outcome {
-            Ok(QuestionOutcome::Answered(answer)) => {
-                match accept_content(&pending.questions, &answer) {
-                    Some(content) => result(id, json!({"action": "accept", "content": content})),
-                    None => result(id, json!({"action": "cancel"})),
-                }
-            }
+            Ok(QuestionOutcome::Answered(answer)) => result(
+                id,
+                json!({"action": "accept", "content": accept_content(&pending.questions, &answer)}),
+            ),
             Ok(QuestionOutcome::Failed(reason)) => {
                 tracing::warn!(target: "acp::question", "question card not posted: {reason}");
                 error(id, format!("could not post the question to Buzz: {reason}"))

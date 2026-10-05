@@ -28,6 +28,9 @@ pub(crate) struct AskQuestion {
     /// Form field key (`question_<n>`), also the card's question id.
     pub field: String,
     pub multi_select: bool,
+    /// Whether a typed "Other" answer is allowed (the form has
+    /// `question_<n>_custom`).
+    pub allow_other: bool,
     /// Options as `(label shown on the card, exact enum const)`. The card
     /// trims labels; the agent needs the const it sent back verbatim.
     pub options: Vec<(String, String)>,
@@ -124,6 +127,7 @@ pub(crate) fn ask_prompt_from_request(params: &Value) -> Result<AskPrompt, Unsup
         questions.push(AskQuestion {
             field,
             multi_select,
+            allow_other,
             options,
         });
     }
@@ -195,22 +199,58 @@ fn display_text(value: Option<&Value>, max: usize) -> Option<String> {
     (!text.is_empty()).then(|| text.to_string())
 }
 
-/// The `content` of an `accept` response for a card answer, in the shape
+/// Whether `answer` is a valid answer to the agent's own `questions`, not
+/// just to whatever questions the answered revision carries: exactly these
+/// question ids; one choice for single-select, one or more distinct choices
+/// for multi-select; every choice one of the question's option labels,
+/// except at most one typed "Other" where the question allows it. A
+/// revision that rewrote the questions (a single-select made multi-select,
+/// an invented option) is ignored like a forged one.
+pub(crate) fn answer_conforms(
+    questions: &[AskQuestion],
+    answer: &BTreeMap<String, Vec<String>>,
+) -> bool {
+    answer.len() == questions.len()
+        && questions.iter().all(|question| {
+            let Some(choices) = answer.get(&question.field) else {
+                return false;
+            };
+            let count_ok = if question.multi_select {
+                !choices.is_empty()
+            } else {
+                choices.len() == 1
+            };
+            let distinct = choices
+                .iter()
+                .enumerate()
+                .all(|(i, choice)| !choices[..i].contains(choice));
+            let others = choices
+                .iter()
+                .filter(|choice| !question.options.iter().any(|(label, _)| label == *choice))
+                .collect::<Vec<_>>();
+            let others_ok = match others.as_slice() {
+                [] => true,
+                [other] => question.allow_other && !other.trim().is_empty(),
+                _ => false,
+            };
+            count_ok && distinct && others_ok
+        })
+}
+
+/// The `content` of an `accept` response for an answer that
+/// [`answer_conforms`] to `questions`, in the shape
 /// `applyAskElicitationResponse` reads: a picked option is its exact const
 /// (an array of consts for multi-select); a typed "Other" answer goes in
-/// `question_<n>_custom`. `None` when the answer does not cover exactly
-/// these questions (a revision that rewrote the questions is not an answer
-/// to the agent's).
+/// `question_<n>_custom`.
 pub(crate) fn accept_content(
     questions: &[AskQuestion],
     answer: &BTreeMap<String, Vec<String>>,
-) -> Option<Value> {
-    if answer.len() != questions.len() {
-        return None;
-    }
+) -> Value {
     let mut content = Map::new();
     for question in questions {
-        let choices = answer.get(&question.field)?;
+        let Some(choices) = answer.get(&question.field) else {
+            continue;
+        };
         let mut picks = Vec::new();
         let mut other = None;
         for choice in choices {
@@ -230,5 +270,5 @@ pub(crate) fn accept_content(
             content.insert(custom_field(&question.field), other.into());
         }
     }
-    Some(Value::Object(content))
+    Value::Object(content)
 }

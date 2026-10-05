@@ -27,7 +27,7 @@ use uuid::Uuid;
 use crate::relay::RestClient;
 
 pub(crate) use mapping::{
-    accept_content, ask_prompt_from_request, AskPrompt, AskQuestion, Unsupported,
+    accept_content, answer_conforms, ask_prompt_from_request, AskPrompt, AskQuestion, Unsupported,
 };
 
 /// NIP-AR artifact revision kind.
@@ -165,11 +165,11 @@ impl QuestionAsker {
         let (outcome_tx, outcome_rx) = oneshot::channel();
         let (cancel_tx, cancel_rx) = oneshot::channel();
         let asker = self.clone();
-        let fields = prompt.questions.iter().map(|q| q.field.clone()).collect();
+        let questions = prompt.questions.clone();
         let (content, title) = (prompt.content.clone(), prompt.title.clone());
         WITHDRAWALS.spawn(async move {
             asker
-                .run(content, title, fields, cancel_rx, outcome_tx)
+                .run(content, title, questions, cancel_rx, outcome_tx)
                 .await;
         });
         AskHandle {
@@ -182,7 +182,7 @@ impl QuestionAsker {
         self,
         content: String,
         title: String,
-        fields: Vec<String>,
+        questions: Vec<AskQuestion>,
         mut cancel_rx: oneshot::Receiver<()>,
         outcome_tx: oneshot::Sender<QuestionOutcome>,
     ) {
@@ -191,18 +191,18 @@ impl QuestionAsker {
         let outcome = tokio::select! {
             biased;
             _ = &mut cancel_rx => None,
-            outcome = self.post_and_wait(&d, &content, &title, &fields, &mut created) => Some(outcome),
+            outcome = self.post_and_wait(&d, &content, &title, &questions, &mut created) => Some(outcome),
         };
         match outcome {
-            // A create that timed out may still have landed: withdraw it.
-            Some(QuestionOutcome::Failed(reason)) => {
-                if created {
+            Some(outcome) => {
+                // A create that failed may still have landed: report the
+                // failure first, so the agent is not kept waiting on the
+                // withdrawal's relay calls, then withdraw it.
+                let failed = matches!(outcome, QuestionOutcome::Failed(_));
+                let _ = outcome_tx.send(outcome);
+                if failed && created {
                     self.withdraw(&d).await;
                 }
-                let _ = outcome_tx.send(QuestionOutcome::Failed(reason));
-            }
-            Some(outcome) => {
-                let _ = outcome_tx.send(outcome);
             }
             None if created => self.withdraw(&d).await,
             None => {}
@@ -216,7 +216,7 @@ impl QuestionAsker {
         d: &str,
         content: &str,
         title: &str,
-        fields: &[String],
+        questions: &[AskQuestion],
         created: &mut bool,
     ) -> QuestionOutcome {
         let anchor = match self.anchor_event(title) {
@@ -266,15 +266,12 @@ impl QuestionAsker {
                 return QuestionOutcome::Withdrawn;
             };
             match parse_prompt_state(&head.content, &head.pubkey.to_hex()) {
-                Some(PromptState::Answered(answer))
-                    if answer.len() == fields.len()
-                        && fields.iter().all(|f| answer.contains_key(f)) =>
-                {
+                Some(PromptState::Answered(answer)) if answer_conforms(questions, &answer) => {
                     return QuestionOutcome::Answered(answer)
                 }
                 Some(PromptState::Cancelled) => return QuestionOutcome::Withdrawn,
-                // Open, or a revision whose answer is not a valid answer to
-                // these questions from its signer: keep waiting.
+                // Open, or a revision whose answer is not a valid answer from
+                // its signer to the agent's questions: keep waiting.
                 _ => {}
             }
         }
