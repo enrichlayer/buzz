@@ -1318,9 +1318,6 @@ declare global {
       /** 64-hex id required for the event to be a valid reaction target. */
       id?: string;
     }) => RelayEvent;
-    /** Prepend `count` synthetic older messages to a channel's mock store so
-     *  an older-history fetch has something to paginate. Mirrors how the real
-     *  relay backfills history. Returns the created events. */
     /** Store a kind-45010 revision under the mock head lock (throws on
      *  rejection). `live: false` stores it without live delivery, so a
      *  client still holding the old head hits `conflict:` on its next write. */
@@ -1331,6 +1328,9 @@ declare global {
       pubkey?: string;
       live?: boolean;
     }) => RelayEvent;
+    /** Prepend `count` synthetic older messages to a channel's mock store so
+     *  an older-history fetch has something to paginate. Mirrors how the real
+     *  relay backfills history. Returns the created events. */
     __BUZZ_E2E_PREPEND_MOCK_HISTORY__?: (input: {
       channelName: string;
       count: number;

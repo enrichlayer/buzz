@@ -121,23 +121,34 @@ test("an agent prompt renders under its message and submits by keyboard", async 
   );
   await page.keyboard.press("1");
   await page.keyboard.press("3");
+  // Plain Enter on an option toggles it, like a click, instead of submitting.
+  const cli = card.getByRole("checkbox", { name: /CLI/ });
+  await cli.focus();
+  await page.keyboard.press("Enter");
+  await expect(cli).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Enter");
+  await expect(cli).toHaveAttribute("aria-checked", "false");
   await expect(card.getByRole("checkbox", { name: /Web/ })).toHaveAttribute(
     "aria-checked",
     "true",
   );
   await page.keyboard.press("4");
   await expect(card.getByTestId("agent-prompt-other-input")).toBeFocused();
-  await page.keyboard.type("Desktop");
+  // Digits typed in the Other field are text, not option shortcuts.
+  await page.keyboard.type("Desktop 2");
+  await expect(cli).toHaveAttribute("aria-checked", "false");
   // Shift+Tab returns to the first question with its answer intact.
   await page.keyboard.press("Shift+Tab");
   await expect(oauth).toHaveAttribute("aria-checked", "true");
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("ControlOrMeta+Enter");
 
   await expect(card).toHaveAttribute("data-state", "answered");
   await expect(card.getByTestId("agent-prompt-answered-by")).toHaveText(
     "Answered by You",
   );
-  for (const choice of ["OAuth", "Web", "Mobile", "Other: Desktop"]) {
+  // The submitter's focus moves to the announced result.
+  await expect(card.getByTestId("agent-prompt-answered-by")).toBeFocused();
+  for (const choice of ["OAuth", "Web", "Mobile", "Other: Desktop 2"]) {
     await expect(card.getByText(choice, { exact: true })).toBeVisible();
   }
 
@@ -153,7 +164,7 @@ test("an agent prompt renders under its message and submits by keyboard", async 
     state: "answered",
     answer: {
       question_0: ["OAuth"],
-      question_1: ["Web", "Mobile", "Desktop"],
+      question_1: ["Web", "Mobile", "Desktop 2"],
     },
   });
   await card.screenshot({ path: `${SHOTS}/02-answered.png` });

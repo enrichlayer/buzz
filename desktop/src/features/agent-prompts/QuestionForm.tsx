@@ -22,8 +22,8 @@ type FocusRequest = "option" | "other" | null;
 
 /**
  * The open question card, modelled on Claude Code's AskUserQuestion:
- * number keys pick, Tab/Shift+Tab move between questions, Enter submits
- * once every question has an answer.
+ * number keys pick, Tab/Shift+Tab move between questions, Ctrl/Cmd+Enter
+ * (or Enter outside an option) submits once every question has an answer.
  */
 export function QuestionForm({
   canAnswer,
@@ -93,14 +93,19 @@ export function QuestionForm({
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
-    if (disabled || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (disabled || event.altKey) return;
+    const target = event.target as HTMLElement;
     if (event.key === "Enter" && !event.shiftKey) {
-      if (answer) {
+      // On an option, plain Enter toggles it like a click; Ctrl/Cmd+Enter
+      // submits from anywhere.
+      const onOption = target.hasAttribute("data-question-option");
+      if (answer && (event.metaKey || event.ctrlKey || !onOption)) {
         event.preventDefault();
         submitIfReady();
       }
       return;
     }
+    if (event.metaKey || event.ctrlKey) return;
     if (event.key === "Tab") {
       // Only between questions: Tab past the last one (or Shift+Tab before
       // the first) leaves the card as usual, so focus is never trapped.
@@ -111,7 +116,6 @@ export function QuestionForm({
       }
       return;
     }
-    const target = event.target as HTMLElement;
     if (target.hasAttribute("data-question-other")) return;
     if (/^[1-9]$/.test(event.key)) {
       const index = Number(event.key) - 1;
@@ -229,8 +233,8 @@ export function QuestionForm({
           )}
         >
           {questions.length > 1
-            ? "Number keys pick · Tab next question · Enter submits"
-            : "Number keys pick · Enter submits"}
+            ? "Number keys pick · Tab next question · Ctrl/⌘+Enter submits"
+            : "Number keys pick · Ctrl/⌘+Enter submits"}
         </p>
         <Button
           data-testid="agent-prompt-submit"
