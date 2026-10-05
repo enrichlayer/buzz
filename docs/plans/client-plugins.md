@@ -32,6 +32,8 @@ Policy flags replace the hand-maintained kind checks:
 
 Decisions:
 
+- Fork strategy (2026-10-06): this work stays in the enrichlayer/buzz fork; we
+  merge block/buzz updates into it ourselves and do not propose it upstream.
 - Compile-time plugins only. No runtime loading of third-party code.
 - Policies stay free of React so constants and node tests can import them;
   `kinds.ts` re-exports plugin-owned kind constants to avoid an import cycle.
