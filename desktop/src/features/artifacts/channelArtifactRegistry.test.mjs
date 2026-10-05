@@ -8,7 +8,7 @@ const D = "04737c81-e5e8-4412-bb47-f446813cfeba";
 const GRACE_MS = 5;
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function harness({ fetched = [] } = {}) {
+function harness({ fetched = [], fetchEvents = async () => fetched } = {}) {
   const subscriptions = [];
   const registry = createChannelArtifactRegistry({
     subscribeLive: async (filter, onEvent) => {
@@ -18,7 +18,7 @@ function harness({ fetched = [] } = {}) {
         sub.disposed += 1;
       };
     },
-    fetchEvents: async () => fetched,
+    fetchEvents,
     isRegisteredType: (type) => type === "buzz.agent_prompt",
     releaseGraceMs: GRACE_MS,
   });
@@ -110,4 +110,39 @@ test("refresh adopts the relay's head, and drops an artifact it no longer has", 
   gone.registry.ingest(CHANNEL, prompt("1".repeat(64)));
   assert.equal(await gone.registry.refreshHead(CHANNEL, D), undefined);
   assert.equal(goneStore.getForRoot("a".repeat(64)).length, 0);
+});
+
+test("an empty refetch cannot remove a newer live revision", async () => {
+  let finishFetch;
+  const { registry } = harness({
+    fetchEvents: () =>
+      new Promise((resolve) => {
+        finishFetch = resolve;
+      }),
+  });
+  const store = registry.acquire(CHANNEL);
+  registry.ingest(CHANNEL, prompt("1".repeat(64)));
+  const pending = registry.refreshHead(CHANNEL, D);
+  registry.ingest(CHANNEL, prompt("2".repeat(64), "1".repeat(64)));
+  finishFetch([]);
+  assert.equal((await pending)?.id, "2".repeat(64));
+  assert.equal(store.getHead(D)?.id, "2".repeat(64));
+});
+
+test("an old community's refetch cannot change a newly acquired store", async () => {
+  let finishFetch;
+  const { registry } = harness({
+    fetchEvents: () =>
+      new Promise((resolve) => {
+        finishFetch = resolve;
+      }),
+  });
+  registry.acquire(CHANNEL);
+  const pending = registry.refreshHead(CHANNEL, D);
+  registry.reset();
+  const current = registry.acquire(CHANNEL);
+  registry.ingest(CHANNEL, prompt("2".repeat(64)));
+  finishFetch([prompt("f".repeat(64), "1".repeat(64))]);
+  assert.equal(await pending, undefined);
+  assert.equal(current.getHead(D)?.id, "2".repeat(64));
 });

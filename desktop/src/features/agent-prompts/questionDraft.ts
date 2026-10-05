@@ -20,7 +20,7 @@ export const EMPTY_DRAFT: QuestionDraft = {
 };
 
 export function draftFor(drafts: QuestionDrafts, id: string): QuestionDraft {
-  return drafts[id] ?? EMPTY_DRAFT;
+  return Object.hasOwn(drafts, id) ? drafts[id] : EMPTY_DRAFT;
 }
 
 /** Pick or toggle an option; single-select replaces any earlier choice. */
@@ -73,11 +73,12 @@ export function buildDraftAnswer(
   questions: readonly AgentPromptQuestion[],
   drafts: QuestionDrafts,
 ): AgentPromptAnswer | null {
-  const answer: AgentPromptAnswer = {};
+  const entries: [string, string[]][] = [];
   for (const question of questions) {
     const draft = draftFor(drafts, question.id);
     if (!isQuestionAnswered(question, draft)) return null;
-    answer[question.id] = draftChoices(question, draft);
+    entries.push([question.id, draftChoices(question, draft)]);
   }
-  return answer;
+  // Object.fromEntries creates own keys even for ids such as "__proto__".
+  return Object.fromEntries(entries);
 }

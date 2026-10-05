@@ -120,19 +120,25 @@ export function createChannelArtifactRegistry(
     channelId: string,
     d: string,
   ): Promise<ArtifactRevision | undefined> {
+    const store = entries.get(channelId)?.store;
+    if (!store) return undefined;
+    const headBeforeFetch = store.getHead(d)?.id;
     const events = await deps.fetchEvents({
       kinds: [KIND_ARTIFACT],
       "#h": [channelId],
       "#d": [d],
       limit: 10,
     });
-    const store = entries.get(channelId)?.store;
-    if (!store) return undefined;
+    // A community switch or release may have replaced this channel's store
+    // while the request was in flight. Its result belongs to the old store.
+    if (entries.get(channelId)?.store !== store) return undefined;
     for (const event of events) store.ingest(event);
     const found = events.some((event) =>
       event.tags.some((tag) => tag[0] === "d" && tag[1] === d),
     );
-    if (!found) store.remove(d);
+    // An empty refetch cannot erase a newer revision delivered live while it
+    // was in flight. The live result is the freshest state we have.
+    if (!found && store.getHead(d)?.id === headBeforeFetch) store.remove(d);
     return store.getHead(d);
   }
 
