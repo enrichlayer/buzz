@@ -46,8 +46,13 @@ current head through the relay's HTTP bridge (`POST /query` with
 `{"artifact":"current","#h","#d"}`) every 2 s, backing off to 30 s on errors.
 The relay maintains heads along the `prev` chain it enforces, so this is the
 prev-chain head. An answered head counts only if `parse_prompt_state` accepts
-it (valid answer for every question, `answeredBy` = signer) and it answers
-exactly the agent's questions; anything else is ignored and polling continues.
+it (valid answer for every question, `answeredBy` = signer) and the answer
+conforms to the questions stored from the original elicitation
+(`answer_conforms`): exactly those question ids, one choice for single-select,
+distinct choices for multi-select, every choice one of the agent's option
+labels except at most one typed "Other" where the agent allowed it. A revision
+that rewrote the questions (a single-select made multi-select, an invented
+option) is ignored like a forged one and polling continues.
 A cancelled or missing head (another client withdrew, moved or deleted it)
 answers the agent `cancel`.
 
@@ -64,20 +69,35 @@ wait.
 **Cancelling.** The pending request lives on `AcpClient`, not in the read loop,
 because a control cancel drops the read loop mid-turn. `cancel_with_cleanup`
 withdraws the card and answers the elicitation `cancel` before
-`session/cancel`. `$/cancel_request` for the pending id does the same. The end
+`session/cancel`. `$/cancel_request` for the pending id does the same, and so
+does the hard turn cap (best effort, the `cancel` write bounded to 1 s) before
+it reports the timeout, so the agent's tool call is not left waiting. The end
 of every turn (`send_prompt_result`) withdraws a card still open, and harness
-shutdown waits up to 5 s for withdrawals. Withdrawing publishes `op=update`,
+shutdown waits up to 5 s for withdrawals. A card whose create may have landed
+but failed reports the failure to the agent first, then withdraws.
+
+Any channel member can cancel a card (the desktop and the artifact protocol do
+not restrict who writes the `cancelled` revision); the agent's AskUserQuestion
+call then gets `cancel`, which aborts that tool call. Withdrawing publishes `op=update`,
 `prev=<head>`, the same title and root, content with `state: "cancelled"`; a
 head that is no longer open is left alone.
 
 **Declining.** Not the AskUserQuestion shape (MCP forms, the refusal-fallback
-consent dialog), URL mode, a second question while one is open, and turns with
-no conversation (heartbeats, `buzz-acp run --task`, or outside a prompt) are
-declined at once. claude-agent-acp maps decline to "the user skipped" for
-AskUserQuestion and to its default for the other dialogs, which is the
-behaviour before this change. A question the card cannot hold, or a card that
-could not be posted, gets a JSON-RPC error, which claude-agent-acp reports to
-the model as "Could not present the question to the user".
+consent dialog), URL mode, and turns with no conversation (heartbeats,
+`buzz-acp run --task`, or outside a prompt) are declined at once.
+claude-agent-acp maps decline to "the user skipped" for AskUserQuestion and to
+its default for the other dialogs, which is the behaviour before this change. A
+second question while one is open, a question the card cannot hold, or a card
+that could not be posted, gets a JSON-RPC error, which claude-agent-acp reports
+to the model as "Could not present the question to the user" — the question was
+never shown, so it must not read as skipped.
+
+**Permission modes.** In claude-agent-acp's default `bypassPermissions` mode
+AskUserQuestion still reaches the card: the tool is marked
+`requiresUserInteraction`, so the adapter routes it to the client even when
+permissions are bypassed (confirmed in review). In `dontAsk` mode the adapter
+denies AskUserQuestion outright, so no elicitation is sent and no card
+appears.
 
 **Desktop.** The parser accepts `state: "cancelled"`; the card shows "Question
 cancelled" with the title and no form.
@@ -88,8 +108,8 @@ Decisions made while building:
   the main loop; routing kind-45010 events from it to a waiting turn would
   thread new state through `lib.rs`. A bounded poll per open question keeps the
   feature self-contained; 2 s is fine for a human answer.
-- **One question at a time.** A second concurrent `elicitation/create` is
-  declined rather than queued.
+- **One question at a time.** A second concurrent `elicitation/create` gets
+  an error ("another question is already open") rather than being queued.
 - **Permission requests are unchanged** (still auto `allow_once`).
 - **Not handled:** if the harness process is killed (not shut down), an open
   card stays open; nobody is waiting for it. Cancelling after the anchor is
@@ -107,6 +127,7 @@ Decisions made while building:
 - [x] Withdraw on cancel, `$/cancel_request`, end of turn, shutdown
 - [x] Desktop renders cancelled cards
 - [x] Unit tests (mapping, answers, decline, withdraw, forged answer), stdio tests with a script agent (answer after a wait longer than the idle timeout, decline, cancel, `$/cancel_request`, end of turn), `buzz-acp run` integration test (capability + decline), e2e smoke for the cancelled card
+- [x] Review fixes: answers validated against the original questions; second question is an error; hard cap answers `cancel`; failed create reported before withdrawal (tests for each)
 - [ ] Exercised against a live claude-agent-acp + relay
 - [ ] Human test in the desktop app
 - [ ] Agent review per AGENTS.md
