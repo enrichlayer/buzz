@@ -38,7 +38,7 @@ import { cn } from "@/shared/lib/cn";
 import { copyTextToClipboard } from "@/shared/lib/clipboard";
 import { emojiDisplayName } from "@/shared/lib/emojiName";
 import { rewriteRelayUrl } from "@/shared/lib/mediaUrl";
-import { KIND_HUDDLE_STARTED } from "@/shared/constants/kinds";
+import { isSystemCardKind } from "@/shared/plugins/messageKinds/policies";
 import { Button } from "@/shared/ui/button";
 import { HashArrowIn } from "@/shared/ui/icons";
 import { DeleteMessageConfirmDialog } from "./DeleteMessageConfirmDialog";
@@ -70,16 +70,14 @@ function copyMessageLink(channelId: string, message: TimelineMessage) {
 }
 
 /** Gate shared by every copy-link surface: pending sends have no delivered
- *  event to link to, huddle system rows aren't linkable, and callers without
+ *  event to link to, system cards (e.g. huddles) aren't linkable, and callers without
  *  a channelId (e.g. inbox preview rows) can't build the link. */
 function canCopyMessageLink(
   message: TimelineMessage,
   channelId: string | null | undefined,
 ): channelId is string {
   return (
-    !message.pending &&
-    message.kind !== KIND_HUDDLE_STARTED &&
-    Boolean(channelId)
+    !message.pending && !isSystemCardKind(message.kind) && Boolean(channelId)
   );
 }
 
@@ -127,19 +125,18 @@ function MoreActionsMenu({
   // suppressing trigger restoration does not prevent that earlier race.
   const pendingEditRef = React.useRef<(() => void) | null>(null);
 
-  const hasCopyActions =
-    !message.pending && message.kind !== KIND_HUDDLE_STARTED;
+  const hasCopyActions = !message.pending && !isSystemCardKind(message.kind);
   // "Copy message" copies the Markdown body verbatim, so its plain flavor is
   // already readable anywhere. The HTML sidecar adds only identity, letting a
   // paste back into Buzz re-light each chip with the pubkey the author tagged.
   const mentionIdentities = useMessageMentionIdentities(message.tags, profiles);
 
   // A report needs a real, delivered event to target and a known author to
-  // name in the NIP-56 `p` tag. Pending sends and system huddle rows have
+  // name in the NIP-56 `p` tag. Pending sends and system cards (e.g. huddles) have
   // neither, so the entry is hidden for them.
   const canReport =
     !message.pending &&
-    message.kind !== KIND_HUDDLE_STARTED &&
+    !isSystemCardKind(message.kind) &&
     Boolean(message.pubkey);
 
   return (

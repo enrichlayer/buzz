@@ -12,7 +12,6 @@ import {
 } from "@/features/messages/lib/canSendToChannel";
 import type { TimelineMessage } from "@/features/messages/types";
 import { useKnownAgentPubkeys } from "@/features/agents/useKnownAgentPubkeys";
-import { HuddleAttachment } from "@/features/huddle/components/HuddleAttachment";
 import { MessageReactions } from "@/features/messages/ui/MessageReactions";
 import { MessageAuthorWithIndicators } from "@/features/messages/ui/MessageAuthorWithIndicators";
 import { useReactionHandler } from "@/features/messages/ui/useReactionHandler";
@@ -28,10 +27,7 @@ import {
   threadReplyLength,
   THREAD_REPLY_LINE_WIDTH_REM,
 } from "@/features/messages/lib/threadTreeLayout";
-import {
-  KIND_HUDDLE_STARTED,
-  KIND_STREAM_MESSAGE_DIFF,
-} from "@/shared/constants/kinds";
+import { getMessageKindCard } from "@/shared/plugins/messageKinds/cards";
 import { getConfigNudgeAuthorPubkey } from "@/features/messages/ui/configNudgeAuthPubkey";
 import { cn } from "@/shared/lib/cn";
 import { useMeasuredCssVariable } from "@/shared/layout/useMeasuredCssVariable";
@@ -60,8 +56,6 @@ import { SentFromThreadLine } from "./SentFromThreadLine";
 import { WaveMessageAttachment } from "./WaveMessageAttachment";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { useMessageAgentAddressPrefix } from "./MessageAgentAddressPrefix";
-const DiffMessage = React.lazy(() => import("./DiffMessage"));
-const DiffMessageExpanded = React.lazy(() => import("./DiffMessageExpanded"));
 export type ThreadDepthGuideAction = {
   active?: boolean;
   depth: number;
@@ -165,9 +159,6 @@ export const MessageRow = React.memo(
     // Keep the transient send state with its timestamp rather than collapsing
     // it into a grouped message row with no header.
     const isDisplayedAsContinuation = isContinuation && !message.pending;
-    const [expandedDiffId, setExpandedDiffId] = React.useState<string | null>(
-      null,
-    );
     const linkPreviewsSuppressed = hasLinkPreviewSuppression(message.tags);
     const removeLinkPreviewsForEveryone =
       channelId && onEdit && !message.pending && !linkPreviewsSuppressed
@@ -378,91 +369,64 @@ export const MessageRow = React.memo(
         collapseDepthGuideActions.map((action) => [action.depth, action]),
       );
     }, [collapseDepthGuideActions]);
-    const getTag = (name: string) =>
-      message.tags?.find((tag) => tag[0] === name)?.[1];
-
     const renderBody = () => {
-      switch (message.kind) {
-        case KIND_STREAM_MESSAGE_DIFF:
-          return (
-            <React.Suspense
-              fallback={
-                <div className="p-3 text-sm text-muted-foreground">
-                  Loading diff…
-                </div>
-              }
-            >
-              <DiffMessage
-                commitSha={getTag("commit")}
-                content={message.body}
-                description={getTag("description")}
-                filePath={getTag("file")}
-                onExpand={() => {
-                  setExpandedDiffId(message.id);
-                }}
-                repoUrl={getTag("repo")}
-                searchQuery={searchQuery}
-                truncated={getTag("truncated") === "true"}
-              />
-            </React.Suspense>
-          );
-        case KIND_HUDDLE_STARTED:
-          return (
-            <HuddleAttachment
-              channelId={channelId}
-              className="mt-2"
-              message={message}
-            />
-          );
-        default: {
-          const waveMessage = parseWaveMessageContent(message.body);
-          if (waveMessage) {
-            return (
-              <WaveMessageAttachment
-                channelId={channelId}
-                fallbackText={waveMessage.fallbackText}
-                huddleMemberPubkeys={huddleMemberPubkeys}
-                huddleMemberPubkeysPending={huddleMemberPubkeysPending}
-                searchQuery={searchQuery}
-              />
-            );
-          }
-
-          return (
-            <VideoReviewCommentMarkdown
-              channelNames={channelNames}
-              className={cn(
-                "max-w-full text-message",
-                emojiOnly &&
-                  "text-4xl leading-tight [&_p]:leading-tight [&_img[data-custom-emoji]]:h-[1.45em] [&_img[data-custom-emoji]]:align-middle [&_button:has(img[data-custom-emoji])]:align-middle",
-              )}
-              // Only pass the author pubkey for agent-authored messages so
-              // config-nudge cards can authenticate the sender. Uses the
-              // raw event signer (signerPubkey), not a relay-delegated display
-              // author, because the agent itself must have signed the card.
-              configNudgeAuthorPubkey={getConfigNudgeAuthorPubkey(
-                message,
-                isKnownAgentPubkey,
-              )}
-              content={message.body}
-              messageId={message.id}
-              linkPreviewsSuppressed={linkPreviewsSuppressed}
-              linkPreviewTags={message.tags}
-              leadingInlineContent={agentAddressPrefix}
-              onRemoveLinkPreviewsForEveryone={removeLinkPreviewsForEveryone}
-              customEmoji={customEmoji}
-              imetaByUrl={imetaByUrl}
-              agentMentionPubkeysByName={agentMentionPubkeysByName}
-              mentionNames={mentionNames}
-              mentionPubkeysByName={mentionPubkeysByName}
-              searchQuery={searchQuery}
-              snapshotSharedBy={snapshotSharedBy}
-              videoReviewCommentRootId={videoReviewCommentRootId}
-              videoReviewContext={videoReviewContext}
-            />
-          );
-        }
+      const KindCard = getMessageKindCard(message.kind);
+      if (KindCard) {
+        return (
+          <KindCard
+            channelId={channelId}
+            message={message}
+            searchQuery={searchQuery}
+          />
+        );
       }
+
+      const waveMessage = parseWaveMessageContent(message.body);
+      if (waveMessage) {
+        return (
+          <WaveMessageAttachment
+            channelId={channelId}
+            fallbackText={waveMessage.fallbackText}
+            huddleMemberPubkeys={huddleMemberPubkeys}
+            huddleMemberPubkeysPending={huddleMemberPubkeysPending}
+            searchQuery={searchQuery}
+          />
+        );
+      }
+
+      return (
+        <VideoReviewCommentMarkdown
+          channelNames={channelNames}
+          className={cn(
+            "max-w-full text-message",
+            emojiOnly &&
+              "text-4xl leading-tight [&_p]:leading-tight [&_img[data-custom-emoji]]:h-[1.45em] [&_img[data-custom-emoji]]:align-middle [&_button:has(img[data-custom-emoji])]:align-middle",
+          )}
+          // Only pass the author pubkey for agent-authored messages so
+          // config-nudge cards can authenticate the sender. Uses the
+          // raw event signer (signerPubkey), not a relay-delegated display
+          // author, because the agent itself must have signed the card.
+          configNudgeAuthorPubkey={getConfigNudgeAuthorPubkey(
+            message,
+            isKnownAgentPubkey,
+          )}
+          content={message.body}
+          messageId={message.id}
+          linkPreviewsSuppressed={linkPreviewsSuppressed}
+          linkPreviewTags={message.tags}
+          leadingInlineContent={agentAddressPrefix}
+          onRemoveLinkPreviewsForEveryone={removeLinkPreviewsForEveryone}
+          customEmoji={customEmoji}
+          imetaByUrl={imetaByUrl}
+          agentMentionPubkeysByName={agentMentionPubkeysByName}
+          mentionNames={mentionNames}
+          mentionPubkeysByName={mentionPubkeysByName}
+          searchQuery={searchQuery}
+          snapshotSharedBy={snapshotSharedBy}
+          videoReviewCommentRootId={videoReviewCommentRootId}
+          videoReviewContext={videoReviewContext}
+        />
+      );
     };
 
     const isThreadReplyLayout = layoutVariant === "thread-reply";
@@ -707,23 +671,6 @@ export const MessageRow = React.memo(
           <p className="mt-1.5 text-xs text-destructive">
             {reactionErrorMessage}
           </p>
-        ) : null}
-        {expandedDiffId === message.id ? (
-          <React.Suspense
-            fallback={
-              <div className="p-3 text-sm text-muted-foreground">
-                Loading diff viewer…
-              </div>
-            }
-          >
-            <DiffMessageExpanded
-              content={message.body}
-              filePath={getTag("file")}
-              onClose={() => {
-                setExpandedDiffId(null);
-              }}
-            />
-          </React.Suspense>
         ) : null}
       </>
     );

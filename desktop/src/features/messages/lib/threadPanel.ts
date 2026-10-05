@@ -3,7 +3,7 @@ import type { ChannelWindowThreadSummary } from "@/features/messages/lib/channel
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import { isBroadcastReply } from "@/features/messages/lib/threading";
 import { truncateNpub } from "@/shared/lib/pubkey";
-import { KIND_HUDDLE_STARTED } from "@/shared/constants/kinds";
+import { isSystemCardKind } from "@/shared/plugins/messageKinds/policies";
 
 type ThreadPanelData = {
   threadHead: TimelineMessage | null;
@@ -465,18 +465,17 @@ export function buildMainTimelineEntries(
       const relaySummary = relaySummaries.get(message.id);
       return {
         message,
-        summary:
-          message.kind === KIND_HUDDLE_STARTED
-            ? null
-            : mergeThreadSummaries(
-                buildSummaryForDirectReplies(
-                  message.id,
-                  descendantStatsByMessageId,
-                ),
-                relaySummary
-                  ? buildRelayThreadSummary(message.id, relaySummary, profiles)
-                  : null,
+        summary: isSystemCardKind(message.kind)
+          ? null
+          : mergeThreadSummaries(
+              buildSummaryForDirectReplies(
+                message.id,
+                descendantStatsByMessageId,
               ),
+              relaySummary
+                ? buildRelayThreadSummary(message.id, relaySummary, profiles)
+                : null,
+            ),
       };
     });
 }

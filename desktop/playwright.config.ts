@@ -43,6 +43,7 @@ export default defineConfig({
         "**/hosted-communities-settings-screenshots.spec.ts",
         "**/invites-settings-screenshots.spec.ts",
         "**/messaging.spec.ts",
+        "**/code-fence-plugins.spec.ts",
         "**/bestie.spec.ts",
         "**/message-feedback-snapshots.spec.ts",
         "**/message-copy-link.spec.ts",

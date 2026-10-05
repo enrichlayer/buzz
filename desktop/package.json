@@ -70,6 +70,7 @@
     "linkifyjs": "^4.3.2",
     "lucide-react": "^1.0.0",
     "mdast-util-from-markdown": "^2.0.3",
+    "mermaid": "^11.17.2",
     "motion": "^12.38.0",
     "qrcode": "^1.5.4",
     "qrcode.react": "^4.2.0",

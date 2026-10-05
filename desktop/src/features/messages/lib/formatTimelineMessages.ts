@@ -20,20 +20,11 @@ import {
 } from "@/features/profile/lib/identity";
 import { getMentionTagPubkey } from "@/shared/lib/resolveMentionNames";
 import {
-  KIND_JOB_ACCEPTED,
-  KIND_JOB_CANCEL,
-  KIND_JOB_ERROR,
-  KIND_JOB_PROGRESS,
-  KIND_JOB_REQUEST,
-  KIND_JOB_RESULT,
-  KIND_HUDDLE_STARTED,
+  CHANNEL_TIMELINE_CONTENT_KINDS,
   KIND_DELETION,
   KIND_NIP29_DELETE_EVENT,
   KIND_REACTION,
-  KIND_STREAM_MESSAGE,
-  KIND_STREAM_MESSAGE_V2,
   KIND_STREAM_MESSAGE_EDIT,
-  KIND_STREAM_MESSAGE_DIFF,
   KIND_SYSTEM_MESSAGE,
 } from "@/shared/constants/kinds";
 import { resolveEventAuthorPubkey } from "@/shared/lib/authors";
@@ -49,20 +40,12 @@ import { truncateNpub } from "@/shared/lib/pubkey";
 
 const HEX_RE = /^[0-9a-f]+$/i;
 
+const TIMELINE_CONTENT_KINDS: ReadonlySet<number> = new Set(
+  CHANNEL_TIMELINE_CONTENT_KINDS,
+);
+
 export function isTimelineContentEvent(event: RelayEvent) {
-  return (
-    event.kind === KIND_STREAM_MESSAGE ||
-    event.kind === KIND_STREAM_MESSAGE_V2 ||
-    event.kind === KIND_STREAM_MESSAGE_DIFF ||
-    event.kind === KIND_SYSTEM_MESSAGE ||
-    event.kind === KIND_JOB_REQUEST ||
-    event.kind === KIND_JOB_ACCEPTED ||
-    event.kind === KIND_JOB_PROGRESS ||
-    event.kind === KIND_JOB_RESULT ||
-    event.kind === KIND_JOB_CANCEL ||
-    event.kind === KIND_JOB_ERROR ||
-    event.kind === KIND_HUDDLE_STARTED
-  );
+  return TIMELINE_CONTENT_KINDS.has(event.kind);
 }
 
 function getDeletionTargets(tags: string[][]) {

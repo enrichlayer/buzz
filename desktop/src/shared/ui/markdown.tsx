@@ -48,9 +48,9 @@ import { ImageLightboxZoomControls } from "./markdown/ImageLightboxZoomControls"
 import {
   CODE_BLOCK_CLASS,
   extractLanguage,
-  MarkdownCodeBlock,
   SyntaxHighlightedCode,
 } from "./markdown/CodeBlock";
+import { FencedCodeBlock } from "./markdown/FencedCodeBlock";
 import { EntityLinkAnchor, useOpenEntityLink } from "./markdown/entityLinks";
 import { ExternalLinkAnchor } from "./markdown/ExternalLinkAnchor";
 import { FileCard } from "./markdown/FileCard";
@@ -1545,18 +1545,7 @@ export function createMarkdownComponents(
     },
     pre: ({ children }) => {
       if (!interactive && !blockCode) return <span>{children}</span>;
-      let language = "";
-      React.Children.forEach(children, (child) => {
-        if (
-          React.isValidElement<Record<string, unknown>>(child) &&
-          typeof child.props?.className === "string"
-        ) {
-          language = extractLanguage(child.props.className);
-        }
-      });
-      return (
-        <MarkdownCodeBlock language={language}>{children}</MarkdownCodeBlock>
-      );
+      return <FencedCodeBlock>{children}</FencedCodeBlock>;
     },
     strong: ({ children }) => (
       <strong className="font-semibold">{children}</strong>

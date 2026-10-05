@@ -1,13 +1,11 @@
 import type { RelayEvent } from "@/shared/api/types";
-import {
-  CHANNEL_MESSAGE_EVENT_KINDS,
-  KIND_STREAM_MESSAGE_DIFF,
-} from "@/shared/constants/kinds";
+import { CHANNEL_MESSAGE_EVENT_KINDS } from "@/shared/constants/kinds";
+import { PLUGIN_WORKFLOW_PICKABLE_KINDS } from "@/shared/plugins/messageKinds/policies";
 
 const HEX_EVENT_ID = /^[0-9a-f]{64}$/;
 const PICKABLE_MESSAGE_KINDS = new Set<number>([
   ...CHANNEL_MESSAGE_EVENT_KINDS,
-  KIND_STREAM_MESSAGE_DIFF,
+  ...PLUGIN_WORKFLOW_PICKABLE_KINDS,
 ]);
 
 export type WorkflowMessageCandidate = {
