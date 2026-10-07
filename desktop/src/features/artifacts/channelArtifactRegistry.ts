@@ -10,6 +10,7 @@ import { ChannelArtifactStore } from "./channelArtifactStore";
 
 /** Relay replay returns current heads only; this bounds one channel's set. */
 const ARTIFACT_REPLAY_LIMIT = 500;
+const CLOSED_RETRY_DELAYS_MS = [1_000, 2_000, 4_000] as const;
 
 type Dispose = () => Promise<void> | void;
 
@@ -17,17 +18,22 @@ export type ChannelArtifactRegistryDeps = {
   subscribeLive: (
     filter: RelaySubscriptionFilter,
     onEvent: (event: RelayEvent) => void,
+    onTerminalClosed: (message: string) => void,
   ) => Promise<Dispose>;
   fetchEvents: (filter: RelaySubscriptionFilter) => Promise<RelayEvent[]>;
   isRegisteredType: (type: string) => boolean;
   /** Rows remount as the timeline virtualizes; don't churn the REQ meanwhile. */
   releaseGraceMs: number;
+  /** Only tests override the bounded terminal-CLOSED retry schedule. */
+  closedRetryDelaysMs?: readonly number[];
 };
 
 type Entry = {
   store: ChannelArtifactStore;
   refs: number;
   releaseTimer: ReturnType<typeof setTimeout> | null;
+  retryTimer: ReturnType<typeof setTimeout> | null;
+  retryAttempt: number;
   /** Resolves to the subscription's disposer; null when it failed. */
   subscription: Promise<Dispose | null> | null;
 };
@@ -59,9 +65,54 @@ export function createChannelArtifactRegistry(
 
   function dispose(entry: Entry) {
     if (entry.releaseTimer !== null) clearTimeout(entry.releaseTimer);
+    if (entry.retryTimer !== null) clearTimeout(entry.retryTimer);
     entry.releaseTimer = null;
+    entry.retryTimer = null;
     void entry.subscription?.then((close) => close?.()).catch(() => {});
     entry.subscription = null;
+  }
+
+  function subscribe(channelId: string, entry: Entry) {
+    if (entry.subscription || entries.get(channelId) !== entry) return;
+    let guarded: Promise<Dispose | null>;
+    const pending = deps.subscribeLive(
+      buildChannelArtifactFilter(channelId),
+      (event) => {
+        entry.retryAttempt = 0;
+        entry.store.ingest(event);
+      },
+      (message) => {
+        if (entries.get(channelId) !== entry || entry.subscription !== guarded)
+          return;
+        entry.subscription = null;
+        void pending.then((close) => close?.()).catch(() => {});
+        if (entry.refs === 0 || entry.retryTimer !== null) return;
+        const delay = (deps.closedRetryDelaysMs ?? CLOSED_RETRY_DELAYS_MS)[
+          entry.retryAttempt++
+        ];
+        if (delay === undefined) {
+          console.error(
+            "[artifacts] terminal CLOSED exhausted retries:",
+            channelId,
+            message,
+          );
+          return;
+        }
+        entry.retryTimer = setTimeout(() => {
+          entry.retryTimer = null;
+          if (entry.refs > 0 && entries.get(channelId) === entry)
+            subscribe(channelId, entry);
+        }, delay);
+      },
+    );
+    guarded = pending.catch((error) => {
+      console.error("[artifacts] subscription failed:", channelId, error);
+      if (entries.get(channelId) === entry && entry.subscription === guarded) {
+        entry.subscription = null;
+      }
+      return null;
+    });
+    entry.subscription = guarded;
   }
 
   function acquire(channelId: string): ChannelArtifactStore {
@@ -71,6 +122,8 @@ export function createChannelArtifactRegistry(
         store: new ChannelArtifactStore(channelId, deps.isRegisteredType),
         refs: 0,
         releaseTimer: null,
+        retryTimer: null,
+        retryAttempt: 0,
         subscription: null,
       };
       entries.set(channelId, entry);
@@ -81,18 +134,8 @@ export function createChannelArtifactRegistry(
       clearTimeout(owned.releaseTimer);
       owned.releaseTimer = null;
     }
-    if (!owned.subscription) {
-      owned.subscription = deps
-        .subscribeLive(buildChannelArtifactFilter(channelId), (event) => {
-          owned.store.ingest(event);
-        })
-        .catch((error) => {
-          console.error("[artifacts] subscription failed:", channelId, error);
-          // Let the next acquire retry instead of pinning a dead entry.
-          if (entries.get(channelId) === owned) owned.subscription = null;
-          return null;
-        });
-    }
+    if (!owned.subscription && owned.retryTimer === null)
+      subscribe(channelId, owned);
     return owned.store;
   }
 

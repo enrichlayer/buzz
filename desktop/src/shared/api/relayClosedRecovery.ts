@@ -147,6 +147,7 @@ function recoverLiveSubscriptionFromClosed({
     subscriptions.delete(subId);
     clearClosedRetry(subscription);
     subscription.onRemoved?.();
+    subscription.onTerminalClosed?.(message);
     return;
   }
 

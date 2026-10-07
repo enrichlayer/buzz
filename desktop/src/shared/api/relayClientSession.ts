@@ -413,31 +413,27 @@ export class RelayClient {
   async subscribeToAllStreamMessages(onEvent: (event: RelayEvent) => void) {
     return this.subscribe(buildGlobalStreamFilter(50), onEvent);
   }
-
   async subscribeLive(
     filter: RelaySubscriptionFilter,
     onEvent: (event: RelayEvent) => void,
     onReady?: (readiness: LiveSubscriptionReadiness) => void,
-    readinessTimeoutMs?: number,
+    timeoutMs?: number,
     signal?: AbortSignal,
+    onClosed?: (message: string) => void,
   ) {
-    return this.subscribe(filter, onEvent, onReady, readinessTimeoutMs, signal);
+    return this.subscribe(filter, onEvent, onReady, timeoutMs, signal, {
+      onClosed,
+    });
   }
   /** Prioritize an interactive live consumer without changing its replay filter or pacing. */
   async subscribeInteractive(
     filter: RelaySubscriptionFilter,
     onEvent: (event: RelayEvent) => void,
   ) {
-    return this.subscribe(
-      filter,
-      onEvent,
-      undefined,
-      undefined,
-      undefined,
-      "interactive",
-    );
+    return this.subscribe(filter, onEvent, undefined, undefined, undefined, {
+      priority: "interactive",
+    });
   }
-
   async preconnect() {
     // Explicit re-engagement (reconnect card / community switch): clears the
     // terminal latch and AUTH rejection streak, and bypasses backoff once.
@@ -621,7 +617,10 @@ export class RelayClient {
     onReady?: (readiness: LiveSubscriptionReadiness) => void,
     readinessTimeoutMs = 250,
     signal?: AbortSignal,
-    priority?: "interactive",
+    options?: {
+      priority?: "interactive";
+      onClosed?: (message: string) => void;
+    },
   ) {
     const epoch = this.sessionEpoch;
     const sessionSignal = this.liveSessionAbort.signal;
@@ -638,9 +637,10 @@ export class RelayClient {
     const subscription: Extract<RelaySubscription, { mode: "live" }> = {
       mode: "live",
       filter,
-      priority,
+      priority: options?.priority,
       onEvent,
       onRemoved,
+      onTerminalClosed: options?.onClosed,
     };
     const dispose = async () => {
       if (this.subscriptions.get(subId) !== subscription) return;
