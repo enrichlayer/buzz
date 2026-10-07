@@ -57,6 +57,17 @@ async function openSession(page: Page, outputMode?: "full" | "summary") {
           method: "session/update",
           params: { sessionId: session, update: value },
         });
+      const updateForSession = (
+        seq: number,
+        eventSessionId: string,
+        value: unknown,
+      ) => ({
+        ...event(seq, {
+          method: "session/update",
+          params: { sessionId: eventSessionId, update: value },
+        }),
+        sessionId: eventSessionId,
+      });
       window.__BUZZ_E2E_SEED_OBSERVER_EVENTS__?.({
         agentPubkey: agent,
         events: [
@@ -103,6 +114,16 @@ async function openSession(page: Page, outputMode?: "full" | "summary") {
               ],
             },
           }),
+          updateForSession(6, `${session}-archived`, {
+            sessionUpdate: "available_commands_update",
+            availableCommands: Array.from({ length: 97 }, (_, index) => ({
+              name: `command-${index}`,
+            })),
+          }),
+          updateForSession(7, `${session}-live`, {
+            sessionUpdate: "current_mode_update",
+            currentModeId: "bypassPermissions",
+          }),
         ],
       });
     },
@@ -136,15 +157,21 @@ test("summary preserves replies, failures and permissions; details reveal origin
   await expect(activity).toContainText("Missing auth configuration");
   await expect(activity).toContainText("Confirm endpoint access");
   await expect(activity).not.toContainText("src/endpoint.ts");
+  await expect(activity).not.toContainText("Commands available: 97");
+  await expect(activity).not.toContainText("bypassPermissions");
   await activity
     .getByRole("button", { name: "Show details", exact: true })
     .click();
   await expect(activity).toContainText("src/endpoint.ts");
+  await expect(activity).toContainText("Commands available: 97");
+  await expect(activity).toContainText("bypassPermissions");
   await expect(activity).toContainText("Missing auth configuration");
   await activity
     .getByRole("button", { name: "Show summary", exact: true })
     .click();
   await expect(activity).not.toContainText("src/endpoint.ts");
+  await expect(activity).not.toContainText("Commands available: 97");
+  await expect(activity).not.toContainText("bypassPermissions");
   await expect(activity).toContainText("Confirm endpoint access");
   const policyWrites = await page.evaluate(() =>
     (window.__BUZZ_E2E_COMMAND_PAYLOADS__ ?? []).filter((entry) =>
