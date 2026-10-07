@@ -352,8 +352,10 @@ async fn blocked_recovery_write_is_bounded_and_retains_loss() {
     state.channel_dropped_since.insert(ch, 700);
     let (tx, _rx) = mpsc::channel(1);
     let started = tokio::time::Instant::now();
+    // Allow fixture encoding and loopback scheduling after the production send
+    // timeout; this outer guard only catches a stalled test.
     timeout(
-        Duration::from_secs(15),
+        Duration::from_secs(WS_SEND_TIMEOUT_SECS + 20),
         recovery::recover_one(&mut client, &mut state, &tx, "agent"),
     )
     .await
