@@ -102,10 +102,10 @@ Decisions made while building (DEV-11200):
   45011 removal marker for the current head hides an artifact that moved out.
   The registry is community-scoped: `resetChannelArtifactSubscriptions()`
   runs in `resetCommunityState()`, because `relayClient.disconnect()` kills
-  live REQs without telling their owners. Not handled: a terminal `CLOSED`
-  (auth/access) on the artifact REQ leaves the entry thinking it is
-  subscribed until its rows unmount. `subscribeLive` exposes no removal hook,
-  and `relayClientSession.ts` sits at the 1200-line cap.
+  live REQs without telling their owners. A terminal `CLOSED` notifies the
+  registry, which retries the mounted channel's REQ after 1, 2, and 4 seconds;
+  repeated access or filter rejection then stops without an unbounded loop.
+  A later row acquire can try again after access changes.
 - **Keyboard.** Number keys pick, Tab/Shift+Tab move between questions,
   plain Enter on an option toggles it like a click, and Ctrl/⌘+Enter (or
   Enter outside an option) submits. After the viewer's own submit, focus

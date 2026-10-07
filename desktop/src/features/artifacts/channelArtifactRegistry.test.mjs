@@ -8,11 +8,15 @@ const D = "04737c81-e5e8-4412-bb47-f446813cfeba";
 const GRACE_MS = 5;
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function harness({ fetched = [], fetchEvents = async () => fetched } = {}) {
+function harness({
+  fetched = [],
+  fetchEvents = async () => fetched,
+  closedRetryDelaysMs = [5, 5, 5],
+} = {}) {
   const subscriptions = [];
   const registry = createChannelArtifactRegistry({
-    subscribeLive: async (filter, onEvent) => {
-      const sub = { filter, onEvent, disposed: 0 };
+    subscribeLive: async (filter, onEvent, onTerminalClosed) => {
+      const sub = { filter, onEvent, onTerminalClosed, disposed: 0 };
       subscriptions.push(sub);
       return () => {
         sub.disposed += 1;
@@ -21,6 +25,7 @@ function harness({ fetched = [], fetchEvents = async () => fetched } = {}) {
     fetchEvents,
     isRegisteredType: (type) => type === "buzz.agent_prompt",
     releaseGraceMs: GRACE_MS,
+    closedRetryDelaysMs,
   });
   return { registry, subscriptions };
 }
@@ -67,6 +72,51 @@ test("one subscription per channel, shared and released after a grace", async ()
   await wait(GRACE_MS * 3);
   assert.equal(subscriptions[0].disposed, 1);
   assert.equal(registry.size(), 0);
+});
+
+test("a mounted card receives an answer after terminal CLOSED without remounting", async () => {
+  const { registry, subscriptions } = harness();
+  const store = registry.acquire(CHANNEL);
+  await wait(0);
+  subscriptions[0].onEvent(prompt("1".repeat(64)));
+  assert.equal(store.getHead(D)?.id, "1".repeat(64));
+
+  subscriptions[0].onTerminalClosed("restricted: temporary access change");
+  await wait(10);
+  assert.equal(subscriptions.length, 2, "mounted store retries its closed REQ");
+  assert.equal(subscriptions[0].disposed, 1);
+  const answer = prompt("2".repeat(64), "1".repeat(64));
+  answer.content = '{"status":"answered"}';
+  subscriptions[1].onEvent(answer);
+  assert.equal(registry.acquire(CHANNEL), store, "the card did not remount");
+  assert.equal(store.getHead(D)?.content, '{"status":"answered"}');
+  registry.release(CHANNEL, store);
+  registry.release(CHANNEL, store);
+  registry.reset();
+});
+
+test("terminal CLOSED retry is bounded and reset cancels a pending retry", async () => {
+  const { registry, subscriptions } = harness();
+  registry.acquire(CHANNEL);
+  for (let index = 0; index < 4; index++) {
+    await wait(index === 0 ? 0 : 10);
+    subscriptions[index].onTerminalClosed("restricted: not a member");
+  }
+  await wait(10);
+  assert.equal(
+    subscriptions.length,
+    4,
+    "permanent refusal does not loop forever",
+  );
+  registry.reset();
+
+  const next = harness();
+  next.registry.acquire(CHANNEL);
+  await wait(0);
+  next.subscriptions[0].onTerminalClosed("restricted: temporary");
+  next.registry.reset();
+  await wait(10);
+  assert.equal(next.subscriptions.length, 1, "community switch cancels retry");
 });
 
 test("reset drops every store and re-subscribes on the next acquire", async () => {
