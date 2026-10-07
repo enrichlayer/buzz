@@ -57,6 +57,7 @@ import {
 } from "@/shared/api/customEmoji";
 import {
   KIND_AGENT_OBSERVER_FRAME,
+  CHANNEL_TIMELINE_CONTENT_KINDS,
   KIND_CHANNEL_THREAD_SUMMARY,
   KIND_CHANNEL_WINDOW_BOUNDS,
   KIND_DM_VISIBILITY,
@@ -69,7 +70,6 @@ import {
   KIND_GIT_STATUS_DRAFT,
   KIND_GIT_STATUS_MERGED,
   KIND_GIT_STATUS_OPEN,
-  KIND_HUDDLE_STARTED,
   KIND_MEMBER_ADDED_NOTIFICATION,
   KIND_MEMBER_REMOVED_NOTIFICATION,
   KIND_PERSONA,
@@ -5586,19 +5586,7 @@ async function handleGetThreadReplies(
   return { events: page, next_cursor: nextCursor };
 }
 
-const TIMELINE_KINDS = new Set([
-  9,
-  40002,
-  40008,
-  40099,
-  43001,
-  43002,
-  43003,
-  43004,
-  43005,
-  43006,
-  KIND_HUDDLE_STARTED,
-]);
+const TIMELINE_KINDS = new Set<number>(CHANNEL_TIMELINE_CONTENT_KINDS);
 
 const KIND_GIFT_WRAP = 1059;
 const P_GATED_KINDS = new Set([

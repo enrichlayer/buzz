@@ -61,7 +61,7 @@ function stripDiffMarker(tokens: ThemedToken[], marker: RegExp): ThemedToken[] {
   return [...tokens.slice(0, -1), { ...last, content: stripped }];
 }
 
-function getCodeBlockText(children: React.ReactNode) {
+export function getCodeBlockText(children: React.ReactNode) {
   return getReactNodeText(children).replace(/\n$/, "");
 }
 
