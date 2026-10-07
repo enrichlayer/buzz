@@ -82,6 +82,24 @@ fn make_prompt_context(
 ) -> Result<PromptContext> {
     let base_prompt_content = config.base_prompt_content.as_ref();
     let cwd = current_working_directory()?;
+    let base_prompt = if config.no_base_prompt {
+        None
+    } else {
+        // Build standing context once under the configured policy, before
+        // any session/new. Both modern ACP and legacy first-turn framing
+        // consume this same assembled base (including custom base files).
+        let base = base_prompt_content
+            .map(String::as_str)
+            .unwrap_or(include_str!("base_prompt.md"));
+        Some(if matches!(mode, SessionMode::Task) {
+            format!("{base}\n\n{}", include_str!("session_model_task.md"))
+        } else {
+            config.session_policy.append_session_model(base)
+        })
+    };
+    let (system_prompt, base_prompt) = config
+        .output_mode
+        .apply_to_prompts(config.system_prompt.as_deref(), base_prompt);
     Ok(PromptContext {
         mcp_servers: build_mcp_servers(config),
         initial_message: config.initial_message.clone(),
@@ -89,24 +107,10 @@ fn make_prompt_context(
         max_turn_duration: Duration::from_secs(config.max_turn_duration_secs),
         turn_liveness_interval: Duration::from_secs(config.turn_liveness_secs),
         dedup_mode: config.dedup_mode,
-        system_prompt: config.system_prompt.clone(),
+        system_prompt,
         session_title: config.session_title.clone(),
         team_instructions: config.team_instructions.clone(),
-        base_prompt: if config.no_base_prompt {
-            None
-        } else {
-            // Build standing context once under the configured policy, before
-            // any session/new. Both modern ACP and legacy first-turn framing
-            // consume this same assembled base (including custom base files).
-            let base = base_prompt_content
-                .map(String::as_str)
-                .unwrap_or(include_str!("base_prompt.md"));
-            Some(if matches!(mode, SessionMode::Task) {
-                format!("{base}\n\n{}", include_str!("session_model_task.md"))
-            } else {
-                config.session_policy.append_session_model(base)
-            })
-        },
+        base_prompt,
         heartbeat_prompt: config.heartbeat_prompt.clone(),
         cwd,
         rest_client: rest_client.clone(),

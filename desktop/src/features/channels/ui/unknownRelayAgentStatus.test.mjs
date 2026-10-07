@@ -42,9 +42,11 @@ test("managed session candidates retain the effective session policy", () => {
         name: "Managed",
         status: "running",
         sessionPolicy: "thread",
+        outputMode: "summary",
       },
     ],
     relayAgents: [],
   });
   assert.equal(candidate.sessionPolicy, "thread");
+  assert.equal(candidate.outputMode, "summary");
 });

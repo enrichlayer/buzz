@@ -18,6 +18,8 @@ import {
   shouldOfferOlderThreadSessionActivity,
 } from "@/features/agents/ui/agentThreadSession";
 import { AgentSessionTranscriptList } from "@/features/agents/ui/AgentSessionTranscriptList";
+import { AgentSessionOutputModeControl } from "@/features/agents/ui/AgentSessionOutputModeControl";
+import { presentAgentSessionTranscript } from "@/features/agents/ui/agentSessionOutputMode";
 import { buildTranscriptState } from "@/features/agents/ui/agentSessionTranscript";
 import {
   useArchivedChannelEvents,
@@ -67,6 +69,7 @@ export function AgentThreadSessionActivity({
   const { errorMessage, events } = useObserverEvents(hasObserver, agent.pubkey);
   const archivedEvents = useArchivedChannelEvents(agent.pubkey, channelId);
   const [isLoadingOlder, setIsLoadingOlder] = React.useState(false);
+  const [showDetails, setShowDetails] = React.useState(false);
 
   const channelEvents = React.useMemo(
     () => scopeByChannel(events, channelId),
@@ -83,6 +86,15 @@ export function AgentThreadSessionActivity({
   const selection = React.useMemo(
     () => selectThreadSessionTranscript(transcript, threadMessages, channelId),
     [channelId, threadMessages, transcript],
+  );
+  const presentation = React.useMemo(
+    () =>
+      presentAgentSessionTranscript(
+        selection.items,
+        agent.outputMode,
+        showDetails,
+      ),
+    [agent.outputMode, selection.items, showDetails],
   );
   const exactActiveTurns = useExactActiveAgentTurns(agent.pubkey);
   const isTurnLive = exactActiveTurns.some(
@@ -257,6 +269,18 @@ export function AgentThreadSessionActivity({
         </Button>
       </div>
 
+      <div
+        className="mb-2 flex justify-end"
+        data-testid="agent-session-output-mode"
+      >
+        <AgentSessionOutputModeControl
+          hiddenCount={presentation.hiddenCount}
+          onShowDetailsChange={setShowDetails}
+          outputMode={agent.outputMode}
+          showDetails={showDetails}
+        />
+      </div>
+
       <AnnotationSubmitProvider onSubmit={handleAnnotationSubmit}>
         <AgentSessionTranscriptList
           agentAvatarUrl={
@@ -266,9 +290,13 @@ export function AgentThreadSessionActivity({
           agentPubkey={agent.pubkey}
           channelId={channelId}
           contentContainerClassName="gap-3"
-          emptyDescription={`Waiting for ${agent.name}'s next session update.`}
+          emptyDescription={
+            presentation.hiddenCount > 0
+              ? "Routine activity is hidden in summary view."
+              : `Waiting for ${agent.name}'s next session update.`
+          }
           isTurnLive={isTurnLive}
-          items={selection.items}
+          items={presentation.items}
           profiles={profiles}
           scrollScopeKey={`${agent.pubkey}:${channelId}:${threadRootId}`}
         />

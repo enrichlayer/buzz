@@ -15,6 +15,7 @@ use std::sync::{Arc, Mutex};
 fn member(id: &str) -> AgentDefinition {
     AgentDefinition {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         id: id.to_string(),
         display_name: "One".to_string(),
         description: None,

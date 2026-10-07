@@ -1,5 +1,6 @@
 import type {
   AcpSessionPolicy,
+  AgentOutputMode,
   AgentPersona,
   CatalogSourceCoordinate,
   RespondToMode,
@@ -22,6 +23,7 @@ type CatalogAgentProjection = {
   respondTo: RespondToMode | null;
   parallelism: number | null;
   sessionPolicy: AcpSessionPolicy;
+  outputMode?: AgentOutputMode;
 };
 
 export type PersonaCatalogPublication = {
@@ -90,6 +92,7 @@ function publicationToPersona(
     respondToAllowlist: [],
     parallelism: publication.agent.parallelism,
     sessionPolicy: publication.agent.sessionPolicy,
+    outputMode: publication.agent.outputMode,
     createdAt: timestamp,
     updatedAt: timestamp,
   };

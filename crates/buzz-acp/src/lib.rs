@@ -13,6 +13,7 @@ mod filter;
 mod isolated_execution;
 mod observer;
 mod observer_cancel;
+mod output_mode;
 use observer_cancel::{handle_cancel_thread_turn_control, handle_cancel_turn_control};
 mod pool;
 mod pool_lifecycle;
@@ -9474,6 +9475,7 @@ mod build_mcp_servers_tests {
             subscribe_mode: config::SubscribeMode::All,
             dedup_mode: config::DedupMode::Queue,
             session_policy: scope::SessionPolicy::Channel,
+            output_mode: crate::output_mode::AgentOutputMode::Full,
             multiple_event_handling: config::MultipleEventHandling::Queue,
             ignore_self: true,
             kinds_override: None,
@@ -10166,6 +10168,7 @@ mod error_outcome_emission_tests {
             subscribe_mode: config::SubscribeMode::All,
             dedup_mode: config::DedupMode::Queue,
             session_policy: scope::SessionPolicy::Channel,
+            output_mode: crate::output_mode::AgentOutputMode::Full,
             multiple_event_handling: config::MultipleEventHandling::Queue,
             ignore_self: true,
             kinds_override: None,

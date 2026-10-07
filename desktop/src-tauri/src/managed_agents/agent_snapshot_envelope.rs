@@ -333,6 +333,7 @@ mod tests {
             version: FORMAT_VERSION,
             definition: AgentSnapshotDefinition {
                 session_policy: Default::default(),
+                output_mode: Default::default(),
                 acp_command: None,
                 name: "Locked Test".to_string(),
                 system_prompt: Some("You are a locked test agent.".to_string()),
@@ -369,6 +370,7 @@ mod tests {
     fn record_with_keys(pubkey: String, private_key_nsec: String) -> ManagedAgentRecord {
         ManagedAgentRecord {
             session_policy: Default::default(),
+            output_mode: Default::default(),
             description: None,
             pubkey,
             name: "Locked Test".to_string(),

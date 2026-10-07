@@ -133,6 +133,7 @@ export type MockManagedAgentSeed = {
   autoRestartOnConfigChange?: boolean;
   respondTo?: RawManagedAgent["respond_to"];
   respondToAllowlist?: string[];
+  outputMode?: "full" | "summary";
   /** Per-agent env vars seeded into the mock store. */
   envVars?: Record<string, string>;
 };
@@ -173,6 +174,7 @@ type MockPersonaSeed = {
   respondTo?: "owner-only" | "allowlist" | "anyone";
   respondToAllowlist?: string[];
   sessionPolicy?: "channel" | "thread";
+  outputMode?: "full" | "summary";
 };
 
 type MockTeamSeed = {
@@ -958,6 +960,7 @@ type RawManagedAgent = {
   pubkey: string;
   name: string;
   persona_id: string | null;
+  output_mode?: "full" | "summary";
   /** Record-level harness/runtime pin (`null` when inheriting from the persona). */
   runtime: string | null;
   relay_url: string;
@@ -1055,6 +1058,7 @@ type RawPersona = {
   respond_to_allowlist?: string[];
   parallelism?: number | null;
   session_policy?: "channel" | "thread";
+  output_mode?: "full" | "summary";
   created_at: string;
   updated_at: string;
 };
@@ -1979,6 +1983,11 @@ function cloneManagedAgent(agent: MockManagedAgent): RawManagedAgent {
     pubkey: agent.pubkey,
     name: agent.name,
     persona_id: agent.persona_id,
+    output_mode:
+      mockPersonas.find((persona) => persona.id === agent.persona_id)
+        ?.output_mode ??
+      agent.output_mode ??
+      "full",
     runtime: agent.runtime ?? null,
     relay_url: agent.relay_url,
     acp_command: agent.acp_command,
@@ -2538,6 +2547,7 @@ function buildSeededManagedAgent(seed: MockManagedAgentSeed): MockManagedAgent {
     pubkey: seed.pubkey,
     name: seed.name,
     persona_id: seed.personaId ?? null,
+    output_mode: seed.outputMode ?? "full",
     // Native serde always emits this key (`null` when unpinned) — the bridge
     // must mirror the wire shape, not omit the key.
     runtime: seed.runtime ?? null,
@@ -2723,6 +2733,7 @@ function resetMockPersonas(config?: E2eConfig) {
           ? [...(persona.respondToAllowlist ?? [])]
           : [],
       session_policy: persona.sessionPolicy ?? "channel",
+      output_mode: persona.outputMode ?? "full",
       is_builtin: false,
       is_active: persona.isActive ?? true,
       shared: persona.shared ?? false,
@@ -3678,6 +3689,7 @@ function mockPersonaCatalogPublications() {
         parallelism:
           typeof content.parallelism === "number" ? content.parallelism : null,
         sessionPolicy,
+        outputMode: content.output_mode === "summary" ? "summary" : "full",
       },
     });
   }
@@ -8937,9 +8949,10 @@ type PersonaBehaviorInput = {
   respondToAllowlist?: string[];
   parallelism?: number;
   sessionPolicy?: "channel" | "thread";
+  outputMode?: "full" | "summary";
 };
 
-/** Mirrors `apply_persona_behavior`: replace all four as a unit. */
+/** Mirrors `apply_persona_behavior`: replace the behavior group as a unit. */
 function applyMockPersonaBehavior(
   persona: RawPersona,
   behavior: PersonaBehaviorInput | undefined,
@@ -8954,6 +8967,7 @@ function applyMockPersonaBehavior(
       : [];
   persona.parallelism = behavior.parallelism ?? null;
   persona.session_policy = behavior.sessionPolicy ?? "channel";
+  persona.output_mode = behavior.outputMode ?? "full";
 }
 
 async function handleCreatePersona(args: {

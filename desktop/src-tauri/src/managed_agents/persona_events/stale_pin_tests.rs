@@ -20,6 +20,7 @@ fn apply_persona_snapshot_goose_to_openclaw_drops_stale_goose_pin() {
         &mut record,
         &AgentDefinition {
             session_policy: Default::default(),
+            output_mode: Default::default(),
             runtime: Some("openclaw".to_string()),
             ..sample_persona()
         },
@@ -39,6 +40,7 @@ fn apply_persona_snapshot_openclaw_to_goose_drops_stale_openclaw_pin() {
         &mut record,
         &AgentDefinition {
             session_policy: Default::default(),
+            output_mode: Default::default(),
             runtime: Some("goose".to_string()),
             ..sample_persona()
         },
@@ -69,6 +71,7 @@ fn apply_persona_snapshot_claude_alias_pin_to_openclaw_drops_stale_alias() {
         &mut record,
         &AgentDefinition {
             session_policy: Default::default(),
+            output_mode: Default::default(),
             runtime: Some("openclaw".to_string()),
             ..sample_persona()
         },
@@ -93,6 +96,7 @@ fn apply_persona_snapshot_same_harness_path_pin_is_kept() {
         &mut record,
         &AgentDefinition {
             session_policy: Default::default(),
+            output_mode: Default::default(),
             runtime: Some("goose".to_string()),
             ..sample_persona()
         },
@@ -142,6 +146,7 @@ fn apply_persona_snapshot_goose_to_custom_harness_drops_stale_goose_pin() {
         &mut record,
         &AgentDefinition {
             session_policy: Default::default(),
+            output_mode: Default::default(),
             runtime: Some("my-custom-harness".to_string()),
             ..sample_persona()
         },

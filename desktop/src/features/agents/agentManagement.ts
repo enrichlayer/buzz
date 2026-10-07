@@ -170,6 +170,7 @@ export function updateInputFromRequest(
             respondToAllowlist: [],
             parallelism: current.behavior?.parallelism,
             sessionPolicy: current.behavior?.sessionPolicy,
+            outputMode: current.behavior?.outputMode,
           },
         }
       : {}),

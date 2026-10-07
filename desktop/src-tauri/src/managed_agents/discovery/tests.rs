@@ -169,6 +169,7 @@ fn classifies_cli_missing_when_adapter_found_but_cli_absent() {
 fn persona_with_runtime(id: &str, runtime: Option<&str>) -> crate::managed_agents::AgentDefinition {
     crate::managed_agents::AgentDefinition {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         description: None,
         id: id.to_string(),
         display_name: id.to_string(),
@@ -197,14 +198,12 @@ fn persona_with_runtime(id: &str, runtime: Option<&str>) -> crate::managed_agent
 
 #[test]
 fn effective_agent_command_explicit_override_wins() {
-    // An explicit pin beats the persona's runtime.
     let personas = vec![persona_with_runtime("p1", Some("claude"))];
     assert_eq!(
         effective_agent_command(Some("p1"), &personas, Some("codex-acp")),
         "codex-acp"
     );
 }
-/// Minimal record for `record_agent_command` tests; only resolution inputs vary.
 fn record_with(
     runtime: Option<&str>,
     persona_id: Option<&str>,
@@ -212,6 +211,7 @@ fn record_with(
 ) -> crate::managed_agents::types::ManagedAgentRecord {
     crate::managed_agents::types::ManagedAgentRecord {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         description: None,
         pubkey: String::new(),
         name: "r".to_string(),

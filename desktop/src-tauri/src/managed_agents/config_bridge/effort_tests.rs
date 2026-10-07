@@ -29,6 +29,7 @@ fn buzz_agent() -> &'static KnownAcpRuntime {
 pub(super) fn record() -> ManagedAgentRecord {
     ManagedAgentRecord {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         pubkey: "test".to_string(),
         name: "Test Agent".to_string(),
         persona_id: None,
@@ -100,6 +101,7 @@ fn persona(id: &str, env_vars: BTreeMap<String, String>) -> AgentDefinition {
     AgentDefinition {
         acp_command: None,
         session_policy: Default::default(),
+        output_mode: Default::default(),
         id: id.to_string(),
         display_name: "P".to_string(),
         avatar_url: None,

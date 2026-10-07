@@ -118,6 +118,9 @@ pub struct AgentSnapshotDefinition {
     /// ACP conversation boundary carried with the portable definition.
     #[serde(default, skip_serializing_if = "AcpSessionPolicy::is_channel")]
     pub session_policy: AcpSessionPolicy,
+    /// User-visible output policy carried with the portable definition.
+    #[serde(default, skip_serializing_if = "super::AgentOutputMode::is_full")]
+    pub output_mode: super::AgentOutputMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub respond_to: Option<String>,
     /// Allowlist entries. These are flagged during import — they come from the
@@ -221,6 +224,7 @@ pub fn build_snapshot(
         provider: record.provider.clone(),
         parallelism: record.definition_parallelism.or(Some(record.parallelism)),
         session_policy: record.session_policy,
+        output_mode: record.output_mode,
         respond_to: record.definition_respond_to.clone(),
         respond_to_allowlist: record.definition_respond_to_allowlist.clone(),
         name_pool: record.name_pool.clone(),

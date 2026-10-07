@@ -261,6 +261,7 @@ fn serialized_catalog_matches_the_typescript_contract() {
             respond_to: Some("mentions".into()),
             parallelism: Some(2),
             session_policy: AcpSessionPolicy::Thread,
+            output_mode: crate::managed_agents::AgentOutputMode::Full,
         },
     };
     let actual = serde_json::to_value(vec![publication]).unwrap();

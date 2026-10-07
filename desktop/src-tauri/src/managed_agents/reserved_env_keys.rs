@@ -66,6 +66,9 @@ pub(crate) const RESERVED_ENV_KEYS: &[&str] = &[
     // Definition-owned policy: user env cannot override whether channel
     // threads receive independent ACP sessions.
     "BUZZ_ACP_SESSION_POLICY",
+    // Definition-owned policy: user env cannot bypass the selected visible
+    // output contract for a managed agent.
+    "BUZZ_ACP_OUTPUT_MODE",
     "BUZZ_ACP_NO_PRESENCE",
     // Readiness handoff: desktop is the ONLY readiness source. A saved or
     // ambient env var must not be able to forge setup mode (NotReady) on a

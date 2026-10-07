@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
-import type { ManagedAgent } from "@/shared/api/types";
+import type { AgentOutputMode, ManagedAgent } from "@/shared/api/types";
 import { cn } from "@/shared/lib/cn";
 import { Badge } from "@/shared/ui/badge";
 import { Skeleton } from "@/shared/ui/skeleton";
@@ -37,11 +37,14 @@ import {
   useArchivedChannelEvents,
 } from "./useObserverEvents";
 import { buildTranscriptState } from "./agentSessionTranscript";
+import { presentAgentSessionTranscript } from "./agentSessionOutputMode";
+import { AgentSessionOutputModeControl } from "./AgentSessionOutputModeControl";
 
 type ManagedAgentSessionPanelProps = {
   agent: Pick<ManagedAgent, "pubkey" | "name"> & {
     status: ManagedAgent["status"] | "unknown";
     avatarUrl?: string | null;
+    outputMode?: AgentOutputMode;
   };
   autoTail?: boolean;
   channelId?: string | null;
@@ -57,6 +60,7 @@ type ManagedAgentSessionPanelProps = {
   profiles?: UserProfileLookup;
   rawEventsOverride?: ObserverEvent[];
   transcriptOverride?: TranscriptItem[];
+  outputMode?: AgentOutputMode;
 };
 
 export function ManagedAgentSessionPanel({
@@ -75,6 +79,7 @@ export function ManagedAgentSessionPanel({
   profiles,
   rawEventsOverride,
   transcriptOverride,
+  outputMode,
 }: ManagedAgentSessionPanelProps) {
   const hasObserver = agent.status === "running" || agent.status === "deployed";
   // Always read from the store — archived frames are ingested regardless of
@@ -117,6 +122,23 @@ export function ManagedAgentSessionPanel({
     [combinedEvents],
   );
   const displayTranscript = transcriptOverride ?? derivedTranscript;
+  const detailScopeKey = `${agent.pubkey}:${channelId ?? "all"}`;
+  const [detailState, setDetailState] = React.useState({
+    scopeKey: detailScopeKey,
+    show: false,
+  });
+  const showDetails =
+    detailState.scopeKey === detailScopeKey && detailState.show;
+  const effectiveOutputMode = outputMode ?? agent.outputMode;
+  const presentation = React.useMemo(
+    () =>
+      presentAgentSessionTranscript(
+        displayTranscript,
+        effectiveOutputMode,
+        showDetails,
+      ),
+    [displayTranscript, effectiveOutputMode, showDetails],
+  );
 
   const displayEvents = React.useMemo(
     () => resolveDisplayEvents(combinedEvents, rawEventsOverride),
@@ -146,6 +168,17 @@ export function ManagedAgentSessionPanel({
         />
       ) : null}
 
+      {!showRaw ? (
+        <AgentSessionOutputModeControl
+          hiddenCount={presentation.hiddenCount}
+          onShowDetailsChange={(show) =>
+            setDetailState({ scopeKey: detailScopeKey, show })
+          }
+          outputMode={effectiveOutputMode}
+          showDetails={showDetails}
+        />
+      ) : null}
+
       <SessionBody
         agentAvatarUrl={agent.avatarUrl ?? null}
         agentName={agent.name}
@@ -153,7 +186,11 @@ export function ManagedAgentSessionPanel({
         connectionState={connectionState}
         autoTail={autoTail}
         channelId={channelId}
-        emptyDescription={emptyDescription}
+        emptyDescription={
+          presentation.hiddenCount > 0
+            ? "Routine activity is hidden in summary view."
+            : emptyDescription
+        }
         emptyState={emptyState}
         errorMessage={errorMessage}
         events={displayEvents}
@@ -162,7 +199,7 @@ export function ManagedAgentSessionPanel({
         profiles={profiles}
         rawLayout={rawLayout}
         showRaw={showRaw}
-        transcript={displayTranscript}
+        transcript={presentation.items}
         transcriptContentClassName={transcriptContentClassName}
         transcriptVariant={transcriptVariant}
       />

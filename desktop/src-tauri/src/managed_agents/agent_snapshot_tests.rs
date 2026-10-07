@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 fn minimal_record() -> ManagedAgentRecord {
     ManagedAgentRecord {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         description: None,
         pubkey: "deadbeef".to_string(),
         name: "Test Agent".to_string(),

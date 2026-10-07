@@ -297,6 +297,9 @@ export type ManagedAgentBackend =
 /** ACP conversation boundary configured on an agent definition. */
 export type AcpSessionPolicy = "channel" | "thread";
 
+/** Default amount of observer activity shown for an agent conversation. */
+export type AgentOutputMode = "full" | "summary";
+
 import type { RestartDiffEntry } from "./restartDiff";
 export type { JsonValue, RestartChange, RestartDiffEntry } from "./restartDiff";
 export type ManagedAgent = {
@@ -327,6 +330,7 @@ export type ManagedAgent = {
   maxTurnDurationSeconds: number | null;
   parallelism: number;
   sessionPolicy: AcpSessionPolicy;
+  outputMode?: AgentOutputMode;
   systemPrompt: string | null;
   avatarUrl: string | null;
   model: string | null;
