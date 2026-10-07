@@ -43,9 +43,10 @@ Fleet announcements have a separate concise policy. A full-output engineering
 agent does not copy its complete session into a common fleet channel.
 
 Tools work is tracked by [DEV-10851](https://linear.app/verticalint/issue/DEV-10851/)
-and [DEV-10852](https://linear.app/verticalint/issue/DEV-10852/). Buzz projects
-existing coordination events and routes authorized feedback through the
-orchestrator. Factory dispatch claims, run identity, custody, and releases remain
+and [DEV-10852](https://linear.app/verticalint/issue/DEV-10852/). The planned bridge
+will project existing coordination events into Buzz and route authorized feedback
+through the orchestrator. It is not yet validated or deployed. Factory dispatch
+claims, run identity, custody, and releases remain
 authoritative. A disconnected Buzz client must not free an issue or workspace.
 
 ## Human acceptance

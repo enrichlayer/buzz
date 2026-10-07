@@ -243,34 +243,40 @@ fn exact_tags_reject_duplicates_and_extra_fields() {
 /// actual boundary, so populate every optional field and compare the value.
 #[test]
 fn serialized_catalog_matches_the_typescript_contract() {
-    let publication = PersonaCatalogPublication {
-        event_id: "ev1".into(),
-        owner_pubkey: "owner".into(),
-        source_persona_id: "persona-1".into(),
-        created_at: 42,
-        agent: CatalogAgentProjection {
-            acp_command: Some("buzz-janet-acp".into()),
-            display_name: "Ada".into(),
-            avatar_url: Some("https://example.com/a.png".into()),
-            description: Some("A kind agent.".into()),
-            system_prompt: "be kind".into(),
-            runtime: Some("acp".into()),
-            model: Some("m1".into()),
-            provider: Some("p1".into()),
-            name_pool: vec!["Ada".into(), "Lin".into()],
-            respond_to: Some("mentions".into()),
-            parallelism: Some(2),
-            session_policy: AcpSessionPolicy::Thread,
-            output_mode: crate::managed_agents::AgentOutputMode::Full,
-        },
-    };
-    let actual = serde_json::to_value(vec![publication]).unwrap();
-    let expected = serde_json::json!([{
-        "eventId": "ev1",
-        "ownerPubkey": "owner",
-        "sourcePersonaId": "persona-1",
-        "createdAt": 42,
-        "agent": {
+    fn publication(
+        event_id: &str,
+        output_mode: crate::managed_agents::AgentOutputMode,
+    ) -> PersonaCatalogPublication {
+        PersonaCatalogPublication {
+            event_id: event_id.into(),
+            owner_pubkey: "owner".into(),
+            source_persona_id: "persona-1".into(),
+            created_at: 42,
+            agent: CatalogAgentProjection {
+                acp_command: Some("buzz-janet-acp".into()),
+                display_name: "Ada".into(),
+                avatar_url: Some("https://example.com/a.png".into()),
+                description: Some("A kind agent.".into()),
+                system_prompt: "be kind".into(),
+                runtime: Some("acp".into()),
+                model: Some("m1".into()),
+                provider: Some("p1".into()),
+                name_pool: vec!["Ada".into(), "Lin".into()],
+                respond_to: Some("mentions".into()),
+                parallelism: Some(2),
+                session_policy: AcpSessionPolicy::Thread,
+                output_mode,
+            },
+        }
+    }
+
+    let actual = serde_json::to_value(vec![
+        publication("ev1", crate::managed_agents::AgentOutputMode::Full),
+        publication("ev2", crate::managed_agents::AgentOutputMode::Summary),
+    ])
+    .unwrap();
+    let expected_agent = |output_mode| {
+        serde_json::json!({
             "displayName": "Ada",
             "avatarUrl": "https://example.com/a.png",
             "description": "A kind agent.",
@@ -283,8 +289,25 @@ fn serialized_catalog_matches_the_typescript_contract() {
             "respondTo": "mentions",
             "parallelism": 2,
             "sessionPolicy": "thread",
+            "outputMode": output_mode,
+        })
+    };
+    let expected = serde_json::json!([
+        {
+            "eventId": "ev1",
+            "ownerPubkey": "owner",
+            "sourcePersonaId": "persona-1",
+            "createdAt": 42,
+            "agent": expected_agent("full"),
         },
-    }]);
+        {
+            "eventId": "ev2",
+            "ownerPubkey": "owner",
+            "sourcePersonaId": "persona-1",
+            "createdAt": 42,
+            "agent": expected_agent("summary"),
+        }
+    ]);
     assert_eq!(actual, expected);
 }
 

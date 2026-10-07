@@ -28,6 +28,12 @@ pub(super) struct DeployProjections {
     pub owner_only_access: bool,
 }
 
+#[derive(Clone, Copy)]
+struct AcpLaunchPolicies {
+    session: crate::managed_agents::AcpSessionPolicy,
+    output: crate::managed_agents::AgentOutputMode,
+}
+
 /// Resolve the deploy-specific structured model/provider for a managed agent.
 #[cfg(test)]
 pub(crate) fn resolve_deploy_model_provider(
@@ -53,8 +59,7 @@ fn build_launch_block_for_policy(
     effective_prompt: Option<&str>,
     effective_model: Option<&str>,
     owner_pubkey: &str,
-    session_policy: crate::managed_agents::AcpSessionPolicy,
-    output_mode: crate::managed_agents::AgentOutputMode,
+    policies: AcpLaunchPolicies,
 ) -> serde_json::Value {
     use crate::managed_agents::{
         known_acp_runtime, resolve_session_title, DISPLAY_NAME_ENV_VAR, SESSION_TITLE_ENV_VAR,
@@ -80,8 +85,8 @@ fn build_launch_block_for_policy(
         "BUZZ_ACP_AGENTS".into(),
         crate::managed_agents::acp_agents_value(&descriptor.command, record.parallelism),
     );
-    crate::managed_agents::insert_acp_session_policy_env(&mut policy_env, session_policy);
-    crate::managed_agents::insert_agent_output_mode_env(&mut policy_env, output_mode);
+    crate::managed_agents::insert_acp_session_policy_env(&mut policy_env, policies.session);
+    crate::managed_agents::insert_agent_output_mode_env(&mut policy_env, policies.output);
 
     if let Some(value) = effective_prompt {
         policy_env.insert("BUZZ_ACP_SYSTEM_PROMPT".into(), value.to_string());
@@ -176,8 +181,10 @@ pub(super) fn build_launch_block(
         effective_prompt,
         effective_model,
         owner_pubkey,
-        crate::managed_agents::AcpSessionPolicy::Channel,
-        record.output_mode,
+        AcpLaunchPolicies {
+            session: crate::managed_agents::AcpSessionPolicy::Channel,
+            output: record.output_mode,
+        },
     )
 }
 
@@ -227,8 +234,10 @@ pub(crate) fn build_deploy_payload<R: tauri::Runtime>(
         effective.system_prompt.value.as_deref(),
         effective.model.value.as_deref(),
         &owner_pubkey,
-        crate::managed_agents::effective_acp_session_policy(record, &personas),
-        crate::managed_agents::effective_agent_output_mode(record, &personas),
+        AcpLaunchPolicies {
+            session: crate::managed_agents::effective_acp_session_policy(record, &personas),
+            output: crate::managed_agents::effective_agent_output_mode(record, &personas),
+        },
     );
 
     let effective_parallelism =
@@ -391,8 +400,10 @@ mod tests {
             None,
             None,
             "owner-hex",
-            crate::managed_agents::AcpSessionPolicy::Thread,
-            crate::managed_agents::AgentOutputMode::Full,
+            AcpLaunchPolicies {
+                session: crate::managed_agents::AcpSessionPolicy::Thread,
+                output: crate::managed_agents::AgentOutputMode::Full,
+            },
         );
 
         assert_eq!(launch["policy_env"]["BUZZ_ACP_SESSION_POLICY"], "thread");

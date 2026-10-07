@@ -18,6 +18,9 @@ based on `c70c1a28fd9934641afff5a72518def5fbf5d72b`.
   persona save/reopen) and five question-card cases (keyboard submission, answer
   races, live remote answer, malformed fallback, and cancellation).
 - Seven runner output-mode tests passed.
+- All local CI stages are covered by the broad run and affected reruns below.
+  Infrastructure/credential-dependent ignored tests remain excluded. The final
+  fix diff also passed Gitleaks with default rules and `git diff --check`.
 - Seven native output-mode tests and one behavior-request publication test passed.
 - Independent backend review found no actionable defect in persistence,
   snapshots/catalog propagation, restart comparison, local/provider environment
@@ -45,7 +48,10 @@ based on `c70c1a28fd9934641afff5a72518def5fbf5d72b`.
 | Additional checks refused during critical host memory pressure | Later admitted; file-size checks, final frontend build, and combined browser suite passed without bypass | Closed |
 | Playwright wrapper expected a Vitest summary for the third case | Re-ran through direct Playwright binary; all eight tests and managed wrapper passed | Workflow resolved; classifier repair tracked as DEV-11549 (Tools, Todo, assigned Yury; unattended authoring intake next) |
 | Native save, restart, and summary interaction | Passed in rebuilt Buzz Dev through Computer Use, including answered card, confirmation, and detail toggle | Closed |
-| Full repository CI | Running through managed resource admission; focused results do not imply full CI success | Backend worker owns the run |
+| Provider launch helper exceeded Clippy argument limit | Grouped session/output in typed AcpLaunchPolicies; default and mesh-llm native Clippy passed, then seven output-mode and one behavior-publication test passed | Closed |
+| Full repository CI stages | Retry passed repository formatting/lint/static checks, 84 Rust suites, 6,853 desktop Node tests, 144 mounted tests, protected-feature build matrix, and web build. Native library finished 3,420 passed / 3 failed / 19 ignored; the three stale expectations below were repaired and passed their exact reruns. Remaining native targets passed (terminal 91, CSP 7, mixer 3; release-only terminal test ignored). Mobile passed 2,785 tests / 4 skipped plus 3 unconfigured-build cases; recipe checks passed 5/5 | Complete through component receipts after the failed run; not a claim that the original just ci exited successfully. Unchanged passing stages reused |
+| Native expectations omitted output mode | Updated strict serialized-field mutation matrix, exact catalog IPC publication for Full/Summary, and shared provider launch fixture. All three formerly failing native tests passed; shared backend fixture consumer passed 4/4; rustfmt passed | Closed |
+| Native commit hooks | bd05340 created with DCO signoff; Rust/Tauri formatting, Biome, and commit-msg hooks passed with no source auto-fixes | Closed |
 | Human acceptance | Pending | Maintainer follows agent-output-modes.md before PR readiness |
 
 Fleet bridge and peer-context implementation are separate Tools work in the

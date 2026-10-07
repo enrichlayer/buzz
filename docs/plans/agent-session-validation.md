@@ -53,7 +53,7 @@ Mock mode does not prove real cryptographic signing.
 | Changed frontend formatting | 44 changed files passed Biome | Parent: complete; runtime E2E spec checked separately |
 | ACP lint | Pinned Rust 1.95 clippy for buzz-acp, all targets, passed with warnings denied. An initial retry mixed a Homebrew clippy binary with pinned rustc; correcting PATH resolved it | Parent: complete |
 | Native pre-commit hooks | Missing hooks restored with just hooks; rust-fmt and desktop-fix passed, no source changes | Parent: complete |
-| Full repository CI | Incomplete: registry HTTP 500s recovered, but host pressure became critical (new jobs refused with exit 75). Parent stopped the owned full compile with SIGTERM; exit 143, result unknown | DEV-11398 / parent: retry full just ci and publication hooks when host admission is healthy |
+| Full repository CI | The original interrupted run was superseded by validation of the combined session/output-mode stack. Formatting/lint/static checks, 84 Rust suites, desktop Node and mounted suites, native targets, and desktop/web builds are covered; three stale native output-mode expectations were repaired and passed their focused reruns. Mobile passed 2,785 tests / 4 skipped plus 3 unconfigured-build cases | Combined-stack stage receipts complete; details in agent-output-validation.md. This does not claim the original just ci command exited successfully |
 | Independent review | Non-authored slices reviewed; all reported blockers fixed and verified | Cross-review workers: complete |
 | Human testing of new features | Pending | Maintainer: exact steps supplied at draft PR handoff |
 
