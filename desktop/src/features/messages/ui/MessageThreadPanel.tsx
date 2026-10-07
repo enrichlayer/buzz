@@ -956,10 +956,7 @@ export function MessageThreadPanel({
 
   return (
     <VideoReviewNavigationProvider>
-      <AnnotationSubmitProvider
-        key={`${channelId}:${threadHeadId}`}
-        onSubmit={handlePublishedAnnotation}
-      >
+      <AnnotationSubmitProvider onSubmit={handlePublishedAnnotation}>
         <RuntimePluginHostProvider onCompose={handlePluginCompose}>
           <AuxiliaryPanel
             canResetWidth={canResetWidth}

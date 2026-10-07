@@ -279,3 +279,62 @@ test("selected assistant code sends immutable feedback to the exact agent thread
     thread.getByText(publishedFeedback, { exact: true }),
   ).toBeVisible();
 });
+
+test("an annotation captured in one thread cannot send after navigation", async ({
+  page,
+}) => {
+  await installMockBridge(page, {
+    managedAgents: [
+      {
+        pubkey: AGENT_PUBKEY,
+        name: "Charlie",
+        status: "running",
+        channelNames: ["general"],
+      },
+    ],
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await seedThreadsAndObserver(page);
+
+  const thread = await openThread(page, ROOT_A);
+  const publishedReply = thread.locator(
+    `[data-message-id="${PUBLISHED_AGENT_REPLY}"]`,
+  );
+  const publishedSource = publishedReply.locator(
+    `[data-annotation-source-id="${PUBLISHED_AGENT_REPLY}"]`,
+  );
+  await selectRenderedText(
+    page,
+    publishedSource.getByText("Published agent conclusion.", { exact: true }),
+  );
+  await publishedSource
+    .getByRole("button", { name: "Comment on selected text" })
+    .click();
+
+  const staleFeedback = "This must not cross thread boundaries.";
+  const feedback = page.getByRole("textbox", { name: "Feedback" });
+  await feedback.fill(staleFeedback);
+  await page
+    .getByTestId(`reply-message-${ROOT_B}`)
+    .first()
+    .evaluate((button) => (button as HTMLButtonElement).click());
+  await expect(page.getByTestId("message-thread-head")).toContainText(
+    "Unrelated sibling request",
+  );
+
+  // The selected source left the document with thread A. Its feedback control
+  // must close rather than survive under thread B's current routing context.
+  await expect(feedback).toHaveCount(0);
+  const staleSends = await page.evaluate(
+    (needle) =>
+      (window.__BUZZ_E2E_COMMAND_PAYLOADS__ ?? []).filter(
+        (entry) =>
+          entry.command === "send_channel_message" &&
+          typeof (entry.payload as { content?: unknown }).content ===
+            "string" &&
+          (entry.payload as { content: string }).content.includes(needle),
+      ).length,
+    staleFeedback,
+  );
+  expect(staleSends).toBe(0);
+});
