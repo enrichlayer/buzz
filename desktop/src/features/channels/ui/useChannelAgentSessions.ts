@@ -23,6 +23,7 @@ export type ChannelAgentSessionAgent = Pick<ManagedAgent, "pubkey" | "name"> & {
   status: ManagedAgent["status"] | "unknown";
   agentSource: "managed" | "member-bot" | "relay";
   canInterruptTurn: boolean;
+  sessionPolicy?: ManagedAgent["sessionPolicy"];
   channelIds?: string[];
   channels?: string[];
 };
@@ -87,6 +88,7 @@ export function buildChannelAgentSessionCandidates({
       status: agent.status,
       agentSource: "managed",
       canInterruptTurn: true,
+      sessionPolicy: agent.sessionPolicy,
       channelIds: existing?.channelIds,
       channels: existing?.channels,
     });

@@ -24,6 +24,11 @@ import { useEscapeKey } from "@/shared/hooks/useEscapeKey";
 import { useIsThreadPanelOverlay } from "@/shared/hooks/use-mobile";
 import { VideoReviewNavigationProvider } from "@/shared/ui/VideoReviewNavigation";
 import { cn } from "@/shared/lib/cn";
+import {
+  AnnotationSubmitProvider,
+  type AnnotationSubmitRequest,
+} from "@/shared/ui/annotations";
+import { RuntimePluginHostProvider } from "@/shared/plugins/runtime";
 import { AuxiliaryPanel } from "@/shared/layout/AuxiliaryPanel";
 import { AuxiliaryPanelBody } from "@/shared/layout/AuxiliaryPanel";
 import {
@@ -123,6 +128,8 @@ type MessageThreadPanelProps = ThreadPanelLayoutProps & {
   videoReviewPresentation?: VideoReviewPresentation;
   activityAccessoryContent?: React.ReactNode;
   activityAccessoryVisible: boolean;
+  /** Exact thread-scoped agent activity rendered alongside published replies. */
+  sessionActivityContent?: React.ReactNode;
   widthPx: number;
   isFollowingThread?: boolean;
   isMessageUnreadById?: (messageId: string) => boolean;
@@ -203,6 +210,7 @@ export function MessageThreadPanel({
   threadTypingPubkeys,
   activityAccessoryContent,
   activityAccessoryVisible,
+  sessionActivityContent,
   canResetWidth,
   splitPaneClamp,
   showBackButton,
@@ -215,6 +223,9 @@ export function MessageThreadPanel({
   const threadBodyRef = React.useRef<HTMLDivElement>(null);
   const threadContentRef = React.useRef<HTMLDivElement>(null);
   const threadComposerWrapperRef = React.useRef<HTMLDivElement>(null);
+  const composerInsertTextRef = React.useRef<((text: string) => void) | null>(
+    null,
+  );
   const [hoveredCollapseBranchId, setHoveredCollapseBranchId] = React.useState<
     string | null
   >(null);
@@ -223,6 +234,39 @@ export function MessageThreadPanel({
   >(null);
   const isOverlay = useIsThreadPanelOverlay();
   const threadHeadId = threadHead?.id ?? null;
+  const handlePublishedAnnotation = React.useCallback(
+    async (request: AnnotationSubmitRequest) => {
+      const source = [
+        threadHead,
+        ...threadReplies.map((entry) => entry.message),
+      ].find((message) => message?.id === request.anchor.sourceId);
+      if (
+        disabled ||
+        isSending ||
+        !channelId ||
+        !threadHeadId ||
+        !source?.pubkey ||
+        request.anchor.channelId !== channelId
+      ) {
+        throw new Error(
+          "This response is no longer available for feedback in this thread.",
+        );
+      }
+      await onSend(request.message, [source.pubkey], undefined, channelId, {
+        parentEventId: source.id,
+        threadHeadId,
+      });
+    },
+    [
+      channelId,
+      disabled,
+      isSending,
+      onSend,
+      threadHead,
+      threadHeadId,
+      threadReplies,
+    ],
+  );
   useEscapeKey(
     onClose,
     !isHuddleTranscript && (isOverlay || isSinglePanelView || isFocusMode),
@@ -244,6 +288,15 @@ export function MessageThreadPanel({
       threadHeadId,
     }),
     [threadHeadId],
+  );
+  const handlePluginCompose = React.useCallback((text: string) => {
+    composerInsertTextRef.current?.(text);
+  }, []);
+  const handleInsertTextReady = React.useCallback(
+    (insertText: ((text: string) => void) | null) => {
+      composerInsertTextRef.current = insertText;
+    },
+    [],
   );
 
   const collapseThreadHeadReplies = React.useCallback(() => {
@@ -589,6 +642,8 @@ export function MessageThreadPanel({
           </div>
         )}
 
+        {!isHuddleTranscript ? sessionActivityContent : null}
+
         {showThreadHeadDivider ? (
           <div
             className={cn(THREAD_PANEL_MESSAGE_GUTTER_CLASS, "pb-3 pt-2")}
@@ -855,6 +910,7 @@ export function MessageThreadPanel({
               onCaptureSendContext={onCaptureSendContext}
               onEditLastOwnMessage={onEditLastOwnMessage}
               onEditSave={onEditSave}
+              onInsertTextReady={handleInsertTextReady}
               onSend={onSend}
               placeholder={
                 isHuddleTranscript
@@ -900,37 +956,44 @@ export function MessageThreadPanel({
 
   return (
     <VideoReviewNavigationProvider>
-      <AuxiliaryPanel
-        canResetWidth={canResetWidth}
-        className="relative"
-        enterMotion={enterMotion ?? !isFocusMode}
-        footer={threadFooter}
-        header={
-          isHuddleTranscript ? undefined : (
-            <MessageThreadPanelHeader
-              headerLeading={headerLeading}
-              headerTitle={headerTitle}
-              headerTitleAriaLabel={headerTitleAriaLabel}
-              isFocusMode={isFocusMode}
-              isSinglePanelView={isSinglePanelView}
-              onClose={onClose}
-              onHeaderTitleClick={onHeaderTitleClick}
-              showBackButton={showBackButton}
-            />
-          )
-        }
-        isSinglePanelView={isSinglePanelView}
-        layout={layout}
-        onClose={onClose}
-        onResetWidth={onResetWidth}
-        onResizeStart={onResizeStart}
-        splitPaneClamp={splitPaneClamp}
-        testId={testId}
-        transparentChrome={transparentChrome}
-        widthPx={widthPx}
+      <AnnotationSubmitProvider
+        key={`${channelId}:${threadHeadId}`}
+        onSubmit={handlePublishedAnnotation}
       >
-        {threadScrollRegion}
-      </AuxiliaryPanel>
+        <RuntimePluginHostProvider onCompose={handlePluginCompose}>
+          <AuxiliaryPanel
+            canResetWidth={canResetWidth}
+            className="relative"
+            enterMotion={enterMotion ?? !isFocusMode}
+            footer={threadFooter}
+            header={
+              isHuddleTranscript ? undefined : (
+                <MessageThreadPanelHeader
+                  headerLeading={headerLeading}
+                  headerTitle={headerTitle}
+                  headerTitleAriaLabel={headerTitleAriaLabel}
+                  isFocusMode={isFocusMode}
+                  isSinglePanelView={isSinglePanelView}
+                  onClose={onClose}
+                  onHeaderTitleClick={onHeaderTitleClick}
+                  showBackButton={showBackButton}
+                />
+              )
+            }
+            isSinglePanelView={isSinglePanelView}
+            layout={layout}
+            onClose={onClose}
+            onResetWidth={onResetWidth}
+            onResizeStart={onResizeStart}
+            splitPaneClamp={splitPaneClamp}
+            testId={testId}
+            transparentChrome={transparentChrome}
+            widthPx={widthPx}
+          >
+            {threadScrollRegion}
+          </AuxiliaryPanel>
+        </RuntimePluginHostProvider>
+      </AnnotationSubmitProvider>
     </VideoReviewNavigationProvider>
   );
 }

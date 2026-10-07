@@ -222,7 +222,7 @@ export function SyntaxHighlightedCode({
       <code {...props} className={codeClassName}>
         {lines.map((line, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: lines are positional
-          <span key={i} data-line="">
+          <span key={i} data-code-line={i + 1} data-line="">
             {line}
           </span>
         ))}
@@ -251,6 +251,7 @@ export function SyntaxHighlightedCode({
           <span
             // biome-ignore lint/suspicious/noArrayIndexKey: tokens are positional and never reordered
             key={lineIdx}
+            data-code-line={lineIdx + 1}
             data-line=""
             className={diffClass}
           >

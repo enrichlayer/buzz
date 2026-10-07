@@ -12,6 +12,8 @@ mod engram_fetch;
 mod filter;
 mod isolated_execution;
 mod observer;
+mod observer_cancel;
+use observer_cancel::{handle_cancel_thread_turn_control, handle_cancel_turn_control};
 mod pool;
 mod pool_lifecycle;
 mod prompt_framing;
@@ -1665,6 +1667,9 @@ fn handle_relay_observer_control_event(
         Some("cancel_turn") => {
             handle_cancel_turn_control(&payload, pool, observer);
         }
+        Some("cancel_thread_turn") => {
+            handle_cancel_thread_turn_control(&payload, pool, observer);
+        }
         Some("switch_model") => {
             handle_switch_model_control(&payload, pool, observer);
         }
@@ -1822,47 +1827,6 @@ fn emit_project_owner_control_result(
             "error": error,
         }),
     );
-}
-
-/// Handle a `cancel_turn` control frame: signal the in-flight task to cancel.
-fn handle_cancel_turn_control(
-    payload: &serde_json::Value,
-    pool: &mut AgentPool,
-    observer: Option<&observer::ObserverHandle>,
-) {
-    let Some(channel_id) = payload
-        .get("channelId")
-        .and_then(|value| value.as_str())
-        .and_then(|value| value.parse::<Uuid>().ok())
-    else {
-        tracing::warn!("observer cancel_turn control frame missing valid channelId");
-        return;
-    };
-
-    let status = if pool.channel_control_is_ambiguous(channel_id) {
-        "ambiguous_target"
-    } else if signal_in_flight_task(pool, channel_id, ControlSignal::Cancel) {
-        "sent"
-    } else {
-        "no_active_turn"
-    };
-    if let Some(observer) = observer {
-        observer.emit(
-            "control_result",
-            None,
-            &observer::ObserverContext {
-                channel_id: Some(channel_id.to_string()),
-                session_id: None,
-                turn_id: None,
-                started_at: None,
-            },
-            serde_json::json!({
-                "type": "cancel_turn",
-                "status": status,
-                "requestId": payload.get("requestId"),
-            }),
-        );
-    }
 }
 
 /// Handle a `switch_model` control frame (Phase 3a, Option ii).
@@ -4269,8 +4233,7 @@ fn signal_in_flight_task(
     if let Some(meta) = entry {
         if let Some(tx) = meta.control_tx.take() {
             tracing::info!(channel = %channel_id, ?mode, "control signal sent to in-flight task");
-            let _ = tx.send(mode);
-            return true;
+            return tx.send(mode).is_ok();
         }
     }
     false
@@ -4302,8 +4265,7 @@ fn signal_in_flight_task_for_scope(
                 ?mode,
                 "control signal sent to in-flight task (scope-exact)"
             );
-            let _ = tx.send(mode);
-            return true;
+            return tx.send(mode).is_ok();
         }
     }
     false
@@ -6454,14 +6416,14 @@ mod owner_control_command_tests {
         ));
     }
 
-    fn thread_scope(channel_id: Uuid, root: &str) -> scope::SessionScope {
+    pub(super) fn thread_scope(channel_id: Uuid, root: &str) -> scope::SessionScope {
         scope::SessionScope::Thread {
             channel_id,
             root_event_id: root.to_string(),
         }
     }
 
-    fn insert_task_meta(
+    pub(super) fn insert_task_meta(
         pool: &mut AgentPool,
         agent_index: usize,
         scope: scope::SessionScope,

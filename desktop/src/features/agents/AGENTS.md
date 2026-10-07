@@ -330,9 +330,9 @@ with a TypeScript lookup table or an id comparison in a component.
     for resets; owner replay of a redacted head preserves only a nonportable
     local override. That local path is not synchronized through catalog heads.
 
-## Channel-only runtime controls
+## Scoped runtime controls
 
-Desktop observer controls identify a channel, not a thread session. The harness
+Legacy desktop observer controls identify a channel. The harness
 rejects `cancel_turn` and `switch_model` with `ambiguous_target` when that channel
 has multiple known session scopes, including retained idle scopes. Do not treat
 that result as success or a deferred model switch. Stop feedback waits for the
@@ -342,7 +342,11 @@ not success. The activity pane must use its resolved `sessionChannelId` for
 both the outgoing control and result correlation, even without a loaded
 `Channel` object. Stop is unavailable in an unscoped all-channel pane.
 
-Per-thread observer controls remain a separate protocol/UI change. Do not tell
+Thread session Stop uses `cancel_thread_turn` with `channelId` and the exact
+`threadRootEventId`. It never falls back to channel cancellation. Results must
+also match the thread root. The distinct command type makes older harnesses
+ignore the request safely; a timeout remains unconfirmed. Model switching is
+still channel-scoped. Do not tell
 users to type `!cancel` beside an inline mention: the owner command requires
 kind 9, body exactly `!cancel` after trimming, and the agent's separate `p` tag.
 The automatic-mention picker also inserts literal `@Name` into the body, so it

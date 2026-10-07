@@ -89,6 +89,7 @@ function MessageComposerImpl({
   onEditSave,
   onPrepareSendChannel,
   onPreparingMentionSendChange,
+  onInsertTextReady,
   onSend,
   placeholder,
   profiles,
@@ -544,6 +545,30 @@ function MessageComposerImpl({
     richText,
     setIsEmojiPickerOpen,
   });
+  const insertText = React.useCallback(
+    (text: string) => {
+      const nextText = text.trim();
+      if (!nextText || !richText.editor) return;
+      const current = richText.getPlainTextAndCursor().text;
+      const separator = current.trim().length > 0 ? "\n\n" : "";
+      richText.replacePlainTextRange(
+        current.length,
+        current.length,
+        `${separator}${nextText}`,
+      );
+      richText.focusEnd();
+    },
+    [
+      richText.editor,
+      richText.focusEnd,
+      richText.getPlainTextAndCursor,
+      richText.replacePlainTextRange,
+    ],
+  );
+  React.useLayoutEffect(() => {
+    onInsertTextReady?.(insertText);
+    return () => onInsertTextReady?.(null);
+  }, [insertText, onInsertTextReady]);
   const handleAlwaysAddressShortcut = useAlwaysAddressShortcut({
     enabled: Boolean(audienceScope && editTarget == null),
     lockedAgent: lockedAgents[0],
