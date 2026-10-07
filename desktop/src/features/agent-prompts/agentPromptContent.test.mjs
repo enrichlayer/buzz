@@ -8,6 +8,7 @@ import {
 } from "./agentPromptContent";
 import {
   buildDraftAnswer,
+  draftFor,
   draftChoices,
   EMPTY_DRAFT,
   toggleOption,
@@ -215,4 +216,32 @@ test("the answer map exists only once every question is answered", () => {
     question_0: ["OAuth"],
     question_1: ["Read only"],
   });
+});
+
+test("prototype-looking question ids survive draft and answered round trips", () => {
+  const prototypeId = "__proto__";
+  const prompt = parseAgentPrompt(
+    content({
+      questions: [
+        question({ id: prototypeId }),
+        question({ id: "constructor", header: "Scope" }),
+      ],
+    }),
+    AGENT,
+  );
+  assert.equal(draftFor({}, prototypeId), EMPTY_DRAFT);
+  assert.equal(draftFor({}, "constructor"), EMPTY_DRAFT);
+  const drafts = {
+    [prototypeId]: toggleOption(prompt.questions[0], EMPTY_DRAFT, "OAuth"),
+    constructor: toggleOption(prompt.questions[1], EMPTY_DRAFT, "OAuth"),
+  };
+  const answer = buildDraftAnswer(prompt.questions, drafts);
+  assert.ok(Object.hasOwn(answer, prototypeId));
+  assert.deepEqual(answer[prototypeId], ["OAuth"]);
+  assert.deepEqual(answer.constructor, ["OAuth"]);
+  const answered = parseAgentPrompt(
+    buildAnsweredContent(prompt, answer, ANSWERER),
+    ANSWERER,
+  );
+  assert.deepEqual(answered?.answer, answer);
 });

@@ -129,7 +129,7 @@ function parseAnswer(
   if (!isObject(value)) return null;
   const keys = Object.keys(value);
   if (keys.length !== questions.length) return null;
-  const answer: AgentPromptAnswer = {};
+  const entries: [string, string[]][] = [];
   for (const question of questions) {
     const choices = value[question.id];
     if (
@@ -139,9 +139,9 @@ function parseAnswer(
     ) {
       return null;
     }
-    answer[question.id] = choices;
+    entries.push([question.id, choices]);
   }
-  return answer;
+  return Object.fromEntries(entries);
 }
 
 /**
