@@ -149,10 +149,13 @@ test("production chain: new turn in same session produces value-different id seq
   const ids2 = deriveTranscriptBlockIds(events2);
 
   assert.equal(ids2.length, ids1.length + 1, "new turn adds one block id");
-  assert.ok(
-    ids2.some((id) => id.startsWith("turn:turn-2")),
-    "new turn block key must be present",
+  assert.deepEqual(ids2.slice(0, -1), ids1, "existing block ids stay stable");
+  assert.match(
+    ids2.at(-1),
+    /^turn:.+:turn-2$/,
+    "new turn includes its run identity",
   );
+  assert.equal(new Set(ids2).size, ids2.length, "new turn key is unique");
 });
 
 // ── Corrective action 1 (cont.): reference stability via useStableArrayShallow ──
