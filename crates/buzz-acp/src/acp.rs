@@ -9,6 +9,7 @@
 //! 5. [`AcpClient::session_cancel`] / [`AcpClient::cancel_with_cleanup`] — cancel in-flight turn
 
 mod launch;
+mod questions;
 
 use futures_util::StreamExt;
 use tokio::process::{Child, ChildStdin, ChildStdout};
@@ -225,6 +226,13 @@ pub struct AcpClient {
     /// readable thinking unless asked; set only when the CLI the adapter runs
     /// is new enough to accept `--thinking-display`.
     claude_thinking_summaries: bool,
+    /// Where this turn posts agent questions (`elicitation/create`). Set per
+    /// turn by [`install_question_asker`](Self::install_question_asker);
+    /// `None` declines every elicitation.
+    question_asker: Option<crate::agent_questions::QuestionAsker>,
+    /// The `elicitation/create` request waiting on its question card. Kept
+    /// here (not in the read loop) so cancellation can withdraw the card.
+    pending_question: Option<questions::PendingQuestion>,
 }
 
 /// Recursively merge `overlay` into `base`, with `overlay` winning on scalar/shape
@@ -408,6 +416,12 @@ fn build_client_capabilities() -> serde_json::Value {
         // not hardcode vendor login commands from this capability.
         "auth": {
             "terminal": true
+        },
+        // Form elicitation: claude-agent-acp then enables AskUserQuestion and
+        // sends it as `elicitation/create`, which Buzz turns into a question
+        // card (`acp/questions.rs`). `{}` is the schema's "supported" value.
+        "elicitation": {
+            "form": {}
         },
         // Signal to goose that we handle `_goose/unstable/session/update`
         // notifications. Without this the custom notification is suppressed
@@ -634,6 +648,8 @@ impl AcpClient {
             standard_usage: StandardUsageTracker::default(),
             standard_adapter,
             claude_thinking_summaries,
+            question_asker: None,
+            pending_question: None,
         })
     }
 
@@ -1120,6 +1136,11 @@ impl AcpClient {
             self.permission_responded = false;
         }
 
+        // Step 1b: withdraw any open question card and answer its
+        // elicitation `cancel`; no new questions during the drain.
+        self.question_asker = None;
+        self.cancel_pending_question().await?;
+
         // Step 2: send session/cancel notification (no id)
         self.session_cancel(session_id).await?;
         tracing::info!(target: "acp::cancel", "sent session/cancel for {session_id}");
@@ -1340,6 +1361,9 @@ impl AcpClient {
                     "session/request_permission" => {
                         self.handle_permission_request(&msg).await?;
                     }
+                    "elicitation/create" => {
+                        self.decline_elicitation(&msg).await?;
+                    }
                     other => {
                         // If the unknown message has an id, it's a request expecting a reply.
                         // Silence would cause the agent to hang waiting for a response.
@@ -1421,6 +1445,12 @@ impl AcpClient {
             tokio::sync::oneshot::Sender<crate::pool::SteerAck>,
         )> = None;
 
+        // Outcome of the question card opened by an `elicitation/create` in
+        // this loop. While it is `Some` the agent is waiting on a human, so
+        // the idle clock is paused (the hard deadline still applies) and the
+        // question arm below delivers the answer.
+        let mut question_rx: Option<questions::QuestionRx> = None;
+
         let now = Instant::now();
         let mut idle_deadline = now + idle_timeout;
         let mut hard_deadline = hard_deadline;
@@ -1429,7 +1459,7 @@ impl AcpClient {
         loop {
             // Determine which deadline fires first BEFORE sleeping — this is
             // the classification we'll use on timeout, immune to scheduler jitter.
-            let idle_fires_first = idle_deadline < hard_deadline;
+            let idle_fires_first = question_rx.is_none() && idle_deadline < hard_deadline;
             let next_deadline = if idle_fires_first {
                 idle_deadline
             } else {
@@ -1457,6 +1487,7 @@ impl AcpClient {
                 } else {
                     let silence = Instant::now().saturating_duration_since(last_activity_at);
                     tracing::warn!("hard turn timeout exceeded (silence {silence:?})");
+                    self.abandon_pending_question().await;
                     return Err(AcpError::HardTimeout { silence });
                 }
             }
@@ -1564,6 +1595,26 @@ impl AcpClient {
                     // response or the steer response next.
                     None
                 }
+                // Question arm: the open card was answered, withdrawn, or
+                // failed. Reply to the agent and restart the idle clock.
+                outcome = async {
+                    match question_rx.as_mut() {
+                        Some(rx) => rx.await,
+                        None => std::future::pending().await,
+                    }
+                }, if question_rx.is_some() => {
+                    question_rx = None;
+                    if let Err(e) = self.finish_question(outcome).await {
+                        if let Some((_, _, ack_tx)) = pending_steer.take() {
+                            let _ = ack_tx.send(crate::pool::SteerAck::PromptCompletedNeutral);
+                        }
+                        return Err(e);
+                    }
+                    let resumed_at = Instant::now();
+                    idle_deadline = resumed_at + idle_timeout;
+                    last_activity_at = resumed_at;
+                    None
+                }
                 _ = tokio::time::sleep_until(next_deadline) => {
                     // The pre-select check at the top of the next iteration
                     // would catch this anyway, but firing the deadline arm
@@ -1578,6 +1629,7 @@ impl AcpClient {
                     } else {
                         let silence = Instant::now().saturating_duration_since(last_activity_at);
                         tracing::warn!("hard turn timeout exceeded (silence {silence:?})");
+                        self.abandon_pending_question().await;
                         return Err(AcpError::HardTimeout { silence });
                     }
                 }
@@ -1787,6 +1839,19 @@ impl AcpClient {
                             }
                             "session/request_permission" => {
                                 self.handle_permission_request(&msg).await?;
+                            }
+                            "elicitation/create" => {
+                                if let Some(rx) = self.handle_elicitation_request(&msg).await? {
+                                    question_rx = Some(rx);
+                                }
+                            }
+                            // The agent abandoned a request (its turn is being
+                            // cancelled): withdraw the card if it was ours.
+                            "$/cancel_request" => {
+                                if self.is_pending_question(&msg["params"]["requestId"]) {
+                                    question_rx = None;
+                                    self.cancel_pending_question().await?;
+                                }
                             }
                             other => {
                                 // If the unknown message has an id, it's a request expecting a reply.

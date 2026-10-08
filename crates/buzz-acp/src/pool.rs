@@ -2390,6 +2390,7 @@ fn send_prompt_result(
     batch: Option<FlushBatch>,
 ) {
     agent.acp.clear_steer_rx();
+    agent.acp.end_question_turn();
     let _ = result_tx.send(PromptResult {
         agent,
         source,
@@ -2397,6 +2398,28 @@ fn send_prompt_result(
         outcome,
         batch,
     });
+}
+
+/// Where a channel turn's agent questions go: the channel, in the same
+/// thread the harness tells the agent to reply in (the triggering thread's
+/// root, or the triggering top-level message). Heartbeats have no
+/// conversation, so their elicitations decline.
+fn question_asker(
+    ctx: &PromptContext,
+    batch: Option<&FlushBatch>,
+) -> Option<crate::agent_questions::QuestionAsker> {
+    let batch = batch?;
+    let thread_root = batch
+        .events
+        .last()
+        .and_then(|last| nostr::EventId::from_hex(&last.reply_thread()).ok());
+    Some(crate::agent_questions::QuestionAsker::new(
+        Arc::new(ctx.rest_client.clone()),
+        ctx.agent_keys.clone(),
+        batch.scope.channel_id(),
+        thread_root,
+        ctx.session_title.clone(),
+    ))
 }
 
 /// Core async function spawned for each prompt.
@@ -3193,6 +3216,10 @@ pub async fn run_prompt_task(
         "turn starting for {}",
         prompt_label(&source)
     );
+
+    agent
+        .acp
+        .install_question_asker(question_asker(&ctx, batch.as_ref()));
 
     // When control_rx is Some (channel tasks), wrap the prompt in select! so
     // the main loop can cancel, interrupt, or rotate it. Heartbeats

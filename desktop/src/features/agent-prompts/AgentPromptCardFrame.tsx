@@ -8,7 +8,7 @@ export function AgentPromptCardFrame({
   state,
   ...props
 }: React.ComponentProps<"section"> & {
-  state: "open" | "answered" | "fallback";
+  state: "open" | "answered" | "cancelled" | "fallback";
 }) {
   return (
     <section

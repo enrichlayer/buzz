@@ -276,3 +276,16 @@ test("malformed prompt content falls back to the title", async ({ page }) => {
   );
   await expect(card.getByRole("radio")).toHaveCount(0);
 });
+
+test("a withdrawn prompt shows as cancelled without a form", async ({
+  page,
+}) => {
+  await postPrompt(page, JSON.stringify({ ...PROMPT, state: "cancelled" }));
+  const card = promptRow(page).getByTestId("agent-prompt-card");
+  await expect(card).toHaveAttribute("data-state", "cancelled");
+  await expect(card.getByTestId("agent-prompt-cancelled")).toHaveText(
+    "Question cancelled",
+  );
+  await expect(card.getByRole("radio")).toHaveCount(0);
+  await expect(card.getByTestId("agent-prompt-submit")).toHaveCount(0);
+});

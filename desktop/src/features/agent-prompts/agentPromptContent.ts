@@ -23,7 +23,8 @@ export type AgentPromptQuestion = {
 export type AgentPromptAnswer = Record<string, string[]>;
 
 export type AgentPrompt = {
-  state: "open" | "answered";
+  /** `cancelled`: the asking agent withdrew it (turn cancelled or ended). */
+  state: "open" | "answered" | "cancelled";
   questions: AgentPromptQuestion[];
   answer: AgentPromptAnswer | null;
   answeredBy: string | null;
@@ -161,7 +162,13 @@ export function parseAgentPrompt(
   if (!isObject(raw) || raw.version !== 1 || raw.kind !== "question") {
     return null;
   }
-  if (raw.state !== "open" && raw.state !== "answered") return null;
+  if (
+    raw.state !== "open" &&
+    raw.state !== "answered" &&
+    raw.state !== "cancelled"
+  ) {
+    return null;
+  }
   if (!Array.isArray(raw.questions)) return null;
   if (raw.questions.length < 1 || raw.questions.length > MAX_QUESTIONS) {
     return null;
@@ -172,8 +179,8 @@ export function parseAgentPrompt(
     if (!question || questions.some((q) => q.id === question.id)) return null;
     questions.push(question);
   }
-  if (raw.state === "open") {
-    return { state: "open", questions, answer: null, answeredBy: null, raw };
+  if (raw.state === "open" || raw.state === "cancelled") {
+    return { state: raw.state, questions, answer: null, answeredBy: null, raw };
   }
   const answer = parseAnswer(raw.answer, questions);
   const answeredBy =
