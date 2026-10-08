@@ -116,8 +116,9 @@ Decisions made while building (DEV-11200):
   (crates/buzz-cli) creates the artifact; the file needs only `questions`.
   The content builder and caps live in `buzz_sdk::agent_prompt`, shared with
   buzz-acp.
-- **Cancelled.** `state: "cancelled"` (added by DEV-11266) means the asking
-  agent withdrew the card; it renders as "Question cancelled" with no form.
+- **Cancelled.** `state: "cancelled"` (added by DEV-11266) means the card was
+  withdrawn, either by the asking agent or another channel member; it renders
+  as "Question cancelled" with no form.
 
 ## Status
 

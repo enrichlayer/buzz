@@ -338,11 +338,13 @@ as an `elicitation/create` request; without it the adapter disables the tool.
   question ends with the turn. The card is polled every 2 s (backing off to
   30 s on relay errors).
 - **Cancelling.** When the turn is cancelled (`!cancel`, Stop, interrupt),
-  times out, ends, the agent abandons the request (`$/cancel_request`), or the
+  times out, the agent abandons the request (`$/cancel_request`), or the
   harness shuts down, the card is updated to `state: "cancelled"` (shown as
-  "Question cancelled") and the agent is answered `cancel`. A card that was
-  already answered is left alone. Any channel member can cancel a card, which
-  aborts the agent's AskUserQuestion call.
+  "Question cancelled") and a still-pending agent request is answered
+  `cancel`. Normal end-of-turn cleanup also withdraws an open card, but sends
+  no reply because that turn has already ended. A card that was already
+  answered is left alone. Any channel member can cancel a card, which aborts
+  the agent's AskUserQuestion call.
 
 Design and status: [`docs/plans/agent-questions.md`](../../docs/plans/agent-questions.md).
 

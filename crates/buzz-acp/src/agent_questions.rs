@@ -21,6 +21,7 @@ use futures_util::future::BoxFuture;
 use nostr::{Event, EventBuilder, EventId, Keys, Kind};
 use serde_json::Value;
 use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
 use tokio_util::task::TaskTracker;
 use uuid::Uuid;
 
@@ -188,10 +189,11 @@ impl QuestionAsker {
     ) {
         let d = Uuid::new_v4().to_string();
         let mut created = false;
+        let mut create_submit: Option<JoinHandle<Result<(), String>>> = None;
         let outcome = tokio::select! {
             biased;
             _ = &mut cancel_rx => None,
-            outcome = self.post_and_wait(&d, &content, &title, &questions, &mut created) => Some(outcome),
+            outcome = self.post_and_wait(&d, &content, &title, &questions, &mut created, &mut create_submit) => Some(outcome),
         };
         match outcome {
             Some(outcome) => {
@@ -201,10 +203,23 @@ impl QuestionAsker {
                 let failed = matches!(outcome, QuestionOutcome::Failed(_));
                 let _ = outcome_tx.send(outcome);
                 if failed && created {
+                    // A failed response can still follow a committed create.
+                    // Keep an in-flight submit alive before reading its head.
+                    if let Some(submit) = create_submit.take() {
+                        let _ = submit.await;
+                    }
                     self.withdraw(&d).await;
                 }
             }
-            None if created => self.withdraw(&d).await,
+            None if created => {
+                // Release the agent immediately; cleanup may wait for the
+                // create request that was already sent to reach the relay.
+                drop(outcome_tx);
+                if let Some(submit) = create_submit.take() {
+                    let _ = submit.await;
+                }
+                self.withdraw(&d).await;
+            }
             None => {}
         }
     }
@@ -218,6 +233,7 @@ impl QuestionAsker {
         title: &str,
         questions: &[AskQuestion],
         created: &mut bool,
+        create_submit: &mut Option<JoinHandle<Result<(), String>>>,
     ) -> QuestionOutcome {
         let anchor = match self.anchor_event(title) {
             Ok(anchor) => anchor,
@@ -237,7 +253,17 @@ impl QuestionAsker {
             Err(e) => return QuestionOutcome::Failed(e),
         };
         *created = true;
-        if let Err(e) = self.submit(&card).await {
+        // The outer cancel select may drop this future at any point. Own the
+        // submission in a task so cancellation cannot abandon an HTTP create
+        // that may still commit after an early head read.
+        let relay = Arc::clone(&self.relay);
+        *create_submit = Some(tokio::spawn(async move { relay.submit(&card).await }));
+        let Some(submit) = create_submit.as_mut() else {
+            return QuestionOutcome::Failed("question card task missing".into());
+        };
+        let result = submit.await;
+        create_submit.take();
+        if let Err(e) = result.unwrap_or_else(|e| Err(e.to_string())) {
             return QuestionOutcome::Failed(format!("question card: {e}"));
         }
         tracing::info!(target: "acp::question", artifact = d, "question card posted");
