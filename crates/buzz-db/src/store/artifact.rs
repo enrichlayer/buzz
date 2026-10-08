@@ -7,6 +7,7 @@ use crate::{Db, DbError, Result};
 use buzz_core::artifact::{ArtifactEnvelope, ArtifactOp};
 use buzz_core::{CommunityId, StoredEvent};
 use nostr::{Event, EventBuilder, Keys, Kind, Tag};
+use serde_json::Value;
 use sqlx::Row;
 use uuid::Uuid;
 
@@ -27,6 +28,110 @@ pub enum ArtifactOutcome {
 
 fn invalid(message: &str) -> DbError {
     DbError::InvalidData(message.into())
+}
+
+/// Question cards have a single open revision followed by one terminal
+/// answer or cancellation. Enforce this inside the head transaction so a
+/// later writer cannot replace the answer seen by fresh subscribers.
+fn validate_question_transition(
+    previous: Option<&str>,
+    event: &Event,
+    op: ArtifactOp,
+) -> std::result::Result<(), &'static str> {
+    let next: Value = serde_json::from_str(&event.content).map_err(|_| "invalid question JSON")?;
+    if next.get("version") != Some(&Value::from(1))
+        || next.get("kind").and_then(Value::as_str) != Some("question")
+        || !next.get("questions").is_some_and(Value::is_array)
+    {
+        return Err("invalid question content");
+    }
+    let Some(previous) = previous else {
+        return if op == ArtifactOp::Create
+            && next.get("state").and_then(Value::as_str) == Some("open")
+        {
+            Ok(())
+        } else {
+            Err("question must be created open")
+        };
+    };
+    let previous: Value = serde_json::from_str(previous).map_err(|_| "invalid question head")?;
+    if previous.get("state").and_then(Value::as_str) != Some("open") {
+        return Err("question is final");
+    }
+    if op != ArtifactOp::Update || next.get("questions") != previous.get("questions") {
+        return Err("question update must preserve its questions");
+    }
+    match next.get("state").and_then(Value::as_str) {
+        Some("cancelled") => Ok(()),
+        Some("answered") => {
+            if next.get("answeredBy").and_then(Value::as_str)
+                != Some(event.pubkey.to_hex().as_str())
+            {
+                return Err("question answer must name its signer");
+            }
+            let Some(answers) = next.get("answer").and_then(Value::as_object) else {
+                return Err("question answer is incomplete");
+            };
+            let questions = previous["questions"]
+                .as_array()
+                .ok_or("invalid question head")?;
+            if answers.len() != questions.len() || questions.is_empty() {
+                return Err("question answer is incomplete");
+            }
+            for question in questions {
+                let id = question
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .ok_or("invalid question head")?;
+                let choices = answers
+                    .get(id)
+                    .and_then(Value::as_array)
+                    .ok_or("question answer is incomplete")?;
+                if choices.is_empty()
+                    || (!question
+                        .get("multiSelect")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false)
+                        && choices.len() != 1)
+                {
+                    return Err("question answer is incomplete");
+                }
+                let labels = question
+                    .get("options")
+                    .and_then(Value::as_array)
+                    .ok_or("invalid question head")?;
+                let mut seen = std::collections::HashSet::new();
+                let mut other_count = 0;
+                for choice in choices {
+                    let value = choice.as_str().ok_or("invalid question answer")?;
+                    if !seen.insert(value) {
+                        return Err("duplicate question answer");
+                    }
+                    if !labels
+                        .iter()
+                        .any(|option| option.get("label").and_then(Value::as_str) == Some(value))
+                    {
+                        other_count += 1;
+                        if !question
+                            .get("allowOther")
+                            .and_then(Value::as_bool)
+                            .unwrap_or(true)
+                            || value.trim() != value
+                            || value.is_empty()
+                            || value.chars().count() > 2000
+                        {
+                            return Err("invalid other answer");
+                        }
+                    }
+                }
+                if other_count > 1 {
+                    return Err("multiple other answers");
+                }
+            }
+            Ok(())
+        }
+        _ => Err("question update must be terminal"),
+    }
 }
 
 /// The replaced revision (`prev`) was readable in the source, so it
@@ -160,6 +265,32 @@ impl Db {
                 }
             }
         }
+        if env.artifact_type == "buzz.agent_prompt" {
+            let previous = if let Some(head) = &head {
+                let current: Vec<u8> = head.get("event_id");
+                let content: Option<String> = sqlx::query_scalar(
+                    "SELECT content FROM events WHERE community_id=$1 AND id=$2",
+                )
+                .bind(community.as_uuid())
+                .bind(current)
+                .fetch_optional(&mut *tx)
+                .await?;
+                let Some(content) = content else {
+                    return Ok(ArtifactOutcome::Rejected(
+                        "question head content unavailable",
+                    ));
+                };
+                Some(content)
+            } else {
+                None
+            };
+            if let Err(reason) = validate_question_transition(previous.as_deref(), event, env.op) {
+                return Ok(ArtifactOutcome::Rejected(reason));
+            }
+            if head.is_some() && env.root != old_root {
+                return Ok(ArtifactOutcome::Rejected("question root is immutable"));
+            }
+        }
         if head.is_none() || env.root != old_root || source != Some(env.home) {
             if let Some(root) = &env.root {
                 let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM events WHERE community_id=$1 AND id=$2 AND channel_id=$3 AND deleted_at IS NULL AND kind IN (9,40002,45001,45003))")
@@ -199,5 +330,89 @@ impl Db {
         }
         tx.commit().await?;
         Ok(ArtifactOutcome::Accepted(accepted))
+    }
+}
+
+#[cfg(test)]
+mod question_transition_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn answer_and_cancel_are_terminal() {
+        let owner = Keys::generate();
+        let peer = Keys::generate();
+        let open = json!({
+            "version": 1, "kind": "question", "state": "open",
+            "questions": [{"id": "q1", "options": [{"label": "A"}, {"label": "B"}]}]
+        });
+        let event = |content: Value, keys: &Keys| {
+            EventBuilder::new(Kind::Custom(45010), content.to_string())
+                .sign_with_keys(keys)
+                .unwrap()
+        };
+        let create = event(open.clone(), &owner);
+        assert_eq!(
+            validate_question_transition(None, &create, ArtifactOp::Create),
+            Ok(())
+        );
+
+        let mut answered = open.clone();
+        answered["state"] = "answered".into();
+        answered["answer"] = json!({"q1": ["A"]});
+        answered["answeredBy"] = peer.public_key().to_hex().into();
+        let answer = event(answered.clone(), &peer);
+        assert_eq!(
+            validate_question_transition(Some(&open.to_string()), &answer, ArtifactOp::Update),
+            Ok(())
+        );
+        let rewrite = event(
+            json!({"state":"answered", "answer":{"q1":["B"]},
+            "answeredBy":owner.public_key().to_hex(), "version":1,"kind":"question",
+            "questions":open["questions"]}),
+            &owner,
+        );
+        assert_eq!(
+            validate_question_transition(Some(&answered.to_string()), &rewrite, ArtifactOp::Update),
+            Err("question is final")
+        );
+        assert_eq!(
+            validate_question_transition(Some(&answered.to_string()), &create, ArtifactOp::Update),
+            Err("question is final")
+        );
+
+        let mut cancelled = open.clone();
+        cancelled["state"] = "cancelled".into();
+        let cancel = event(cancelled.clone(), &owner);
+        assert_eq!(
+            validate_question_transition(Some(&open.to_string()), &cancel, ArtifactOp::Update),
+            Ok(())
+        );
+        assert_eq!(
+            validate_question_transition(Some(&cancelled.to_string()), &answer, ArtifactOp::Update),
+            Err("question is final")
+        );
+    }
+
+    #[test]
+    fn invalid_first_answer_does_not_take_the_head() {
+        let peer = Keys::generate();
+        let open = json!({
+            "version": 1, "kind": "question", "state": "open",
+            "questions": [{"id": "q1", "options": [{"label": "A"}]}]
+        });
+        let invalid = EventBuilder::new(
+            Kind::Custom(45010),
+            json!({"version":1,"kind":"question","state":"answered",
+                "questions":open["questions"], "answer":{"q1":[]},
+                "answeredBy":peer.public_key().to_hex()})
+            .to_string(),
+        )
+        .sign_with_keys(&peer)
+        .unwrap();
+        assert_eq!(
+            validate_question_transition(Some(&open.to_string()), &invalid, ArtifactOp::Update),
+            Err("question answer is incomplete")
+        );
     }
 }
