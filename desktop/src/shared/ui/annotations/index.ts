@@ -1,5 +1,6 @@
 export {
   AnnotationSubmitProvider,
+  AnnotationWorkspace,
   SourceAnnotation,
 } from "./SourceAnnotation";
 export type {

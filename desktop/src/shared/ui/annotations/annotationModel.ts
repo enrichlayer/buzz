@@ -28,6 +28,8 @@ export type AnnotationAnchor = AnnotationDestination & {
 };
 
 export type AnnotationSubmitRequest = {
+  /** Captured send destination, separate from the quoted source provenance. */
+  destination?: AnnotationDestination;
   anchor: AnnotationAnchor;
   /** Ready-to-send user text containing both the quote and feedback. */
   message: string;
@@ -63,7 +65,7 @@ export function formatAnnotationMessage(
     ? `, code block \`${anchor.codeRange.blockId}\` lines ${anchor.codeRange.startLine}-${anchor.codeRange.endLine}`
     : "";
   return [
-    "Feedback on the selected part of your response:",
+    "Feedback on the selected content:",
     "",
     quoteSelection(anchor.selectedText),
     "",

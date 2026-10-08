@@ -281,7 +281,14 @@ export function AgentThreadSessionActivity({
         />
       </div>
 
-      <AnnotationSubmitProvider onSubmit={handleAnnotationSubmit}>
+      <AnnotationSubmitProvider
+        onSubmit={handleAnnotationSubmit}
+        scope={{
+          id: `agent-thread:${channelId}:${threadRootId}:${agent.pubkey}`,
+          channelId,
+          label: `${agent.name} in this thread`,
+        }}
+      >
         <AgentSessionTranscriptList
           agentAvatarUrl={
             profiles?.[agent.pubkey.toLowerCase()]?.avatarUrl ?? null

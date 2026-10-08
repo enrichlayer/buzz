@@ -250,7 +250,7 @@ test("selected assistant code sends immutable feedback to the exact agent thread
   expect(sent.parentEventId).toBe(ROOT_A);
   expect(sent.rootEventId).toBe(ROOT_A);
   expect(sent.content).toContain(
-    "Feedback on the selected part of your response:\n\n> const routed = threadId;",
+    "Feedback on the selected content:\n\n> const routed = threadId;",
   );
   expect(sent.content).toContain(`Source: \`${ASSISTANT_SOURCE_ID}\``);
   expect(sent.content).toMatch(/at revision `fnv1a64:[0-9a-f]{16}`/);
@@ -286,7 +286,7 @@ test("selected assistant code sends immutable feedback to the exact agent thread
   expect(publishedSent.parentEventId).toBe(PUBLISHED_AGENT_REPLY);
   expect(publishedSent.rootEventId).toBe(ROOT_A);
   expect(publishedSent.content).toContain(
-    "Feedback on the selected part of your response:\n\n> Published agent conclusion.",
+    "Feedback on the selected content:\n\n> Published agent conclusion.",
   );
   expect(publishedSent.content).toContain(
     `Source: \`${PUBLISHED_AGENT_REPLY}\` at revision \`fnv1a64:`,
@@ -458,4 +458,86 @@ test("an annotation captured in one thread cannot send after navigation", async 
     staleFeedback,
   );
   expect(staleSends).toBe(0);
+});
+
+test("human channel messages and tool output can both be annotated", async ({
+  page,
+}) => {
+  await installMockBridge(page, {
+    managedAgents: [
+      {
+        pubkey: AGENT_PUBKEY,
+        name: "Charlie",
+        status: "running",
+        channelNames: ["general"],
+        outputMode: "full",
+      },
+    ],
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await seedThreadsAndObserver(page);
+  await page.getByTestId("channel-general").click();
+  const human = page
+    .locator(
+      `[data-message-id="${ROOT_B}"] [data-annotation-source-id="${ROOT_B}"]`,
+    )
+    .getByText("Unrelated sibling request", { exact: true });
+  await selectRenderedText(page, human);
+  await page.getByRole("button", { name: "Comment on selected text" }).click();
+  await expect(page.getByTestId("annotation-destination")).toContainText(
+    "#general",
+  );
+  await page
+    .getByRole("textbox", { name: "Feedback" })
+    .fill("Comment on a human message");
+  await page.getByRole("button", { name: "Send feedback" }).click();
+  const humanComment = await sentMessageCommand(
+    page,
+    "Comment on a human message",
+  );
+  expect(humanComment.parentEventId).toBe(ROOT_B);
+  expect(humanComment.channelId).toBe(CHANNEL_ID);
+  expect(humanComment.content).toContain(`Source: \`${ROOT_B}\``);
+
+  const toolEvent = sessionUpdate(5, TURN_A, {
+    sessionUpdate: "tool_call",
+    toolCallId: "annotation-command",
+    title: "Check annotation coverage",
+    kind: "execute",
+    status: "failed",
+    rawInput: { command: "pnpm test" },
+    rawOutput: "Uncovered selection in the tool result",
+  });
+  await page.evaluate(
+    ({ event, agentPubkey }) => {
+      window.__BUZZ_E2E_SEED_OBSERVER_EVENTS__?.({
+        agentPubkey,
+        events: [event],
+      });
+    },
+    { event: toolEvent, agentPubkey: AGENT_PUBKEY },
+  );
+  const thread = await openThread(page, ROOT_A);
+  const activity = thread.getByTestId("agent-thread-session-activity");
+  const toolResult = activity
+    .getByText("Uncovered selection in the tool result", { exact: true })
+    .first();
+  await activity.locator("summary").filter({ hasText: "pnpm test" }).click();
+  await expect(toolResult).toBeVisible();
+  await selectRenderedText(page, toolResult);
+  await page.getByRole("button", { name: "Comment on selected text" }).click();
+  await expect(page.getByTestId("annotation-destination")).toContainText(
+    "Charlie",
+  );
+  await page
+    .getByRole("textbox", { name: "Feedback" })
+    .fill("Explain this tool output");
+  await page.getByRole("button", { name: "Send feedback" }).click();
+  const toolComment = await sentMessageCommand(
+    page,
+    "Explain this tool output",
+  );
+  expect(toolComment.parentEventId).toBe(ROOT_A);
+  expect(toolComment.mentionPubkeys).toEqual([AGENT_PUBKEY]);
+  expect(toolComment.content).toContain("annotation-command");
 });

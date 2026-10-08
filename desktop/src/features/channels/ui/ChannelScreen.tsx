@@ -1,5 +1,6 @@
 // biome-ignore-all format: line-count ratchet requires compact forwarding in this legacy component
 import * as React from "react";
+import { ChannelAnnotationScope } from "./ChannelAnnotationScope";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppShell } from "@/app/AppShellContext";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
@@ -780,7 +781,7 @@ export function ChannelScreen({
     ],
   );
   return (
-    <AgentSessionProvider onOpenAgentSession={handleOpenAgentSession}>
+    <ChannelAnnotationScope channel={activeChannel} messages={timelineMessages} onSend={sendMessageMutation.mutateAsync}><AgentSessionProvider onOpenAgentSession={handleOpenAgentSession}>
       <ProfilePanelProvider onOpenProfilePanel={handleOpenProfilePanel}>
         <WelcomeAgentCreateDialog
           guideName={welcomeGuideAgent?.name ?? "your welcome guide"}
@@ -990,6 +991,6 @@ export function ChannelScreen({
           relayUrl={activeCommunity?.relayUrl}
         />
       </ProfilePanelProvider>
-    </AgentSessionProvider>
+    </AgentSessionProvider></ChannelAnnotationScope>
   );
 }

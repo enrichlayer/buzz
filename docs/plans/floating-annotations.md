@@ -2,30 +2,41 @@
 
 Tracking: [DEV-11903](https://linear.app/verticalint/issue/DEV-11903/).
 
-Select prose or code in an agent response, then choose **Comment** beside the
-selection. **Command/Ctrl+Shift+M** opens the same editor. The comment editor
-floats above the conversation without a backdrop or document reflow. It uses
-Buzz's built-in annotation interaction and existing submission provider; it
-does not require a new runtime-manifest block or grant runtime plugins send
-authority.
+Select readable text or code anywhere in Buzz's desktop frontend, then choose
+**Comment** beside the selection or press **Command/Ctrl+Shift+M**. The editor
+floats above the content without a backdrop or document reflow. Human messages,
+agent responses, user prompts, tools, plans, status text, code/diffs and previews
+share this interaction. Selections may cross multiple rendered blocks.
+
+One `AnnotationWorkspace` owns selection handling per mounted community.
+`SourceAnnotation` adds provenance when the source has a stable identity; it no
+longer gates annotation availability. Unregistered content retains the exact
+selected text and its view context. Editable inputs and unsent composer drafts
+keep their existing selection behavior. Modal previews contain the editor in
+their own focus boundary.
+
+The nearest conversation supplies the send destination. Selections outside a
+conversation use the active conversation, with its destination displayed before
+sending. With no conversation open, the same editor offers **Copy annotation**.
+Source provenance and the captured send destination are separate. Removing the
+source or destination dismisses the editor without sending, and a late send
+completion cannot dismiss a newer draft. Switching communities replaces the
+whole registry; there is no shared module-level selection state.
 
 The anchor follows the last selected visual line for a forward selection and
 the first for a backward selection. A cloned DOM Range follows scrolling and
-layout changes after focus enters the editor. If streaming replaces the
-selected nodes, the editor retains the captured location relative to the
-source and shows the existing revision-change notice. The immutable quote,
-code range and thread routing remain the existing annotation contract.
+layout changes. Streaming source replacements retain the original quote and
+revision; registered sources show a revision-change notice. Code line metadata
+is captured when the renderer exposes reliable line information.
 
-Both the Comment button and editor render in the overlay layer so adjacent
-messages cannot cover the action. Radix fits the editor within the viewport.
-Escape closes it and restores focus; Command/Ctrl+Enter submits. Failed sends
-retain the captured quote and draft for retry. Leaving the source, including
-thread navigation or a responsive layout that remounts the thread, dismisses
-the editor without sending.
+Escape closes the editor and restores focus; Command/Ctrl+Enter submits.
+Failed sends retain the quote and comment for retry. The implementation uses
+Buzz's existing annotation submission paths; runtime plugins receive no new
+send authority.
 
-Validation lives in `selectionPosition.jsdom-test.mjs`,
-`SourceAnnotation.jsdom-test.mjs`, `annotationModel.test.mjs`, and
-`session-annotations.spec.ts`. The browser tests cover code and prose sends,
-physical placement, keyboard focus, desktop and narrow viewport fitting, and
-navigation isolation. They use the mock native bridge; they do not attest a
-live relay or a packaged native build.
+Validation lives in the annotation DOM/registry/model tests and
+`session-annotations.spec.ts`. Coverage includes unwrapped content, human
+messages, tool output, multi-block ranges, outside previews, modal focus,
+keyboard/pointer behavior, immutable quotes, failed-send retry, viewport fitting,
+navigation isolation and late send completions. Browser tests exercise the mock
+native bridge; native installation checks are recorded separately.
