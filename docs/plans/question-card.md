@@ -83,11 +83,11 @@ Decisions made while building (DEV-11200):
   revision's signer. Content is writer-controlled, so the parser rejects an
   answered revision whose `answeredBy` is not its own signer; the field stays
   in the content for agents reading it.
-- **"First answer wins" holds for honest clients only.** The relay's head lock
-  stops two answers to the same open revision, but any channel writer can
-  publish a later revision (a new answer, or reopen it). This client never
-  edits an answered prompt; agents should treat the answered revision they
-  see first as the answer, and NIP-AR history keeps every revision.
+- **First answer wins.** The relay accepts one terminal update from the open
+  question and rejects later updates, including a replacement answer or a
+  reopen, inside the atomic head transaction. It also rejects an incomplete
+  answer before advancing the head. A cancellation is terminal too. NIP-AR
+  history keeps the original question and its final revision.
 - **Conflict.** On `conflict:` the card fetches the head with
   `{kinds:[45010], #h, #d}` (single-letter tags are fine on WS REQ) and folds
   it into the store. If it is answered, the card shows "Already answered by X"
