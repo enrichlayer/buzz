@@ -195,8 +195,9 @@ async fn question_answer_is_final_for_all_channel_writers() {
         ArtifactOutcome::Rejected("question is final")
     ));
     let current = serde_json::json!({"artifact":"current","#d":[d]});
-    let (events, count) = f.query(&f.owner, current, true).await;
-    assert_eq!(count, 1);
+    assert_eq!(f.count(&f.owner, current.clone()).await, 1);
+    let (events, _) = f.query(&f.owner, current, false).await;
+    assert_eq!(events.len(), 1);
     assert_eq!(events[0].event.id, first.id);
 
     let second_d = Uuid::new_v4();
