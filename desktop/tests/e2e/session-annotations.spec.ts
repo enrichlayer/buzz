@@ -357,6 +357,52 @@ for (const width of [1280, 780]) {
   });
 }
 
+test("Escape dismisses annotation feedback before its focus-mode thread", async ({
+  page,
+}) => {
+  await installMockBridge(page, {
+    managedAgents: [
+      {
+        pubkey: AGENT_PUBKEY,
+        name: "Charlie",
+        status: "running",
+        channelNames: ["general"],
+      },
+    ],
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await seedThreadsAndObserver(page);
+  const thread = await openThread(page, ROOT_A);
+  await page
+    .getByRole("button", { name: "Expand thread", exact: true })
+    .click();
+  const drawer = page.getByTestId("focus-thread-drawer");
+  await expect(drawer).toBeVisible();
+  await waitForAnimations(page);
+  const source = thread.locator(
+    `[data-annotation-source-id="${PUBLISHED_AGENT_REPLY}"]`,
+  );
+  await source.focus();
+  await source
+    .getByText("Published agent conclusion.", { exact: true })
+    .evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      document.dispatchEvent(new Event("selectionchange"));
+    });
+  await page.keyboard.press("ControlOrMeta+Shift+M");
+  await expect(page.getByRole("textbox", { name: "Feedback" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("selection-annotation-editor")).toHaveCount(0);
+  await expect(drawer).toBeVisible();
+  await expect(source).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(drawer).toHaveCount(0);
+});
+
 test("an annotation captured in one thread cannot send after navigation", async ({
   page,
 }) => {

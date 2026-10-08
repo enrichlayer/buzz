@@ -235,6 +235,7 @@ export function SourceAnnotation({
             aria-labelledby={titleId}
             className="w-80 max-w-[calc(100vw-1rem)] space-y-3 overflow-y-auto"
             collisionPadding={8}
+            data-annotation-editor=""
             data-testid="selection-annotation-editor"
             onCloseAutoFocus={(event) => {
               event.preventDefault();
