@@ -79,6 +79,8 @@ type LiveSubscription = {
   resolveReady?: (readiness: LiveSubscriptionReadiness) => void;
   /** Release readiness/cancellation listeners when this entry is retired. */
   onRemoved?: () => void;
+  /** A terminal CLOSED needs a consumer decision; the relay will not retry it. */
+  onTerminalClosed?: (message: string) => void;
   lastSeenCreatedAt?: number;
   /**
    * Lower bound of a reconnect backfill window that has not yet completed.

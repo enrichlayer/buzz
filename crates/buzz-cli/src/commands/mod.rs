@@ -15,6 +15,7 @@ pub mod patches;
 pub mod pr;
 pub mod project_channel;
 pub mod projects;
+pub mod prompts;
 pub mod reactions;
 mod repo_default_branch;
 pub mod repos;

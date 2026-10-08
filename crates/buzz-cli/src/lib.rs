@@ -225,6 +225,9 @@ enum Cmd {
     /// Add, remove, and list emoji reactions
     #[command(subcommand)]
     Reactions(ReactionsCmd),
+    /// Ask the channel multiple-choice questions as answerable cards
+    #[command(subcommand)]
+    Prompts(PromptsCmd),
     /// Manage your custom emoji set (workspace palette is the union of all members' sets)
     #[command(subcommand)]
     Emoji(EmojiCmd),
@@ -822,6 +825,27 @@ pub enum ReactionsCmd {
         /// Event ID (64-char hex)
         #[arg(long)]
         event: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum PromptsCmd {
+    /// Post a question card under a message; the first answer wins
+    ///
+    /// The file holds `{"questions": [...]}` (1-4 questions, each with an
+    /// `id`, `header`, `question`, optional `multiSelect`/`allowOther`, and
+    /// 1-8 `options` with a `label` and optional `description`/`preview`).
+    /// Prints the artifact id (`d`) to look the answer up by.
+    Ask {
+        /// Channel UUID
+        #[arg(long)]
+        channel: String,
+        /// Message to attach the card to (64-char hex event ID)
+        #[arg(long)]
+        root: String,
+        /// Prompt JSON file, or - for stdin
+        #[arg(long)]
+        file: String,
     },
 }
 
@@ -2197,6 +2221,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Channels(sub) => commands::channels::dispatch(sub, &client, &cli.format).await,
         Cmd::Canvas(sub) => commands::channels::dispatch_canvas(sub, &client).await,
         Cmd::Reactions(sub) => commands::reactions::dispatch(sub, &client).await,
+        Cmd::Prompts(sub) => commands::prompts::dispatch(sub, &client).await,
         Cmd::Emoji(sub) => commands::emoji::dispatch(sub, &client).await,
         Cmd::Gifs(sub) => commands::gifs::dispatch(sub, &client).await,
         Cmd::Dms(sub) => commands::dms::dispatch(sub, &client).await,
@@ -2382,6 +2407,7 @@ mod tests {
             "patches",
             "pr",
             "projects",
+            "prompts",
             "reactions",
             "repos",
             "social",
@@ -2478,6 +2504,7 @@ mod tests {
             vec!["get", "history", "restore", "set"]
         );
         assert_eq!(names(&cmd, "reactions"), vec!["add", "get", "remove"]);
+        assert_eq!(names(&cmd, "prompts"), vec!["ask"]);
         assert_eq!(
             names(&cmd, "emoji"),
             vec!["export", "import", "list", "rm", "set"]
@@ -2592,6 +2619,7 @@ mod tests {
             ("patches", 4),
             ("pr", 5),
             ("projects", 8),
+            ("prompts", 1),
             ("reactions", 3),
             ("repos", 6),
             ("social", 7),

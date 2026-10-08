@@ -4,6 +4,7 @@ import { isMacPlatform } from "@/shared/lib/platform";
 
 import { relayClient } from "@/shared/api/relayClient";
 import { resetChannelMembershipWrites } from "@/shared/api/channelMembershipWrites";
+import { resetChannelArtifactSubscriptions } from "@/features/artifacts/channelArtifactSubscriptions";
 import { resetRateLimitGate } from "@/shared/api/relayRateLimitGate";
 import { readmitRelay } from "@/features/agents/managedAgentRelayCleanup";
 import {
@@ -91,6 +92,7 @@ async function resetCommunityState({
   resetLinkPreviewPreparations();
   resetPersistentAgentAudienceStore();
   resetChannelMembershipWrites();
+  resetChannelArtifactSubscriptions();
   // Intentionally NOT reset: the in-flight detached agent-start map
   // (`useDetachedAgentStart`). Its entries are keyed by the scope each start
   // asserts (relay URL + signer + agent pubkey), so they cannot leak into the
