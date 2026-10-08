@@ -109,3 +109,37 @@ test("editable drafts and ranges crossing them are excluded, but text without a 
     f.close();
   }
 });
+
+test("paragraph selections ending at a parent boundary retain the message source", () => {
+  const f = fixture();
+  try {
+    const human = f.root.querySelector("#human");
+    const source = {
+      sourceId: "human-message",
+      text: human.textContent,
+      channelId: "a",
+    };
+    f.registry.sources.set(human, { root: human, read: () => source });
+    const range = document.createRange();
+    range.setStart(human.firstChild, 0);
+    range.setEnd(human.parentNode, 1);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const result = resolveAnnotationSelection(f.registry, selection);
+    assert.equal(result.anchor.sourceId, "human-message");
+    assert.equal(result.anchor.selectedText, "A human message");
+    assert.equal(result.scope, f.channel);
+    assert.equal(result.root, human);
+    range.setEnd(f.root.querySelector("#tool").firstChild, 0);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    assert.equal(
+      resolveAnnotationSelection(f.registry, selection).anchor.sourceId,
+      "human-message",
+      "an empty endpoint in the next paragraph does not capture that paragraph",
+    );
+  } finally {
+    f.close();
+  }
+});

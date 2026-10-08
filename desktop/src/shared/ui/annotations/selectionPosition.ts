@@ -1,10 +1,15 @@
 /** A virtual popover anchor that survives focus moving into the comment editor. */
-export function selectionPosition(root: HTMLElement, selection: Selection) {
-  const range = selection.getRangeAt(0).cloneRange();
+export function selectionPosition(
+  root: HTMLElement,
+  selection: Selection,
+  boundedRange?: Range,
+) {
+  const original = selection.getRangeAt(0);
+  const range = (boundedRange ?? original).cloneRange();
   const text = range.toString();
   const atStart =
-    selection.focusNode === range.startContainer &&
-    selection.focusOffset === range.startOffset;
+    selection.focusNode === original.startContainer &&
+    selection.focusOffset === original.startOffset;
   const readRange = () => {
     const rects = Array.from(range.getClientRects?.() ?? []).filter(
       (rect) => rect.width > 0 && rect.height > 0,

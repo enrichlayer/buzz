@@ -482,11 +482,15 @@ test("human channel messages and tool output can both be annotated", async ({
       `[data-message-id="${ROOT_B}"] [data-annotation-source-id="${ROOT_B}"]`,
     )
     .getByText("Unrelated sibling request", { exact: true });
-  await selectRenderedText(page, human);
+  // Let Playwright wait for channel scrolling/layout to settle before selecting.
+  await human.click({ clickCount: 3 });
   await page.getByRole("button", { name: "Comment on selected text" }).click();
   await expect(page.getByTestId("annotation-destination")).toContainText(
     "#general",
   );
+  await expect(
+    page.getByTestId("selection-annotation-editor").locator("blockquote"),
+  ).toHaveText("Unrelated sibling request");
   await page
     .getByRole("textbox", { name: "Feedback" })
     .fill("Comment on a human message");
@@ -524,8 +528,11 @@ test("human channel messages and tool output can both be annotated", async ({
     .first();
   await activity.locator("summary").filter({ hasText: "pnpm test" }).click();
   await expect(toolResult).toBeVisible();
-  await selectRenderedText(page, toolResult);
+  await toolResult.click({ clickCount: 3 });
   await page.getByRole("button", { name: "Comment on selected text" }).click();
+  await expect(
+    page.getByTestId("selection-annotation-editor").locator("blockquote"),
+  ).toHaveText("Uncovered selection in the tool result");
   await expect(page.getByTestId("annotation-destination")).toContainText(
     "Charlie",
   );

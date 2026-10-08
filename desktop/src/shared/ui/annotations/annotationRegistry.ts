@@ -43,6 +43,38 @@ function elementFor(node: Node): HTMLElement | null {
 const EDITABLE =
   'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [data-annotation-editor]';
 
+/** Browser paragraph selection may end at the next sibling or its parent. */
+function textBoundedRange(original: Range) {
+  const range = original.cloneRange();
+  const common = original.commonAncestorContainer;
+  if (common.nodeType === Node.TEXT_NODE) return range;
+  const walker = document.createTreeWalker(common, NodeFilter.SHOW_TEXT);
+  let first: Text | null = null;
+  let last: Text | null = null;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!original.intersectsNode(node)) continue;
+    const from = node === original.startContainer ? original.startOffset : 0;
+    const to =
+      node === original.endContainer
+        ? original.endOffset
+        : node.textContent?.length;
+    if (!node.textContent?.slice(from, to).trim()) continue;
+    first ??= node as Text;
+    last = node as Text;
+  }
+  if (first && last) {
+    range.setStart(
+      first,
+      first === original.startContainer ? original.startOffset : 0,
+    );
+    range.setEnd(
+      last,
+      last === original.endContainer ? original.endOffset : last.length,
+    );
+  }
+  return range;
+}
+
 /** Resolve the whole selection, including unregistered text and multi-block ranges. */
 export function resolveAnnotationSelection(
   registry: AnnotationRegistry,
@@ -54,7 +86,7 @@ export function resolveAnnotationSelection(
     !selection.toString().trim()
   )
     return null;
-  const range = selection.getRangeAt(0);
+  const range = textBoundedRange(selection.getRangeAt(0));
   const start = elementFor(range.startContainer);
   const end = elementFor(range.endContainer);
   if (
@@ -112,7 +144,7 @@ export function resolveAnnotationSelection(
     text: selection.toString().trim(),
     channelId: scope?.scope.channelId,
   };
-  const anchor = captureSelectionAnchor(root, source, selection);
+  const anchor = captureSelectionAnchor(root, source, selection, range);
   if (!anchor) return null;
   return {
     root,
@@ -124,7 +156,7 @@ export function resolveAnnotationSelection(
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : root,
-    position: selectionPosition(root, selection),
+    position: selectionPosition(root, selection, range),
   };
 }
 
