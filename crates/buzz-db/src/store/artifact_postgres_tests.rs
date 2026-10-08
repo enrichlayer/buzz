@@ -83,6 +83,37 @@ impl Fixture {
         .sign_with_keys(key)
         .unwrap()
     }
+    fn question_revision(
+        &self,
+        d: Uuid,
+        previous: Option<&Event>,
+        key: &Keys,
+        content: serde_json::Value,
+    ) -> Event {
+        let mut tags = vec![
+            vec!["ar".into(), "1".into()],
+            vec!["d".into(), d.to_string()],
+            vec!["h".into(), self.a.to_string()],
+            vec!["type".into(), "buzz.agent_prompt".into()],
+            vec![
+                "op".into(),
+                if previous.is_some() {
+                    "update"
+                } else {
+                    "create"
+                }
+                .into(),
+            ],
+            vec!["title".into(), "Question".into()],
+        ];
+        if let Some(previous) = previous {
+            tags.push(vec!["prev".into(), previous.id.to_hex()]);
+        }
+        EventBuilder::new(Kind::Custom(45010), content.to_string())
+            .tags(tags.into_iter().map(|tag| Tag::parse(tag).unwrap()))
+            .sign_with_keys(key)
+            .unwrap()
+    }
     async fn accept(&self, e: &Event, source: Option<Uuid>) -> ArtifactOutcome {
         let env = artifact::validate(e).unwrap();
         self.db
@@ -109,6 +140,84 @@ impl Fixture {
             .await
             .unwrap()
     }
+}
+
+#[tokio::test]
+#[ignore = "requires Postgres"]
+async fn question_answer_is_final_for_all_channel_writers() {
+    let f = Fixture::new().await;
+    let d = Uuid::new_v4();
+    let open = serde_json::json!({
+        "version": 1, "kind": "question", "state": "open",
+        "questions": [{"id": "q1", "header": "Choice", "question": "Pick one",
+            "multiSelect": false, "allowOther": true,
+            "options": [{"label": "A"}, {"label": "B"}]}]
+    });
+    let create = f.question_revision(d, None, &f.owner, open.clone());
+    assert!(matches!(
+        f.accept(&create, None).await,
+        ArtifactOutcome::Accepted(_)
+    ));
+
+    let answered = |choice: &str, key: &Keys| {
+        let mut content = open.clone();
+        content["state"] = "answered".into();
+        content["answer"] = serde_json::json!({"q1": [choice]});
+        content["answeredBy"] = key.public_key().to_hex().into();
+        content
+    };
+    let invalid = f.question_revision(
+        d,
+        Some(&create),
+        &f.peer,
+        serde_json::json!({"version":1,"kind":"question","state":"answered",
+            "questions":open["questions"],"answer":{"q1":[]},
+            "answeredBy":f.peer.public_key().to_hex()}),
+    );
+    assert!(matches!(
+        f.accept(&invalid, None).await,
+        ArtifactOutcome::Rejected(_)
+    ));
+
+    let first = f.question_revision(d, Some(&create), &f.peer, answered("A", &f.peer));
+    assert!(matches!(
+        f.accept(&first, None).await,
+        ArtifactOutcome::Accepted(_)
+    ));
+    let rewrite = f.question_revision(d, Some(&first), &f.owner, answered("B", &f.owner));
+    assert!(matches!(
+        f.accept(&rewrite, None).await,
+        ArtifactOutcome::Rejected("question is final")
+    ));
+    let reopen = f.question_revision(d, Some(&first), &f.owner, open.clone());
+    assert!(matches!(
+        f.accept(&reopen, None).await,
+        ArtifactOutcome::Rejected("question is final")
+    ));
+    let current = serde_json::json!({"artifact":"current","#d":[d]});
+    assert_eq!(f.count(&f.owner, current.clone()).await, 1);
+    let (events, _) = f.query(&f.owner, current, false).await;
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].event.id, first.id);
+
+    let second_d = Uuid::new_v4();
+    let second = f.question_revision(second_d, None, &f.owner, open.clone());
+    assert!(matches!(
+        f.accept(&second, None).await,
+        ArtifactOutcome::Accepted(_)
+    ));
+    let mut cancelled = open.clone();
+    cancelled["state"] = "cancelled".into();
+    let cancel = f.question_revision(second_d, Some(&second), &f.owner, cancelled);
+    assert!(matches!(
+        f.accept(&cancel, None).await,
+        ArtifactOutcome::Accepted(_)
+    ));
+    let late = f.question_revision(second_d, Some(&cancel), &f.peer, answered("B", &f.peer));
+    assert!(matches!(
+        f.accept(&late, None).await,
+        ArtifactOutcome::Rejected("question is final")
+    ));
 }
 #[tokio::test]
 #[ignore = "requires Postgres"]

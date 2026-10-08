@@ -38,9 +38,7 @@ globalThis.window = {
 };
 Date.now = () => now;
 const { RelayClient } = await import("./relayClientSession.ts");
-const { resetRateLimitGate, isRateLimited } = await import(
-  "./relayRateLimitGate.ts"
-);
+const { resetRateLimitGate } = await import("./relayRateLimitGate.ts");
 
 beforeEach(() => {
   resetRateLimitGate();
@@ -257,6 +255,28 @@ for (const finish of ["EOSE", "timeout", "terminal CLOSED", "disconnect"]) {
     assert.equal(h.client.subscriptions.size, 0);
   });
 }
+
+test("terminal CLOSED notifies a live consumer after its REQ became ready", async () => {
+  const h = setup();
+  const closed = [];
+  const started = h.client.subscribeLive(
+    filter,
+    () => {},
+    undefined,
+    250,
+    undefined,
+    (message) => closed.push(message),
+  );
+  await flush();
+  const id = frames("REQ")[0].frame[1];
+  await deliver(h.client, ["EOSE", id]);
+  const dispose = await started;
+  await deliver(h.client, ["CLOSED", id, "restricted: temporary"]);
+  await flush();
+  assert.deepEqual(closed, ["restricted: temporary"]);
+  assert.equal(h.client.subscriptions.has(id), false);
+  await dispose();
+});
 
 for (const stop of ["abort", "disconnect"]) {
   test(`${stop} cancels an actual CLOSED retry while its send is in flight`, async () => {

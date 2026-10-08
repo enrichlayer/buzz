@@ -92,12 +92,11 @@ that could not be posted, gets a JSON-RPC error, which claude-agent-acp reports
 to the model as "Could not present the question to the user" — the question was
 never shown, so it must not read as skipped.
 
-**Permission modes.** In claude-agent-acp's default `bypassPermissions` mode
-AskUserQuestion still reaches the card: the tool is marked
-`requiresUserInteraction`, so the adapter routes it to the client even when
-permissions are bypassed (confirmed in review). In `dontAsk` mode the adapter
-denies AskUserQuestion outright, so no elicitation is sent and no card
-appears.
+**Permission modes.** AskUserQuestion is marked `requiresUserInteraction` in
+claude-agent-acp, which suggests it can still reach the card in the default
+`bypassPermissions` mode. This routing has not yet been verified in a live
+claude-agent-acp session. In `dontAsk` mode the adapter denies AskUserQuestion,
+so no elicitation is expected and no card should appear.
 
 **Desktop.** The parser accepts `state: "cancelled"`; the card shows "Question
 cancelled" with the title and no form.
@@ -114,7 +113,8 @@ Decisions made while building:
 - **Not handled:** if the harness process is killed (not shut down), an open
   card stays open; nobody is waiting for it. Cancelling after the anchor is
   posted but before the card is created leaves the anchor message without a
-  card.
+  card. Once card submission starts, cancellation waits for that in-flight
+  create before withdrawing a card that arrives late.
 
 ## Status
 

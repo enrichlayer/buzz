@@ -5,6 +5,7 @@
 use super::*;
 use serde_json::json;
 use std::sync::Mutex;
+use tokio::sync::Notify;
 
 /// One question: the question text is `message`, no field description.
 pub(crate) fn single_question_request() -> Value {
@@ -388,6 +389,33 @@ impl QuestionRelay for FakeRelay {
     }
 }
 
+/// Hold the create request after it starts, as a slow HTTP bridge can do.
+struct DelayedCreateRelay {
+    inner: Arc<FakeRelay>,
+    create_started: Notify,
+    release_create: Notify,
+}
+
+impl QuestionRelay for DelayedCreateRelay {
+    fn submit<'a>(&'a self, event: &'a Event) -> BoxFuture<'a, Result<(), String>> {
+        Box::pin(async move {
+            if tag(event, "op") == Some("create") {
+                self.create_started.notify_one();
+                self.release_create.notified().await;
+            }
+            self.inner.submit(event).await
+        })
+    }
+
+    fn head<'a>(
+        &'a self,
+        channel: Uuid,
+        d: &'a str,
+    ) -> BoxFuture<'a, Result<Option<Event>, String>> {
+        self.inner.head(channel, d)
+    }
+}
+
 pub(crate) fn asker(relay: Arc<dyn QuestionRelay>, thread_root: Option<EventId>) -> QuestionAsker {
     QuestionAsker::new(
         relay,
@@ -530,6 +558,40 @@ async fn cancelling_withdraws_the_open_card() {
         Some(PromptState::Cancelled)
     );
     assert!(handle.outcome_rx.await.is_err(), "no outcome after cancel");
+}
+
+#[tokio::test]
+async fn cancelling_during_create_waits_for_the_late_card_then_withdraws_it() {
+    let inner = FakeRelay::new(0, None);
+    let relay = Arc::new(DelayedCreateRelay {
+        inner: Arc::clone(&inner),
+        create_started: Notify::new(),
+        release_create: Notify::new(),
+    });
+    let prompt = ask_prompt_from_request(&single_question_request()).expect("card");
+    let handle = asker(relay.clone(), None).ask(&prompt);
+    tokio::time::timeout(Duration::from_secs(5), relay.create_started.notified())
+        .await
+        .expect("create request started");
+    handle.cancel_tx.send(()).expect("task alive");
+    assert!(
+        tokio::time::timeout(Duration::from_secs(5), handle.outcome_rx)
+            .await
+            .expect("agent released before relay create finishes")
+            .is_err()
+    );
+    assert_eq!(inner.submitted().len(), 1, "only the anchor exists yet");
+    relay.release_create.notify_one();
+    let events = inner.wait_for(3).await;
+    assert_eq!(tag(&events[1], "op"), Some("create"));
+    assert_eq!(
+        tag(&events[2], "prev"),
+        Some(events[1].id.to_hex().as_str())
+    );
+    assert_eq!(
+        parse_prompt_state(&events[2].content, &events[2].pubkey.to_hex()),
+        Some(PromptState::Cancelled)
+    );
 }
 
 #[tokio::test]

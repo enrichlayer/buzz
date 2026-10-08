@@ -83,11 +83,11 @@ Decisions made while building (DEV-11200):
   revision's signer. Content is writer-controlled, so the parser rejects an
   answered revision whose `answeredBy` is not its own signer; the field stays
   in the content for agents reading it.
-- **"First answer wins" holds for honest clients only.** The relay's head lock
-  stops two answers to the same open revision, but any channel writer can
-  publish a later revision (a new answer, or reopen it). This client never
-  edits an answered prompt; agents should treat the answered revision they
-  see first as the answer, and NIP-AR history keeps every revision.
+- **First answer wins.** The relay accepts one terminal update from the open
+  question and rejects later updates, including a replacement answer or a
+  reopen, inside the atomic head transaction. It also rejects an incomplete
+  answer before advancing the head. A cancellation is terminal too. NIP-AR
+  history keeps the original question and its final revision.
 - **Conflict.** On `conflict:` the card fetches the head with
   `{kinds:[45010], #h, #d}` (single-letter tags are fine on WS REQ) and folds
   it into the store. If it is answered, the card shows "Already answered by X"
@@ -102,10 +102,10 @@ Decisions made while building (DEV-11200):
   45011 removal marker for the current head hides an artifact that moved out.
   The registry is community-scoped: `resetChannelArtifactSubscriptions()`
   runs in `resetCommunityState()`, because `relayClient.disconnect()` kills
-  live REQs without telling their owners. Not handled: a terminal `CLOSED`
-  (auth/access) on the artifact REQ leaves the entry thinking it is
-  subscribed until its rows unmount. `subscribeLive` exposes no removal hook,
-  and `relayClientSession.ts` sits at the 1200-line cap.
+  live REQs without telling their owners. A terminal `CLOSED` notifies the
+  registry, which retries the mounted channel's REQ after 1, 2, and 4 seconds;
+  repeated access or filter rejection then stops without an unbounded loop.
+  A later row acquire can try again after access changes.
 - **Keyboard.** Number keys pick, Tab/Shift+Tab move between questions,
   plain Enter on an option toggles it like a click, and Ctrl/⌘+Enter (or
   Enter outside an option) submits. After the viewer's own submit, focus
@@ -116,8 +116,9 @@ Decisions made while building (DEV-11200):
   (crates/buzz-cli) creates the artifact; the file needs only `questions`.
   The content builder and caps live in `buzz_sdk::agent_prompt`, shared with
   buzz-acp.
-- **Cancelled.** `state: "cancelled"` (added by DEV-11266) means the asking
-  agent withdrew the card; it renders as "Question cancelled" with no form.
+- **Cancelled.** `state: "cancelled"` (added by DEV-11266) means the card was
+  withdrawn, either by the asking agent or another channel member; it renders
+  as "Question cancelled" with no form.
 
 ## Status
 

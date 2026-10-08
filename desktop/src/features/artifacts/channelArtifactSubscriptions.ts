@@ -8,8 +8,15 @@ import { createChannelArtifactRegistry } from "./channelArtifactRegistry";
 import type { ChannelArtifactStore } from "./channelArtifactStore";
 
 const registry = createChannelArtifactRegistry({
-  subscribeLive: (filter, onEvent) =>
-    relayClient.subscribeLive(filter, onEvent),
+  subscribeLive: (filter, onEvent, onTerminalClosed) =>
+    relayClient.subscribeLive(
+      filter,
+      onEvent,
+      undefined,
+      undefined,
+      undefined,
+      onTerminalClosed,
+    ),
   fetchEvents: (filter) => relayClient.fetchEvents(filter),
   isRegisteredType: isRegisteredArtifactType,
   releaseGraceMs: 1_000,
