@@ -489,7 +489,7 @@ mod tests {
                         right
                             .created_at
                             .cmp(&left.created_at)
-                            .then_with(|| right.id.cmp(&left.id))
+                            .then_with(|| left.id.cmp(&right.id))
                     });
                     page.retain(|event| {
                         if since.is_some_and(|boundary| event.created_at.as_secs() < boundary) {
@@ -501,7 +501,7 @@ mod tests {
                         match until {
                             Some(boundary) if event.created_at.as_secs() > boundary => false,
                             Some(boundary) if event.created_at.as_secs() == boundary => {
-                                before_id.is_none_or(|id| event.id.to_hex().as_str() < id)
+                                before_id.is_none_or(|id| event.id.to_hex().as_str() > id)
                             }
                             _ => true,
                         }
