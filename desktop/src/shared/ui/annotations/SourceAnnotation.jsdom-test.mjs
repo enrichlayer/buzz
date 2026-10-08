@@ -11,6 +11,17 @@ import {
 } from "./SourceAnnotation.tsx";
 import { captureSelectionAnchor } from "./selectionAnchor.ts";
 
+// jsdom has no animation clock; Floating UI uses it to follow live Ranges.
+test.before(() => {
+  globalThis.requestAnimationFrame = (callback) =>
+    setTimeout(() => callback(performance.now()), 16);
+  globalThis.cancelAnimationFrame = clearTimeout;
+});
+test.after(() => {
+  delete globalThis.requestAnimationFrame;
+  delete globalThis.cancelAnimationFrame;
+});
+
 function selectText(element, start = 0, end = element.textContent.length) {
   const text = element.firstChild;
   assert.ok(text, "selection target has a text node");
@@ -101,9 +112,8 @@ test("keyboard submit routes to the provider and a failed send retains the draft
     );
     const answer = container.querySelector("#answer");
     selectText(answer, 5, 15);
-    const surface = container.querySelector("[data-annotation-source-id]");
     await act(async () =>
-      fireEvent.keyDown(surface, {
+      fireEvent.keyDown(document.body, {
         key: "m",
         metaKey: true,
         shiftKey: true,
