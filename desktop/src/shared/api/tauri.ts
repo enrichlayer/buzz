@@ -128,6 +128,7 @@ export type RawManagedAgent = {
   max_turn_duration_seconds: number | null;
   parallelism: number;
   session_policy?: ManagedAgent["sessionPolicy"];
+  output_mode?: ManagedAgent["outputMode"];
   system_prompt: string | null;
   avatar_url?: string | null;
   model: string | null;
@@ -618,6 +619,7 @@ export function fromRawManagedAgent(agent: RawManagedAgent): ManagedAgent {
     maxTurnDurationSeconds: agent.max_turn_duration_seconds,
     parallelism: agent.parallelism,
     sessionPolicy: agent.session_policy ?? "channel",
+    outputMode: agent.output_mode ?? "full",
     systemPrompt: agent.system_prompt,
     avatarUrl: agent.avatar_url ?? null,
     model: agent.model,

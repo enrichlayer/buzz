@@ -1,5 +1,6 @@
 import type {
   AcpSessionPolicy,
+  AgentOutputMode,
   PersonaBehaviorInput,
   RespondToMode,
 } from "@/shared/api/types";
@@ -20,6 +21,7 @@ export type PersonaBehaviorDraft = {
   /** Raw text; only `parseInt > 0` submits (legacy dialog parity). */
   parallelism: string;
   sessionPolicy: AcpSessionPolicy;
+  outputMode: AgentOutputMode;
 };
 
 export const emptyPersonaBehaviorDraft: PersonaBehaviorDraft = {
@@ -27,6 +29,7 @@ export const emptyPersonaBehaviorDraft: PersonaBehaviorDraft = {
   respondToAllowlist: [],
   parallelism: "",
   sessionPolicy: "channel",
+  outputMode: "full",
 };
 
 /** Seed the draft from a dialog-state behavior group (edit/duplicate). */
@@ -39,6 +42,7 @@ export function draftFromBehavior(
     parallelism:
       behavior?.parallelism != null ? String(behavior.parallelism) : "",
     sessionPolicy: behavior?.sessionPolicy ?? "channel",
+    outputMode: behavior?.outputMode ?? "full",
   };
 }
 
@@ -62,6 +66,7 @@ function behaviorFromDraft(draft: PersonaBehaviorDraft): PersonaBehaviorInput {
       draft.respondTo === "allowlist" ? draft.respondToAllowlist : undefined,
     parallelism: parallelism > 0 ? parallelism : undefined,
     sessionPolicy: draft.sessionPolicy,
+    outputMode: draft.outputMode,
   };
   return group;
 }
@@ -74,8 +79,9 @@ function behaviorFromDraft(draft: PersonaBehaviorDraft): PersonaBehaviorInput {
  * - a behavior group that is untouched relative to its seed submits nothing — an
  *   unrelated edit (rename, prompt tweak) must not rewrite the published
  *   definition's behavior bytes or flip its content hash;
- * - creates always submit the selected session policy; the channel default is
- *   omitted from durable/public JSON by the backend for wire compatibility;
+ * - creates always submit the selected session policy and output mode; their
+ *   defaults are omitted from durable/public JSON by the backend for wire
+ *   compatibility;
  * - any real change submits the full group (replace-as-a-unit semantics);
  * - clearing the optional fields on edit still submits the channel default,
  *   because "submit nothing" would silently no-op the clear.

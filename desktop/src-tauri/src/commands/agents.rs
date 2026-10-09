@@ -683,6 +683,10 @@ pub async fn create_managed_agent(
                 .as_ref()
                 .map(|persona| persona.session_policy)
                 .unwrap_or_default(),
+            output_mode: linked_persona
+                .as_ref()
+                .map(|persona| persona.output_mode)
+                .unwrap_or_default(),
             system_prompt: snapshot_prompt.or_else(|| {
                 input
                     .system_prompt

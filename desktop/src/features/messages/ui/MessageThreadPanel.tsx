@@ -1,4 +1,9 @@
 import * as React from "react";
+import {
+  ThreadSessionTimelineProvider,
+  ThreadSessionActivitySlot,
+  ThreadSessionVisibleMessages,
+} from "./ThreadSessionTimeline";
 import { ArrowDown } from "lucide-react";
 
 import { HuddleTranscriptIntro } from "@/features/huddle/components/HuddleTranscriptIntro";
@@ -24,6 +29,11 @@ import { useEscapeKey } from "@/shared/hooks/useEscapeKey";
 import { useIsThreadPanelOverlay } from "@/shared/hooks/use-mobile";
 import { VideoReviewNavigationProvider } from "@/shared/ui/VideoReviewNavigation";
 import { cn } from "@/shared/lib/cn";
+import {
+  AnnotationSubmitProvider,
+  type AnnotationSubmitRequest,
+} from "@/shared/ui/annotations";
+import { RuntimePluginHostProvider } from "@/shared/plugins/runtime";
 import { AuxiliaryPanel } from "@/shared/layout/AuxiliaryPanel";
 import { AuxiliaryPanelBody } from "@/shared/layout/AuxiliaryPanel";
 import {
@@ -123,6 +133,8 @@ type MessageThreadPanelProps = ThreadPanelLayoutProps & {
   videoReviewPresentation?: VideoReviewPresentation;
   activityAccessoryContent?: React.ReactNode;
   activityAccessoryVisible: boolean;
+  /** Exact thread-scoped agent activity rendered alongside published replies. */
+  sessionActivityContent?: React.ReactNode;
   widthPx: number;
   isFollowingThread?: boolean;
   isMessageUnreadById?: (messageId: string) => boolean;
@@ -142,7 +154,17 @@ type MessageThreadPanelProps = ThreadPanelLayoutProps & {
 const EMPTY_THREAD_REPLIES: MainTimelineEntry[] = [];
 const THREAD_PANEL_SUMMARY_INDENT_OFFSET_REM = 0;
 
-export function MessageThreadPanel({
+export function MessageThreadPanel(props: MessageThreadPanelProps) {
+  return (
+    <ThreadSessionTimelineProvider
+      key={`${props.channelId}:${props.threadHead?.id}`}
+    >
+      <MessageThreadPanelContent {...props} />
+    </ThreadSessionTimelineProvider>
+  );
+}
+
+function MessageThreadPanelContent({
   channel,
   channelId,
   channelName,
@@ -203,6 +225,7 @@ export function MessageThreadPanel({
   threadTypingPubkeys,
   activityAccessoryContent,
   activityAccessoryVisible,
+  sessionActivityContent,
   canResetWidth,
   splitPaneClamp,
   showBackButton,
@@ -215,6 +238,9 @@ export function MessageThreadPanel({
   const threadBodyRef = React.useRef<HTMLDivElement>(null);
   const threadContentRef = React.useRef<HTMLDivElement>(null);
   const threadComposerWrapperRef = React.useRef<HTMLDivElement>(null);
+  const composerInsertTextRef = React.useRef<((text: string) => void) | null>(
+    null,
+  );
   const [hoveredCollapseBranchId, setHoveredCollapseBranchId] = React.useState<
     string | null
   >(null);
@@ -223,10 +249,45 @@ export function MessageThreadPanel({
   >(null);
   const isOverlay = useIsThreadPanelOverlay();
   const threadHeadId = threadHead?.id ?? null;
+  const handlePublishedAnnotation = React.useCallback(
+    async (request: AnnotationSubmitRequest) => {
+      const source = [
+        threadHead,
+        ...threadReplies.map((entry) => entry.message),
+      ].find((message) => message?.id === request.anchor.sourceId);
+      if (
+        disabled ||
+        isSending ||
+        !channelId ||
+        !threadHeadId ||
+        !source?.pubkey ||
+        request.anchor.channelId !== channelId
+      ) {
+        throw new Error(
+          "This response is no longer available for feedback in this thread.",
+        );
+      }
+      await onSend(request.message, [source.pubkey], undefined, channelId, {
+        parentEventId: source.id,
+        threadHeadId,
+      });
+    },
+    [
+      channelId,
+      disabled,
+      isSending,
+      onSend,
+      threadHead,
+      threadHeadId,
+      threadReplies,
+    ],
+  );
   useEscapeKey(
     onClose,
     !isHuddleTranscript && (isOverlay || isSinglePanelView || isFocusMode),
   );
+  const [wideContent, setWideContent] = React.useState(false);
+  const hasCodingActivity = React.Children.count(sessionActivityContent) > 0;
   const hasConstrainedColumn = columnMaxWidthPx != null;
   // Whether the composer dock trades its quiet-state spacer for the
   // conditional activity accessory (agent working and/or someone typing).
@@ -244,6 +305,15 @@ export function MessageThreadPanel({
       threadHeadId,
     }),
     [threadHeadId],
+  );
+  const handlePluginCompose = React.useCallback((text: string) => {
+    composerInsertTextRef.current?.(text);
+  }, []);
+  const handleInsertTextReady = React.useCallback(
+    (insertText: ((text: string) => void) | null) => {
+      composerInsertTextRef.current = insertText;
+    },
+    [],
   );
 
   const collapseThreadHeadReplies = React.useCallback(() => {
@@ -492,7 +562,7 @@ export function MessageThreadPanel({
     threadBodyRef,
     threadComposerWrapperRef,
     isSinglePanelView,
-    "padding",
+    hasCodingActivity ? "none" : "padding",
     settleAtBottomAfterLayout,
   );
   const stableSendToChannel = useStableSendToChannel(
@@ -505,7 +575,10 @@ export function MessageThreadPanel({
   }
   const threadScrollRegion = (
     <AuxiliaryPanelBody
-      className="overflow-y-auto overflow-x-hidden overscroll-contain pb-24"
+      className={cn(
+        "overflow-y-auto overflow-x-hidden overscroll-contain",
+        hasCodingActivity ? "coding-transcript pb-4" : "pb-24",
+      )}
       data-buzz-conversation-scroll
       data-testid="message-thread-body"
       mode={isHuddleTranscript ? "panel" : undefined}
@@ -522,9 +595,23 @@ export function MessageThreadPanel({
         data-image-gallery-scope="thread"
         ref={threadContentRef}
         style={
-          hasConstrainedColumn ? { maxWidth: columnMaxWidthPx } : undefined
+          hasConstrainedColumn
+            ? { maxWidth: wideContent ? "100%" : columnMaxWidthPx }
+            : undefined
         }
       >
+        {hasConstrainedColumn && hasCodingActivity ? (
+          <div className="flex justify-end px-5 pt-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-pressed={wideContent}
+              onClick={() => setWideContent(!wideContent)}
+            >
+              {wideContent ? "Use reading width" : "Expand reading width"}
+            </Button>
+          </div>
+        ) : null}
         {isHuddleTranscript ? (
           <div className={cn(THREAD_PANEL_MESSAGE_GUTTER_CLASS, "pb-2 pt-4")}>
             <HuddleTranscriptIntro />
@@ -588,6 +675,22 @@ export function MessageThreadPanel({
             </div>
           </div>
         )}
+
+        <ThreadSessionVisibleMessages
+          value={[
+            threadHead.id,
+            ...(visibleThreadHeadSummary
+              ? []
+              : threadReplyRenderItems.map((item) => item.entry.message.id)),
+          ]}
+        >
+          {!isHuddleTranscript ? sessionActivityContent : null}
+        </ThreadSessionVisibleMessages>
+        <ThreadSessionActivitySlot
+          isHead
+          messageId={threadHead.id}
+          messageAuthor={threadHead.pubkey}
+        />
 
         {showThreadHeadDivider ? (
           <div
@@ -753,6 +856,11 @@ export function MessageThreadPanel({
                             entry.message.id,
                           )}
                         />
+                        <ThreadSessionActivitySlot
+                          messageId={entry.message.id}
+                          depth={entry.message.depth}
+                          messageAuthor={entry.message.pubkey}
+                        />
                         {entry.summary ? (
                           <MessageThreadSummaryRow
                             collapseDepthGuideActions={
@@ -795,33 +903,38 @@ export function MessageThreadPanel({
 
   const threadFooter = (
     <>
-      {!isAtBottom ? (
-        <div className="pointer-events-none absolute inset-x-0 bottom-36 z-50 flex justify-center px-4">
-          <Button
-            className="pointer-events-auto h-7 min-h-7 gap-1.5 rounded-full border-border/50 bg-background/85 px-2.5 text-2xs font-medium text-muted-foreground shadow-xs backdrop-blur-sm hover:bg-muted/70 hover:text-foreground [&_svg]:size-4"
-            data-testid="thread-scroll-to-latest"
-            onClick={() => scrollToBottom("smooth")}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            <ArrowDown aria-hidden />
-            {newMessageCount > 0
-              ? `${newMessageCount} new message${newMessageCount === 1 ? "" : "s"}`
-              : "Jump to latest"}
-          </Button>
-        </div>
-      ) : null}
-
       <div
-        className="pointer-events-none absolute inset-x-0 bottom-0 z-40 isolate before:absolute before:inset-x-0 before:bottom-0 before:-z-10 before:h-24 before:bg-gradient-to-b before:from-transparent before:to-background before:content-[''] after:absolute after:inset-x-0 after:bottom-0 after:-z-10 after:h-12 after:bg-background after:content-['']"
+        className={
+          hasCodingActivity
+            ? "relative z-40 shrink-0 bg-background pt-2"
+            : "pointer-events-none absolute inset-x-0 bottom-0 z-40 isolate before:absolute before:inset-x-0 before:bottom-0 before:-z-10 before:h-24 before:bg-gradient-to-b before:from-transparent before:to-background before:content-[''] after:absolute after:inset-x-0 after:bottom-0 after:-z-10 after:h-12 after:bg-background after:content-['']"
+        }
         data-testid="thread-composer-overlay"
         ref={threadComposerWrapperRef}
       >
+        {!isAtBottom ? (
+          <div className="pointer-events-auto flex justify-center px-4 pb-2">
+            <Button
+              className="pointer-events-auto h-7 min-h-7 gap-1.5 rounded-full border-border/50 bg-background/85 px-2.5 text-2xs font-medium text-muted-foreground shadow-xs backdrop-blur-sm hover:bg-muted/70 hover:text-foreground [&_svg]:size-4"
+              data-testid="thread-scroll-to-latest"
+              onClick={() => scrollToBottom("smooth")}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <ArrowDown aria-hidden />
+              {newMessageCount > 0
+                ? `${newMessageCount} new message${newMessageCount === 1 ? "" : "s"}`
+                : "Jump to latest"}
+            </Button>
+          </div>
+        ) : null}
         <div
           className={cn(hasConstrainedColumn && THREAD_PANEL_COLUMN_CLASS)}
           style={
-            hasConstrainedColumn ? { maxWidth: columnMaxWidthPx } : undefined
+            hasConstrainedColumn
+              ? { maxWidth: wideContent ? "100%" : columnMaxWidthPx }
+              : undefined
           }
         >
           <div
@@ -855,6 +968,7 @@ export function MessageThreadPanel({
               onCaptureSendContext={onCaptureSendContext}
               onEditLastOwnMessage={onEditLastOwnMessage}
               onEditSave={onEditSave}
+              onInsertTextReady={handleInsertTextReady}
               onSend={onSend}
               placeholder={
                 isHuddleTranscript
@@ -900,37 +1014,41 @@ export function MessageThreadPanel({
 
   return (
     <VideoReviewNavigationProvider>
-      <AuxiliaryPanel
-        canResetWidth={canResetWidth}
-        className="relative"
-        enterMotion={enterMotion ?? !isFocusMode}
-        footer={threadFooter}
-        header={
-          isHuddleTranscript ? undefined : (
-            <MessageThreadPanelHeader
-              headerLeading={headerLeading}
-              headerTitle={headerTitle}
-              headerTitleAriaLabel={headerTitleAriaLabel}
-              isFocusMode={isFocusMode}
-              isSinglePanelView={isSinglePanelView}
-              onClose={onClose}
-              onHeaderTitleClick={onHeaderTitleClick}
-              showBackButton={showBackButton}
-            />
-          )
-        }
-        isSinglePanelView={isSinglePanelView}
-        layout={layout}
-        onClose={onClose}
-        onResetWidth={onResetWidth}
-        onResizeStart={onResizeStart}
-        splitPaneClamp={splitPaneClamp}
-        testId={testId}
-        transparentChrome={transparentChrome}
-        widthPx={widthPx}
-      >
-        {threadScrollRegion}
-      </AuxiliaryPanel>
+      <AnnotationSubmitProvider onSubmit={handlePublishedAnnotation}>
+        <RuntimePluginHostProvider onCompose={handlePluginCompose}>
+          <AuxiliaryPanel
+            canResetWidth={canResetWidth}
+            className="relative"
+            enterMotion={enterMotion ?? !isFocusMode}
+            footer={threadFooter}
+            header={
+              isHuddleTranscript ? undefined : (
+                <MessageThreadPanelHeader
+                  headerLeading={headerLeading}
+                  headerTitle={headerTitle}
+                  headerTitleAriaLabel={headerTitleAriaLabel}
+                  isFocusMode={isFocusMode}
+                  isSinglePanelView={isSinglePanelView}
+                  onClose={onClose}
+                  onHeaderTitleClick={onHeaderTitleClick}
+                  showBackButton={showBackButton}
+                />
+              )
+            }
+            isSinglePanelView={isSinglePanelView}
+            layout={layout}
+            onClose={onClose}
+            onResetWidth={onResetWidth}
+            onResizeStart={onResizeStart}
+            splitPaneClamp={splitPaneClamp}
+            testId={testId}
+            transparentChrome={transparentChrome}
+            widthPx={widthPx}
+          >
+            {threadScrollRegion}
+          </AuxiliaryPanel>
+        </RuntimePluginHostProvider>
+      </AnnotationSubmitProvider>
     </VideoReviewNavigationProvider>
   );
 }

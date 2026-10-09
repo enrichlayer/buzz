@@ -143,6 +143,20 @@ test("test_catalog_projection_preserves_session_policy", () => {
   assert.equal(personas[0].sessionPolicy, "thread");
 });
 
+test("test_catalog_projection_preserves_summary_output_mode", () => {
+  const personas = catalogPersonasFromPublications(
+    [
+      {
+        ...publication(),
+        agent: { ...publication().agent, outputMode: "summary" },
+      },
+    ],
+    [],
+    null,
+  );
+  assert.equal(personas[0].outputMode, "summary");
+});
+
 // Provenance is per-owner: the same d-tag under a different publisher is a
 // different agent, so a copy of Alice's must not mask Bob's entry.
 test("test_catalog_source_match_is_scoped_to_the_publishing_owner", () => {

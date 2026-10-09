@@ -5,9 +5,13 @@ export async function cancelManagedAgentTurn(
   pubkey: string,
   channelId: string,
   requestId: string,
+  threadRootEventId?: string,
 ): Promise<void> {
   await sendAgentObserverControl(pubkey, {
-    type: "cancel_turn",
+    // A distinct command prevents older harnesses from ignoring the scope.
+    type:
+      threadRootEventId === undefined ? "cancel_turn" : "cancel_thread_turn",
+    ...(threadRootEventId === undefined ? {} : { threadRootEventId }),
     channelId,
     requestId,
   });

@@ -623,3 +623,38 @@ async fn a_card_withdrawn_elsewhere_resolves_as_withdrawn() {
         .expect("outcome");
     assert_eq!(outcome, QuestionOutcome::Withdrawn);
 }
+
+#[test]
+fn permission_decision_is_bound_to_original_content_owner_and_revision() {
+    let owner = Keys::generate();
+    let other = Keys::generate();
+    let original_id = EventId::from_hex(&"11".repeat(32)).unwrap();
+    let channel = Uuid::parse_str(CHANNEL).unwrap();
+    let d = Uuid::new_v4().to_string();
+    let original = json!({"permission":{"command":"pwd"},"questions":[],"state":"open"});
+    let build = |keys: &Keys, command: &str, prev: EventId| {
+        let content = json!({"permission":{"command":command},"questions":[],"state":"answered", "answer":{"permission":["Allow once"]},"answeredBy":keys.public_key().to_hex()});
+        EventBuilder::new(Kind::Custom(KIND_ARTIFACT), content.to_string())
+            .tags(build_prompt_update_tags(&d, CHANNEL, "t", None, &prev.to_hex()).unwrap())
+            .sign_with_keys(keys)
+            .unwrap()
+    };
+    let valid = |e: &Event| {
+        permission_revision_matches(
+            &original.to_string(),
+            e,
+            Some(owner.public_key()),
+            original_id,
+            channel,
+            &d,
+        )
+    };
+    assert!(valid(&build(&owner, "pwd", original_id)));
+    assert!(!valid(&build(&other, "pwd", original_id)));
+    assert!(!valid(&build(&owner, "rm -rf project", original_id)));
+    assert!(!valid(&build(
+        &owner,
+        "pwd",
+        EventId::from_hex(&"22".repeat(32)).unwrap()
+    )));
+}

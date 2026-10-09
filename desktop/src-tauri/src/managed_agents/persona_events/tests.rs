@@ -6,6 +6,7 @@ use crate::managed_agents::{BackendKind, ManagedAgentRecord, RespondTo};
 pub(super) fn sample_record() -> ManagedAgentRecord {
     ManagedAgentRecord {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         description: None,
         pubkey: "p".repeat(64),
         name: "agent".into(),
@@ -147,6 +148,7 @@ fn preview_passes_through_unchanged_when_persona_missing() {
 pub(super) fn sample_persona() -> AgentDefinition {
     AgentDefinition {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         description: None,
         id: "test-persona".to_string(),
         display_name: "Test Persona".to_string(),
@@ -327,6 +329,7 @@ fn content_matches_nip_ap_vector() {
 
     let content = PersonaEventContent {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         description: None,
         display_name: "Test Agent".to_string(),
         system_prompt: Some("You are a test assistant.".to_string()),
@@ -393,6 +396,7 @@ fn content_matches_nip_ap_vector() {
     // the same NIP-01 id.
     let record = AgentDefinition {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         description: None,
         id: "test-agent".to_string(),
         display_name: "Test Agent".to_string(),
@@ -428,6 +432,7 @@ fn content_matches_nip_ap_vector() {
 fn round_trip_minimal_persona() {
     let record = AgentDefinition {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         description: None,
         id: "minimal".to_string(),
         display_name: "Minimal".to_string(),
@@ -529,6 +534,7 @@ fn behavioral_defaults_survive_record_round_trip() {
 fn quad_absent_definition_hash_stable_across_activation() {
     let record = AgentDefinition {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         description: None,
         id: "quad-absent".to_string(),
         display_name: "Test".to_string(),
@@ -557,6 +563,7 @@ fn quad_absent_definition_hash_stable_across_activation() {
     // The reserved-era projection: identical fields, quad hardcoded off.
     let reserved_era = PersonaEventContent {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         respond_to: None,
         respond_to_allowlist: Vec::new(),
         parallelism: None,
@@ -578,6 +585,7 @@ fn quad_absent_definition_hash_stable_across_activation() {
 fn persona_from_event_content_for_test(content: PersonaEventContent) -> AgentDefinition {
     AgentDefinition {
         session_policy: content.session_policy,
+        output_mode: content.output_mode,
         description: content.description,
         id: "staged".to_string(),
         display_name: content.display_name,
@@ -608,6 +616,7 @@ fn persona_from_event_content_for_test(content: PersonaEventContent) -> AgentDef
 fn persona_content_hash_is_deterministic() {
     let content = PersonaEventContent {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         description: None,
         display_name: "Test".to_string(),
         avatar_url: None,
@@ -631,6 +640,7 @@ fn persona_content_hash_is_deterministic() {
 fn persona_content_hash_changes_on_edit() {
     let content1 = PersonaEventContent {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         description: None,
         display_name: "Test".to_string(),
         avatar_url: None,
@@ -674,6 +684,27 @@ fn session_policy_change_changes_hash_and_snapshot() {
 }
 
 #[test]
+fn output_mode_change_changes_hash_and_snapshot() {
+    let mut persona = sample_persona();
+    let full_hash = persona_content_hash(&persona_event_content(&persona));
+    persona.output_mode = crate::managed_agents::AgentOutputMode::Summary;
+
+    let summary_content = persona_event_content(&persona);
+    assert_ne!(full_hash, persona_content_hash(&summary_content));
+    assert_eq!(
+        summary_content.output_mode,
+        crate::managed_agents::AgentOutputMode::Summary
+    );
+
+    let mut record = sample_record();
+    apply_persona_snapshot(&mut record, &persona);
+    assert_eq!(
+        record.output_mode,
+        crate::managed_agents::AgentOutputMode::Summary
+    );
+}
+
+#[test]
 fn channel_policy_stays_wire_compatible_when_absent() {
     let content = persona_event_content(&sample_persona());
     let value = serde_json::to_value(content).unwrap_or_default();
@@ -709,6 +740,7 @@ fn channel_policy_stays_wire_compatible_when_absent() {
 fn description_change_does_not_change_content_hash() {
     let without = PersonaEventContent {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         description: None,
         display_name: "Test".to_string(),
         avatar_url: None,
@@ -799,6 +831,7 @@ fn snapshot_runtime_verbatim_from_persona() {
 fn blank_model_persona() -> AgentDefinition {
     AgentDefinition {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         model: None,
         provider: None,
         ..sample_persona()

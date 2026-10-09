@@ -1,3 +1,5 @@
+import { parsePermissionRequest } from "./permissionContent";
+
 /**
  * `buzz.agent_prompt` content (docs/plans/question-card.md). The content is
  * untrusted relay text: every field is validated here and anything malformed
@@ -172,6 +174,28 @@ export function parseAgentPrompt(
   if (!Array.isArray(raw.questions)) return null;
   if (raw.questions.length < 1 || raw.questions.length > MAX_QUESTIONS) {
     return null;
+  }
+  if (raw.permission !== undefined) {
+    const permission = parsePermissionRequest(raw.permission);
+    if (
+      !permission ||
+      signer.toLowerCase() !==
+        (raw.state === "answered"
+          ? permission.ownerPubkey
+          : permission.agentPubkey)
+    )
+      return null;
+    if (raw.questions.length !== 1) return null;
+    const q = parseQuestion(raw.questions[0]);
+    if (
+      q?.id !== "permission" ||
+      q.multiSelect ||
+      q.allowOther ||
+      q.options.length !== 2 ||
+      q.options[0].label !== "Allow once" ||
+      q.options[1].label !== "Deny"
+    )
+      return null;
   }
   const questions: AgentPromptQuestion[] = [];
   for (const value of raw.questions) {

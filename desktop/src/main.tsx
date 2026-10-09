@@ -1,3 +1,4 @@
+import { isTauri } from "@tauri-apps/api/core";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { App } from "@/app/App";
@@ -79,12 +80,15 @@ function configureDevE2eBridgeFromUrl() {
   );
 }
 
+let PreviewNotice: React.ComponentType | null = null;
+
 function renderApp() {
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <React.StrictMode>
       {/* block/buzz#5078 — catch any uncaught render error so a WebKit
           SecurityError from localStorage can't blank the whole window. */}
       <RootErrorBoundary>
+        {PreviewNotice ? <PreviewNotice /> : null}
         <AvatarClipPaths />
         <CommunitiesProvider>
           <CommunityOnboardingProvider
@@ -125,12 +129,54 @@ async function installE2eBridgeIfConfigured() {
 }
 
 async function bootstrap() {
+  // A desktop frontend cannot use native IPC in an ordinary browser. Offer an
+  // explicit fixture preview instead of failing later in community startup.
+  const devBrowser = import.meta.env.DEV && !isTauri();
+  const preview =
+    devBrowser &&
+    (new URL(location.href).searchParams.get("preview") === "coding" ||
+      sessionStorage.getItem("buzz-coding-preview") === "1");
+  if (
+    devBrowser &&
+    !preview &&
+    !(window as E2eWindow).__BUZZ_E2E__ &&
+    new URL(location.href).searchParams.get("e2e") !== "mock"
+  ) {
+    ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+      <main className="mx-auto max-w-xl space-y-4 p-8">
+        <h1 className="text-xl font-semibold">Buzz browser preview</h1>
+        <p>
+          The desktop app uses native services for your community, identity and
+          local agents. This browser can test the interface with sample data.
+        </p>
+        <a
+          className="inline-block rounded border px-4 py-2 underline"
+          href="?e2e=mock&preview=coding"
+        >
+          Open coding session preview
+        </a>
+        <p className="text-sm">
+          Use Buzz Dev for live communities and real agent sessions.
+        </p>
+      </main>,
+    );
+    return;
+  }
   resetDevWebviewStateFromUrl();
   configureDevE2eBridgeFromUrl();
   recoverLocalStorageQuotaOnStartup();
   initializeConversationDensityPreference();
   initializeFontSizePreference();
   startLocalStorageSweep();
+  if (preview) {
+    const { configureCodingPreview } = await import("@/testing/codingPreview");
+    configureCodingPreview();
+    sessionStorage.setItem("buzz-coding-preview", "1");
+    // Hash history appends location.search; consume bootstrap parameters first.
+    history.replaceState(history.state, "", location.pathname);
+    PreviewNotice = (await import("@/testing/BrowserPreviewNotice"))
+      .BrowserPreviewNotice;
+  }
   await installE2eBridgeIfConfigured();
   await migrateLegacyCommunityStorageBeforeRender();
   renderApp();

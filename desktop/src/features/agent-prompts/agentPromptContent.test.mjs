@@ -245,3 +245,58 @@ test("prototype-looking question ids survive draft and answered round trips", ()
   );
   assert.deepEqual(answered?.answer, answer);
 });
+
+test("permission cards bind the signer and forbid free-text or edited choices", () => {
+  const raw = {
+    version: 1,
+    kind: "question",
+    state: "open",
+    permission: {
+      version: 1,
+      ownerPubkey: ANSWERER,
+      agentPubkey: AGENT,
+      cwd: "/tmp",
+      command: "pwd",
+      toolCall: { title: "Run pwd" },
+    },
+    questions: [
+      question({
+        id: "permission",
+        allowOther: false,
+        options: [{ label: "Allow once" }, { label: "Deny" }],
+      }),
+    ],
+  };
+  const parse = (value, signer = AGENT) =>
+    parseAgentPrompt(JSON.stringify(value), signer);
+  assert.ok(parse(raw));
+  assert.equal(parse(raw, ANSWERER), null);
+  const answered = {
+    ...raw,
+    state: "answered",
+    answeredBy: ANSWERER,
+    answer: { permission: ["Allow once"] },
+  };
+  assert.ok(parse(answered, ANSWERER));
+  assert.equal(parse({ ...answered, answeredBy: AGENT }, AGENT), null);
+  assert.equal(
+    parse({ ...raw, permission: { ...raw.permission, cwd: "/tmp\nwhoami" } }),
+    null,
+  );
+  assert.equal(
+    parse({ ...raw, questions: [{ ...raw.questions[0], allowOther: true }] }),
+    null,
+  );
+  assert.equal(
+    parse({
+      ...raw,
+      questions: [
+        {
+          ...raw.questions[0],
+          options: [{ label: "Allow always" }, { label: "Deny" }],
+        },
+      ],
+    }),
+    null,
+  );
+});

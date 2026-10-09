@@ -346,9 +346,12 @@ async fn blocked_recovery_write_is_bounded_and_retains_loss() {
     let mut state = BgState::new();
     let ch = Uuid::new_v4();
     seed_test_subscription(&mut state, ch);
-    // Bounded 16MB JSON request exceeds loopback TCP buffering. The server does
-    // not read it. This tests the real production write/timeout, not a mock sink.
-    state.active_filters.get_mut(&ch).unwrap().kinds = Some(vec![9; 8_000_000]);
+    // A bounded 16MB JSON string exceeds loopback TCP buffering. The server does
+    // not read it. Keep fixture serialization cheap so the outer bound measures
+    // the real production write timeout rather than formatting millions of JSON
+    // integers on a contended test host.
+    state.active_filters.get_mut(&ch).unwrap().require_mention = true;
+    let oversized_agent = "a".repeat(16 * 1024 * 1024);
     state.channel_dropped_since.insert(ch, 700);
     let (tx, _rx) = mpsc::channel(1);
     let started = tokio::time::Instant::now();
@@ -356,7 +359,7 @@ async fn blocked_recovery_write_is_bounded_and_retains_loss() {
     // timeout; this outer guard only catches a stalled test.
     timeout(
         Duration::from_secs(WS_SEND_TIMEOUT_SECS + 20),
-        recovery::recover_one(&mut client, &mut state, &tx, "agent"),
+        recovery::recover_one(&mut client, &mut state, &tx, &oversized_agent),
     )
     .await
     .unwrap();

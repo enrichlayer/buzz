@@ -106,6 +106,10 @@ pub struct PersonaEventContent {
     /// order and omitted for the default channel behavior.
     #[serde(default, skip_serializing_if = "super::AcpSessionPolicy::is_channel")]
     pub session_policy: super::AcpSessionPolicy,
+    /// Visible output policy. Appended and omitted for legacy full output so
+    /// pre-feature event bytes remain unchanged.
+    #[serde(default, skip_serializing_if = "super::AgentOutputMode::is_full")]
+    pub output_mode: super::AgentOutputMode,
 }
 
 /// Derive the d-tag (persona slug) from a `AgentDefinition`.
@@ -273,6 +277,7 @@ pub fn persona_from_event(event: &nostr::Event) -> Result<AgentDefinition, Strin
         respond_to_allowlist: content.respond_to_allowlist,
         parallelism: content.parallelism,
         session_policy: content.session_policy,
+        output_mode: content.output_mode,
         created_at: created_at.clone(),
         updated_at: created_at,
     })
@@ -562,6 +567,7 @@ pub fn persona_event_content(record: &AgentDefinition) -> PersonaEventContent {
         parallelism: record.parallelism,
         description: record.description.clone(),
         session_policy: record.session_policy,
+        output_mode: record.output_mode,
     }
 }
 
@@ -638,6 +644,7 @@ pub fn apply_persona_snapshot(record: &mut ManagedAgentRecord, persona: &AgentDe
     record.provider = snapshot.provider;
     record.runtime = snapshot.runtime;
     record.session_policy = persona.session_policy;
+    record.output_mode = persona.output_mode;
     // Drop a stale create-time harness pin when the definition switches to a
     // different known runtime (builtin, static preset, or loaded custom). A pin
     // that names an unknown/custom command is always kept.

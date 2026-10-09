@@ -610,6 +610,7 @@ mod tests {
             version: FORMAT_VERSION,
             definition: AgentSnapshotDefinition {
                 session_policy: Default::default(),
+                output_mode: Default::default(),
                 acp_command: None,
                 name: "test".to_string(),
                 source_is_builtin: false,
@@ -662,6 +663,7 @@ mod tests {
             version: FORMAT_VERSION,
             definition: AgentSnapshotDefinition {
                 session_policy: Default::default(),
+                output_mode: Default::default(),
                 acp_command: None,
                 name: "test".to_string(),
                 source_is_builtin: false,
@@ -710,6 +712,7 @@ mod tests {
             version: FORMAT_VERSION,
             definition: AgentSnapshotDefinition {
                 session_policy: Default::default(),
+                output_mode: Default::default(),
                 acp_command: None,
                 name: "test".to_string(),
                 source_is_builtin: false,

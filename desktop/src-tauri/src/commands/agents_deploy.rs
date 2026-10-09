@@ -28,6 +28,12 @@ pub(super) struct DeployProjections {
     pub owner_only_access: bool,
 }
 
+#[derive(Clone, Copy)]
+struct AcpLaunchPolicies {
+    session: crate::managed_agents::AcpSessionPolicy,
+    output: crate::managed_agents::AgentOutputMode,
+}
+
 /// Resolve the deploy-specific structured model/provider for a managed agent.
 #[cfg(test)]
 pub(crate) fn resolve_deploy_model_provider(
@@ -53,7 +59,7 @@ fn build_launch_block_for_policy(
     effective_prompt: Option<&str>,
     effective_model: Option<&str>,
     owner_pubkey: &str,
-    session_policy: crate::managed_agents::AcpSessionPolicy,
+    policies: AcpLaunchPolicies,
 ) -> serde_json::Value {
     use crate::managed_agents::{
         known_acp_runtime, resolve_session_title, DISPLAY_NAME_ENV_VAR, SESSION_TITLE_ENV_VAR,
@@ -79,7 +85,8 @@ fn build_launch_block_for_policy(
         "BUZZ_ACP_AGENTS".into(),
         crate::managed_agents::acp_agents_value(&descriptor.command, record.parallelism),
     );
-    crate::managed_agents::insert_acp_session_policy_env(&mut policy_env, session_policy);
+    crate::managed_agents::insert_acp_session_policy_env(&mut policy_env, policies.session);
+    crate::managed_agents::insert_agent_output_mode_env(&mut policy_env, policies.output);
 
     if let Some(value) = effective_prompt {
         policy_env.insert("BUZZ_ACP_SYSTEM_PROMPT".into(), value.to_string());
@@ -137,6 +144,7 @@ fn build_launch_block_for_policy(
     let is_claude = runtime.map(|r| r.id == "claude").unwrap_or(false);
     let strip_key = |k: &str| {
         k.eq_ignore_ascii_case(crate::managed_agents::ACP_SESSION_POLICY_ENV_VAR)
+            || k.eq_ignore_ascii_case(crate::managed_agents::ACP_OUTPUT_MODE_ENV_VAR)
             || (is_claude
                 && (k.eq_ignore_ascii_case("BUZZ_ACP_MODEL")
                     || k.eq_ignore_ascii_case("ANTHROPIC_MODEL")))
@@ -173,7 +181,10 @@ pub(super) fn build_launch_block(
         effective_prompt,
         effective_model,
         owner_pubkey,
-        crate::managed_agents::AcpSessionPolicy::Channel,
+        AcpLaunchPolicies {
+            session: crate::managed_agents::AcpSessionPolicy::Channel,
+            output: record.output_mode,
+        },
     )
 }
 
@@ -223,7 +234,10 @@ pub(crate) fn build_deploy_payload<R: tauri::Runtime>(
         effective.system_prompt.value.as_deref(),
         effective.model.value.as_deref(),
         &owner_pubkey,
-        crate::managed_agents::effective_acp_session_policy(record, &personas),
+        AcpLaunchPolicies {
+            session: crate::managed_agents::effective_acp_session_policy(record, &personas),
+            output: crate::managed_agents::effective_agent_output_mode(record, &personas),
+        },
     );
 
     let effective_parallelism =
@@ -362,17 +376,19 @@ mod tests {
         assert_eq!(launch["policy_env"]["BUZZ_ACP_MAX_TURN_DURATION"], "23");
         assert_eq!(launch["policy_env"]["BUZZ_ACP_AGENTS"], "4");
         assert_eq!(launch["policy_env"]["BUZZ_ACP_SESSION_POLICY"], "channel");
+        assert_eq!(launch["policy_env"]["BUZZ_ACP_OUTPUT_MODE"], "full");
         assert_eq!(launch["owner_pubkey"], "owner-hex");
     }
 
     #[test]
-    fn launch_block_thread_policy_is_authoritative_and_preserves_unrelated_env() {
+    fn launch_block_thread_policy_and_output_mode_are_authoritative() {
         let record = record();
         let descriptor = EffectiveHarnessDescriptor {
             command: "goose".into(),
             args: vec![],
             env: BTreeMap::from([
                 ("BUZZ_ACP_SESSION_POLICY".to_string(), "channel".to_string()),
+                ("BUZZ_ACP_OUTPUT_MODE".to_string(), "summary".to_string()),
                 ("KEEP_ME".to_string(), "yes".to_string()),
             ]),
         };
@@ -384,13 +400,21 @@ mod tests {
             None,
             None,
             "owner-hex",
-            crate::managed_agents::AcpSessionPolicy::Thread,
+            AcpLaunchPolicies {
+                session: crate::managed_agents::AcpSessionPolicy::Thread,
+                output: crate::managed_agents::AgentOutputMode::Full,
+            },
         );
 
         assert_eq!(launch["policy_env"]["BUZZ_ACP_SESSION_POLICY"], "thread");
         assert!(
             launch["env"]["BUZZ_ACP_SESSION_POLICY"].is_null(),
             "desktop policy must not be shadowed by descriptor env"
+        );
+        assert_eq!(launch["policy_env"]["BUZZ_ACP_OUTPUT_MODE"], "full");
+        assert!(
+            launch["env"]["BUZZ_ACP_OUTPUT_MODE"].is_null(),
+            "desktop output policy must not be shadowed by descriptor env"
         );
         assert_eq!(launch["env"]["KEEP_ME"], "yes");
     }

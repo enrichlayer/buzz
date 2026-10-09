@@ -69,6 +69,7 @@ fn test_runtime() -> &'static KnownAcpRuntime {
 fn test_record() -> ManagedAgentRecord {
     ManagedAgentRecord {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         description: None,
         pubkey: "test".to_string(),
         name: "Test Agent".to_string(),

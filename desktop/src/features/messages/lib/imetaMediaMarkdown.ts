@@ -368,13 +368,17 @@ export function splitOutgoingTags(tags: string[][] | undefined): {
   emojiTags: string[][];
   mentionTags: string[][];
   linkPreviewTags: string[][];
+  shellTags: string[][];
 } {
   const mediaTags: string[][] = [];
   const emojiTags: string[][] = [];
   const mentionTags: string[][] = [];
   const linkPreviewTags: string[][] = [];
+  const shellTags: string[][] = [];
   for (const tag of tags ?? []) {
-    if (tag[0] === "emoji") {
+    if (tag[0] === "buzz.shell") {
+      shellTags.push(tag);
+    } else if (tag[0] === "emoji") {
       emojiTags.push(tag);
     } else if (tag[0] === "mention") {
       mentionTags.push(tag);
@@ -384,5 +388,5 @@ export function splitOutgoingTags(tags: string[][] | undefined): {
       mediaTags.push(tag);
     }
   }
-  return { mediaTags, emojiTags, mentionTags, linkPreviewTags };
+  return { mediaTags, emojiTags, mentionTags, linkPreviewTags, shellTags };
 }

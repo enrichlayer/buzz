@@ -33,3 +33,20 @@ test("active-agent lookup requires positive relay liveness evidence", () => {
   renderToStaticMarkup(React.createElement(Probe));
   assert.deepEqual([...active], ["online", "away"]);
 });
+
+test("managed session candidates retain the effective session policy", () => {
+  const [candidate] = buildChannelAgentSessionCandidates({
+    managedAgents: [
+      {
+        pubkey: "managed",
+        name: "Managed",
+        status: "running",
+        sessionPolicy: "thread",
+        outputMode: "summary",
+      },
+    ],
+    relayAgents: [],
+  });
+  assert.equal(candidate.sessionPolicy, "thread");
+  assert.equal(candidate.outputMode, "summary");
+});
