@@ -9,6 +9,7 @@
 //! 5. [`AcpClient::session_cancel`] / [`AcpClient::cancel_with_cleanup`] — cancel in-flight turn
 
 mod launch;
+mod permissions;
 mod questions;
 
 use futures_util::StreamExt;
@@ -1838,7 +1839,18 @@ impl AcpClient {
                                 self.handle_goose_usage_update(&msg);
                             }
                             "session/request_permission" => {
-                                self.handle_permission_request(&msg).await?;
+                                if msg["params"]["sessionId"].as_str() != Some(session_id) {
+                                    if let Some(id) = msg.get("id") {
+                                        self.write_ndjson(&permission_response_cancelled(id))
+                                            .await?;
+                                    }
+                                } else if self.question_asker.is_none() {
+                                    // Preserve unattended/local-task policy; channel turns
+                                    // always route offered permissions through their owner.
+                                    self.handle_permission_request(&msg).await?;
+                                } else if let Some(rx) = self.ask_permission(&msg).await? {
+                                    question_rx = Some(rx);
+                                }
                             }
                             "elicitation/create" => {
                                 if let Some(rx) = self.handle_elicitation_request(&msg).await? {

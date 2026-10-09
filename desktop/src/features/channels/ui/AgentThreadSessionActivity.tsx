@@ -1,3 +1,5 @@
+import { getSentMessageLink } from "@/features/agents/ui/AgentSessionToolItem/messageLinks";
+import { PublicationReceipt } from "@/features/agents/ui/PublicationReceipt";
 import * as React from "react";
 import { CircleAlert, Octagon, Radio } from "lucide-react";
 import { toast } from "sonner";
@@ -17,9 +19,20 @@ import {
   selectThreadSessionTranscript,
   shouldOfferOlderThreadSessionActivity,
 } from "@/features/agents/ui/agentThreadSession";
-import { AgentSessionTranscriptList } from "@/features/agents/ui/AgentSessionTranscriptList";
-import { AgentSessionOutputModeControl } from "@/features/agents/ui/AgentSessionOutputModeControl";
-import { presentAgentSessionTranscript } from "@/features/agents/ui/agentSessionOutputMode";
+import { TranscriptActivityItem } from "@/features/agents/ui/activityRenderClasses/TranscriptActivityItem";
+import { SessionChanges } from "@/features/agents/ui/SessionChanges";
+import { SessionViewControl } from "@/features/agents/ui/SessionViewControl";
+import { SessionPermissionPolicy } from "@/features/agents/ui/SessionPermissionPolicy";
+import {
+  visibleSessionItems,
+  sessionActivityAnchor,
+  sessionOutcome,
+  type SessionView,
+} from "@/features/agents/ui/threadSessionPresentation";
+import {
+  useThreadActivityFragments,
+  useThreadVisibleMessageIds,
+} from "@/features/messages/ui/ThreadSessionTimeline";
 import { buildTranscriptState } from "@/features/agents/ui/agentSessionTranscript";
 import {
   useArchivedChannelEvents,
@@ -66,10 +79,15 @@ export function AgentThreadSessionActivity({
   threadRootId,
 }: AgentThreadSessionActivityProps) {
   const hasObserver = agent.status === "running" || agent.status === "deployed";
-  const { errorMessage, events } = useObserverEvents(hasObserver, agent.pubkey);
+  const { errorMessage, events, connectionState } = useObserverEvents(
+    hasObserver,
+    agent.pubkey,
+  );
   const archivedEvents = useArchivedChannelEvents(agent.pubkey, channelId);
   const [isLoadingOlder, setIsLoadingOlder] = React.useState(false);
-  const [showDetails, setShowDetails] = React.useState(false);
+  const [view, setView] = React.useState<SessionView>(
+    agent.outputMode === "summary" ? "conversation" : "activity",
+  );
 
   const channelEvents = React.useMemo(
     () => scopeByChannel(events, channelId),
@@ -84,17 +102,18 @@ export function AgentThreadSessionActivity({
     [combinedEvents],
   );
   const selection = React.useMemo(
-    () => selectThreadSessionTranscript(transcript, threadMessages, channelId),
+    () =>
+      selectThreadSessionTranscript(
+        transcript,
+        threadMessages,
+        channelId,
+        true,
+      ),
     [channelId, threadMessages, transcript],
   );
-  const presentation = React.useMemo(
-    () =>
-      presentAgentSessionTranscript(
-        selection.items,
-        agent.outputMode,
-        showDetails,
-      ),
-    [agent.outputMode, selection.items, showDetails],
+  const visibleItems = React.useMemo(
+    () => visibleSessionItems(selection.items, view),
+    [selection.items, view],
   );
   const exactActiveTurns = useExactActiveAgentTurns(agent.pubkey);
   const isTurnLive = exactActiveTurns.some(
@@ -119,6 +138,110 @@ export function AgentThreadSessionActivity({
       await onSendFeedback(request.message, agent.pubkey);
     },
     [agent.pubkey, onSendFeedback],
+  );
+
+  const visibleMessageIds = useThreadVisibleMessageIds();
+  const anchorMessages = React.useMemo(
+    () =>
+      visibleMessageIds
+        ? threadMessages.filter((message) =>
+            visibleMessageIds.includes(message.id),
+          )
+        : threadMessages,
+    [threadMessages, visibleMessageIds],
+  );
+  const fragments = React.useMemo(
+    () =>
+      visibleItems.flatMap((item) => {
+        const afterMessageId = sessionActivityAnchor(item, anchorMessages);
+        if (!afterMessageId) return [];
+        const publication =
+          item.type === "tool" ? getSentMessageLink(item) : null;
+        const isPublished =
+          publication?.channelId === channelId &&
+          threadMessages.some(
+            (message) =>
+              message.id.toLowerCase() === publication.messageId.toLowerCase(),
+          );
+        const activity =
+          isPublished && item.type === "tool" ? (
+            <PublicationReceipt key={item.id} item={item} />
+          ) : (
+            <TranscriptActivityItem
+              key={item.id}
+              agentAvatarUrl={
+                profiles?.[agent.pubkey.toLowerCase()]?.avatarUrl ?? null
+              }
+              agentName={agent.name}
+              agentPubkey={agent.pubkey}
+              profiles={profiles}
+              item={item}
+            />
+          );
+        const diagnostic =
+          item.type === "metadata" ||
+          (item.type === "lifecycle" &&
+            [
+              "Mode",
+              "Commands",
+              "Usage",
+              "Session ready",
+              "Turn started",
+            ].includes(item.title));
+        return [
+          {
+            id: `${agent.pubkey}:${item.id}`,
+            agentName: agent.name,
+            agentId: agent.pubkey,
+            turnId: item.turnId,
+            afterMessageId,
+            timestamp: item.timestamp,
+            content: (
+              <AnnotationSubmitProvider onSubmit={handleAnnotationSubmit}>
+                <div
+                  data-session-event={item.id}
+                  data-session-supporting={
+                    view !== "full" && item.type === "message"
+                      ? "true"
+                      : undefined
+                  }
+                  className="min-w-0"
+                >
+                  <span className="sr-only">{agent.name}: </span>
+                  {diagnostic ? (
+                    <details>
+                      <summary className="cursor-pointer text-xs text-muted-foreground">
+                        Diagnostics · {item.title}
+                      </summary>
+                      {activity}
+                    </details>
+                  ) : (
+                    activity
+                  )}
+                </div>
+              </AnnotationSubmitProvider>
+            ),
+          },
+        ];
+      }),
+    [
+      visibleItems,
+      view,
+      threadMessages,
+      channelId,
+      anchorMessages,
+      profiles,
+      agent.pubkey,
+      agent.name,
+      handleAnnotationSubmit,
+    ],
+  );
+  useThreadActivityFragments(agent.pubkey, fragments);
+  const outcome = sessionOutcome(
+    combinedEvents,
+    selection.turnIds,
+    isTurnLive,
+    connectionState === "closed" || connectionState === "error",
   );
 
   const handleInterruptTurn = React.useCallback(async () => {
@@ -242,7 +365,7 @@ export function AgentThreadSessionActivity({
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-sm font-medium">Coding session</h3>
           <p className="truncate text-xs text-muted-foreground">
-            {agent.name} · {isTurnLive ? "Working" : "Session activity"}
+            {agent.name} · <span role="status">{outcome}</span>
           </p>
         </div>
         <Button
@@ -269,38 +392,18 @@ export function AgentThreadSessionActivity({
         </Button>
       </div>
 
-      <div
-        className="mb-2 flex justify-end"
-        data-testid="agent-session-output-mode"
-      >
-        <AgentSessionOutputModeControl
-          hiddenCount={presentation.hiddenCount}
-          onShowDetailsChange={setShowDetails}
-          outputMode={agent.outputMode}
-          showDetails={showDetails}
-        />
-      </div>
-
-      <AnnotationSubmitProvider onSubmit={handleAnnotationSubmit}>
-        <AgentSessionTranscriptList
-          agentAvatarUrl={
-            profiles?.[agent.pubkey.toLowerCase()]?.avatarUrl ?? null
-          }
-          agentName={agent.name}
-          agentPubkey={agent.pubkey}
-          channelId={channelId}
-          contentContainerClassName="gap-3"
-          emptyDescription={
-            presentation.hiddenCount > 0
-              ? "Routine activity is hidden in summary view."
-              : `Waiting for ${agent.name}'s next session update.`
-          }
-          isTurnLive={isTurnLive}
-          items={presentation.items}
-          profiles={profiles}
-          scrollScopeKey={`${agent.pubkey}:${channelId}:${threadRootId}`}
-        />
-      </AnnotationSubmitProvider>
+      <SessionViewControl value={view} onChange={setView} />
+      <SessionPermissionPolicy
+        events={combinedEvents.filter(
+          (event) =>
+            event.turnId != null && selection.turnIds.has(event.turnId),
+        )}
+      />
+      <SessionChanges items={selection.items} />
+      <p className="text-xs text-muted-foreground">
+        Activity appears between messages. Select response text to comment;
+        Command/Ctrl+Shift+M opens feedback.
+      </p>
 
       {errorMessage ? (
         <p className="mt-3 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">

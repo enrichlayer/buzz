@@ -117,9 +117,12 @@ export function classifyTool(
         ? {
             ...descriptor,
             renderClass: "error",
-            label: descriptor.label.endsWith("failed")
-              ? descriptor.label
-              : `${descriptor.label} failed`,
+            label:
+              descriptor.renderClass === "shell"
+                ? "Command failed"
+                : descriptor.label.endsWith("failed")
+                  ? descriptor.label
+                  : `${descriptor.label} failed`,
           }
         : descriptor;
     }
@@ -168,7 +171,27 @@ function classifyLoadSkillTool(
 function classifyDeveloperHarnessTool(
   input: ToolClassificationInput,
 ): AgentActivityDescriptor | null {
-  const kind = resolveDeveloperToolKind(input);
+  const kind =
+    resolveDeveloperToolKind(input) ??
+    (typeof input.args.file_path === "string"
+      ? typeof input.args.old_string === "string" &&
+        typeof input.args.new_string === "string"
+        ? "str_replace"
+        : /^read(?:\s|$)/i.test(input.title)
+          ? "read_file"
+          : null
+      : null);
+  if (!kind && typeof input.args.command === "string")
+    return (
+      parseBuzzCliCommand(input.args.command) ?? {
+        renderClass: "shell",
+        label: "Ran command",
+        preview: input.args.command,
+        action: { verb: "Ran", object: input.args.command },
+        source: "harness",
+        groupKey: "shell:command",
+      }
+    );
   if (!kind) return null;
 
   if (kind === "shell") {
@@ -188,7 +211,7 @@ function classifyDeveloperHarnessTool(
   }
 
   if (kind === "read_file") {
-    const path = getToolString(input.args, ["path"]);
+    const path = getToolString(input.args, ["path", "file_path"]);
     return {
       renderClass: "file-read",
       label: "Read file",
@@ -215,7 +238,7 @@ function classifyDeveloperHarnessTool(
   }
 
   if (kind === "str_replace") {
-    const path = getToolString(input.args, ["path"]);
+    const path = getToolString(input.args, ["path", "file_path"]);
     return {
       renderClass: "file-edit",
       label: "Edited file",
@@ -337,12 +360,21 @@ function classifyDeveloperToolName(value: string | null | undefined) {
   const normalized = normalizeToolNameText(value);
   const base = normalized.replace(/^buzz_dev_mcp_/, "");
 
-  if (base === "shell" || normalized.endsWith("_shell")) return "shell";
-  if (base === "read_file" || normalized.endsWith("_read_file"))
+  if (base === "bash" || base === "shell" || normalized.endsWith("_shell"))
+    return "shell";
+  if (
+    base === "read" ||
+    base === "read_file" ||
+    normalized.endsWith("_read_file")
+  )
     return "read_file";
   if (base === "view_image" || normalized.endsWith("_view_image"))
     return "view_image";
-  if (base === "str_replace" || normalized.endsWith("_str_replace"))
+  if (
+    base === "edit" ||
+    base === "str_replace" ||
+    normalized.endsWith("_str_replace")
+  )
     return "str_replace";
   if (base === "todo") return "todo";
   if (base === "stop") return "stop_hook";

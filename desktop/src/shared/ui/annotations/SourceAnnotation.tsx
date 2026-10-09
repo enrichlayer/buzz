@@ -95,6 +95,26 @@ export function SourceAnnotation({
     [beginComment, captureSelection],
   );
 
+  React.useEffect(() => {
+    const onShortcut = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        open ||
+        event.key.toLowerCase() !== "m" ||
+        !event.shiftKey ||
+        !(event.metaKey || event.ctrlKey)
+      )
+        return;
+      const next = captureSelection();
+      if (next) {
+        event.preventDefault();
+        beginComment(next);
+      }
+    };
+    document.addEventListener("keydown", onShortcut);
+    return () => document.removeEventListener("keydown", onShortcut);
+  }, [beginComment, captureSelection, open]);
+
   const handleSubmit = React.useCallback(async () => {
     if (!submitContext || !anchor || !comment.trim() || submitting) return;
     setSubmitting(true);
@@ -125,7 +145,11 @@ export function SourceAnnotation({
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: this region observes native text selection; the actual action is a semantic button
     <div
-      className={cn("group/annotation relative", className)}
+      className={cn(
+        "group/annotation relative",
+        submitContext && "pr-10",
+        className,
+      )}
       data-annotation-source-id={source.sourceId}
       onKeyDown={handleKeyDown}
       onKeyUp={captureSelection}
@@ -145,7 +169,7 @@ export function SourceAnnotation({
             <Button
               aria-label="Comment on selected text"
               className={cn(
-                "absolute right-0 top-0 h-7 w-7 bg-background/90 text-muted-foreground shadow-xs ring-1 ring-border/60 backdrop-blur-sm transition-opacity hover:text-foreground",
+                "absolute right-0 top-0 h-8 w-8 bg-background text-foreground ring-1 ring-border transition-opacity",
                 anchor
                   ? "opacity-100"
                   : "pointer-events-none opacity-0 group-hover/annotation:opacity-40 group-focus-within/annotation:opacity-40",
@@ -154,7 +178,11 @@ export function SourceAnnotation({
               onClick={() => beginComment()}
               ref={triggerRef}
               size="icon"
-              title="Comment on selection (Command/Ctrl+Shift+M)"
+              title={
+                anchor
+                  ? "Comment on selection (Command/Ctrl+Shift+M)"
+                  : "Select text to comment (Command/Ctrl+Shift+M)"
+              }
               type="button"
               variant="ghost"
             >
@@ -166,7 +194,10 @@ export function SourceAnnotation({
             className="w-80 space-y-3"
             onCloseAutoFocus={(event) => {
               event.preventDefault();
-              restoreFocusRef.current?.focus();
+              (restoreFocusRef.current?.isConnected
+                ? restoreFocusRef.current
+                : triggerRef.current
+              )?.focus();
             }}
             sideOffset={8}
           >

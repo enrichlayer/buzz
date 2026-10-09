@@ -101,9 +101,8 @@ test("keyboard submit routes to the provider and a failed send retains the draft
     );
     const answer = container.querySelector("#answer");
     selectText(answer, 5, 15);
-    const surface = container.querySelector("[data-annotation-source-id]");
     await act(async () =>
-      fireEvent.keyDown(surface, {
+      fireEvent.keyDown(document.body, {
         key: "m",
         metaKey: true,
         shiftKey: true,

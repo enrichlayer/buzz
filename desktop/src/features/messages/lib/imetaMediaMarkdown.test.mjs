@@ -673,6 +673,7 @@ const MENTION_REF = [
 
 test("splitOutgoingTags: undefined input yields three empty arrays", () => {
   assert.deepEqual(splitOutgoingTags(undefined), {
+    shellTags: [],
     mediaTags: [],
     emojiTags: [],
     mentionTags: [],

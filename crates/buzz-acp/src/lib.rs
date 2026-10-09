@@ -27,6 +27,7 @@ mod runtime;
 use runtime::{AgentRuntime, PoolStartup, SessionMode};
 mod scope;
 mod setup_mode;
+mod shell_commands;
 mod usage;
 
 pub use usage::TurnUsage;
@@ -661,7 +662,12 @@ impl QueuedNormalListenerEvent {
         queue: &mut EventQueue,
         steer_ack_tx: &mpsc::UnboundedSender<SteerAckEvent>,
     ) {
-        if !self.accepted || !queue.is_scope_in_flight(&self.scope) {
+        // Direct commands wait for the worker slot; never inject executable
+        // human intent into an in-flight model prompt via native steering.
+        if shell_commands::is_request(&self.steer_event.event)
+            || !self.accepted
+            || !queue.is_scope_in_flight(&self.scope)
+        {
             return;
         }
         let Some(signal) = mode_gate_signal(handling, &self.effective_author, owner) else {

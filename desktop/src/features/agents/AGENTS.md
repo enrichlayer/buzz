@@ -410,6 +410,16 @@ buzz messages send --channel <channel-id> --reply-to <thread-root-id> \
 - Rust: `definition_validation` and inbound persona tests pin the shared
   Unicode/control-character policy at local, import, publish, and sync gates.
 
+## Permission decisions
+
+Channel ACP permission requests use the built-in agent-prompt permission card;
+see `docs/agent-permissions.md`. Keep decisions owner-only and bound to the
+original signed request and tool payload. An answered card means the decision
+was sent, not that a tool succeeded. Never execute a command while opening its
+terminal; validate local agent ownership and the literal directory. Preserve
+the harness's configured permission policy and distinguish a manual human
+result from a harness tool result.
+
 ## Managed avatar media
 
 Desktop-managed profiles retain the saved persona/instance avatar as the desired
@@ -437,3 +447,21 @@ matches the code is worse than no rule; a new pattern that isn't written down
 here will be broken by the next agent that never learns it existed. Reviewers:
 treat a config-behavior diff without a matching AGENTS.md diff (or an explicit
 "no rules changed" note) as incomplete.
+
+## Reader transcript views
+
+Conversation, Activity and Full transcript are local presentation preferences;
+changing them never persists or changes an agent's configured output policy.
+Thread activity remains bound to exact triggering messages and turn IDs, with
+published messages authoritative. Insert captured activity between published
+messages in DOM reading order; collapsed replies must not strand activity in
+missing slots. Infer terminal outcomes from explicit turn/result evidence, never
+from a missing liveness badge. A turn-completed cleanup event must not override
+an earlier error or cancelled result for that turn.
+
+Successful publication tools that resolve to a message in the visible thread render
+as one compact receipt, with exact arguments/results behind disclosure. Never
+infer publication success from a command string or hide failures. Captured
+assistant follow-up stays readable, including distinct warnings. Reader view
+selection never rewrites captured content. Activity shares the message-body
+alignment; agent changes retain attribution even when display names match.

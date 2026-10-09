@@ -59,16 +59,59 @@ export function formatAnnotationMessage(
   anchor: AnnotationAnchor,
   comment: string,
 ): string {
-  const codeLocation = anchor.codeRange
-    ? `, code block \`${anchor.codeRange.blockId}\` lines ${anchor.codeRange.startLine}-${anchor.codeRange.endLine}`
-    : "";
+  const range = anchor.codeRange;
+  const block = range?.blockId.match(/:code:(\d+)$/)?.[1];
+  const location = range
+    ? `Response · code block ${block ?? "selected"} · ${range.startLine === range.endLine ? `line ${range.startLine}` : `lines ${range.startLine}–${range.endLine}`}`
+    : "Response · selected text";
   return [
-    "Feedback on the selected part of your response:",
+    location,
     "",
     quoteSelection(anchor.selectedText),
     "",
-    `Source: \`${anchor.sourceId}\` at revision \`${anchor.sourceRevision}\`${codeLocation}`,
-    "",
     comment.trim(),
+    "",
+    "```buzz-annotation",
+    JSON.stringify(annotationMetadata(anchor)).replaceAll("`", "\\u0060"),
+    "```",
   ].join("\n");
+}
+
+/** Structured source metadata uses a built-in fence so every existing harness receives it. */
+export function annotationMetadata(anchor: AnnotationAnchor) {
+  return {
+    sourceId: anchor.sourceId,
+    sourceRevision: anchor.sourceRevision,
+    selectedText: anchor.selectedText,
+    codeRange: anchor.codeRange,
+    channelId: anchor.channelId,
+    sessionId: anchor.sessionId,
+    turnId: anchor.turnId,
+  };
+}
+
+/** Recognize our complete annotation envelope; arbitrary Markdown stays untouched. */
+export function parseAnnotationMessage(message: string) {
+  const match = message.match(
+    /^(Response · (?:selected text|code block [^\n]+)|Reply to selection)\n\n([\s\S]*?)\n\n```buzz-annotation\n([^\n]+)\n```\s*$/,
+  );
+  if (!match) return null;
+  try {
+    const metadata = JSON.parse(match[3]);
+    if (
+      typeof metadata?.selectedText !== "string" ||
+      typeof metadata.sourceId !== "string" ||
+      typeof metadata.sourceRevision !== "string"
+    )
+      return null;
+    const quote = quoteSelection(metadata.selectedText);
+    if (!match[2].startsWith(`${quote}\n\n`)) return null;
+    return {
+      metadata,
+      label: match[1],
+      comment: match[2].slice(quote.length + 2),
+    };
+  } catch {
+    return null;
+  }
 }

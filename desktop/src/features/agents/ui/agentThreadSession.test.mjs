@@ -251,3 +251,25 @@ test("older activity recovery stays visible while a published prompt anchor may 
   assert.deepEqual([...recovered.turnIds], ["long-turn"]);
   assert.equal(recovered.items.length, 3_001);
 });
+
+test("receipt projection retains exact successful send evidence and never includes a foreign turn", () => {
+  const send = tool("send", {
+    renderClass: "message",
+    descriptor: { renderClass: "message" },
+    result: JSON.stringify({ accepted: true, event_id: "reply" }),
+  });
+  const selected = selectThreadSessionTranscript(
+    [
+      transcriptMessage("prompt", { messageId: "head" }),
+      send,
+      tool("foreign", { turnId: "foreign" }),
+    ],
+    [message("head"), message("reply")],
+    "channel-a",
+    true,
+  );
+  assert.deepEqual(
+    selected.items.map((item) => item.id),
+    ["send"],
+  );
+});

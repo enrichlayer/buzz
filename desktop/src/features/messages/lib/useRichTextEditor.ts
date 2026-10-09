@@ -677,7 +677,8 @@ export function useRichTextEditor({
   );
 
   const focusEnd = React.useCallback(() => {
-    editor?.commands.focus("end");
+    if (!editor?.isInitialized || editor.isDestroyed) return;
+    editor.commands.focus("end");
   }, [editor]);
 
   /**
@@ -687,7 +688,7 @@ export function useRichTextEditor({
    * effect) where we don't want to yank the cursor to the end.
    */
   const focusPreserve = React.useCallback(() => {
-    if (!editor) return;
+    if (!editor?.isInitialized || editor.isDestroyed) return;
     // `focus()` with no position argument preserves the current selection.
     editor.commands.focus();
   }, [editor]);

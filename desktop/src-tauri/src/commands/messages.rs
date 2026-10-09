@@ -415,6 +415,7 @@ pub async fn send_channel_message(
     emoji_tags: Option<Vec<Vec<String>>>,
     mention_tags: Option<Vec<Vec<String>>>,
     link_preview_tags: Option<Vec<Vec<String>>>,
+    shell_tags: Option<Vec<Vec<String>>>,
     sent_from_thread_tag: Option<Vec<String>>,
     mention_pubkeys: Option<Vec<String>>,
     kind: Option<u32>,
@@ -457,7 +458,7 @@ pub async fn send_channel_message(
 
     let mut resolved_root: Option<String> = None;
 
-    let builder = match kind_num {
+    let mut builder = match kind_num {
         buzz_core_pkg::kind::KIND_FORUM_POST => events::build_forum_post(
             channel_uuid,
             content.trim(),
@@ -517,6 +518,28 @@ pub async fn send_channel_message(
             )?
         }
     };
+
+    if let Some(shell_tags) = shell_tags.filter(|tags| !tags.is_empty()) {
+        if kind_num != 9 || shell_tags.len() != 1 || !media.is_empty() {
+            return Err(
+                "a direct command requires one stream-message intent and no attachments".into(),
+            );
+        }
+        let tag = &shell_tags[0];
+        if tag.len() != 4
+            || tag[0] != "buzz.shell"
+            || tag[1] != "1"
+            || mentions.len() != 1
+            || tag[2] != mentions[0]
+            || tag[3].trim().is_empty()
+            || tag[3].len() > 16_000
+            || tag[3].contains('\0')
+            || content.trim().strip_prefix('!').map(str::trim) != Some(tag[3].as_str())
+        {
+            return Err("invalid direct command intent".into());
+        }
+        builder = builder.tag(nostr::Tag::parse(tag).map_err(|e| e.to_string())?);
+    }
 
     // `created_at` is the signed event's own second, not a post-publication
     // clock read — persisted as an event cursor by the Projects opener.

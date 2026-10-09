@@ -99,6 +99,7 @@ export function selectThreadSessionTranscript(
   items: readonly TranscriptItem[],
   threadMessages: readonly TimelineMessage[],
   channelId: string,
+  includePublicationReceipts = false,
 ): ThreadSessionTranscriptSelection {
   const publishedMessageIds = new Set(
     threadMessages.map((message) => message.id.toLowerCase()),
@@ -160,7 +161,7 @@ export function selectThreadSessionTranscript(
       return false;
     }
 
-    if (item.type === "tool") {
+    if (item.type === "tool" && !includePublicationReceipts) {
       const sentMessage = getSentMessageLink(item);
       if (
         sentMessage?.channelId === channelId &&

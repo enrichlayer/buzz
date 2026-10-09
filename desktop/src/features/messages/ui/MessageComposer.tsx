@@ -1,4 +1,5 @@
 import * as React from "react";
+import { shellCommand } from "@/features/messages/lib/shellCommand";
 import { EditorContent } from "@tiptap/react";
 import {
   useChannelLinks,
@@ -935,6 +936,26 @@ function MessageComposerImpl({
               </div>
             ) : null}
             {composerLinkPreviews}
+            {editTarget == null &&
+              shellCommand(
+                contentRef.current,
+                mentions
+                  .getDraftMentionRefs(contentRef.current)
+                  .map((ref) => ref.displayName),
+              ) != null && (
+                <div
+                  role="status"
+                  className="mb-3 border-l-2 border-primary/60 pl-3 text-sm leading-relaxed text-muted-foreground"
+                >
+                  <span className="font-medium text-foreground">
+                    Run Bash on the addressed agent’s host
+                  </span>
+                  <br />
+                  Address one agent. The command runs directly; its output is
+                  shared in this thread and available to the agent. Remove ! to
+                  send a message.
+                </div>
+              )}
             <output
               aria-live="polite"
               className="sr-only"

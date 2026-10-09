@@ -138,12 +138,17 @@ async function openThread(page: Page, rootId: string) {
 
 async function selectRenderedText(page: Page, locator: Locator) {
   await locator.scrollIntoViewIfNeeded();
-  const box = await locator.boundingBox();
+  const box = await locator.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+  });
   if (!box) throw new Error("selection target has no browser bounds");
   const y = box.y + box.height / 2;
   await page.mouse.move(box.x + 2, y);
   await page.mouse.down();
-  await page.mouse.move(box.x + Math.min(box.width - 2, 260), y, {
+  await page.mouse.move(box.x + box.width + 2, y, {
     steps: 12,
   });
   await page.mouse.up();
@@ -204,7 +209,7 @@ test("selected assistant code sends immutable feedback to the exact agent thread
   await seedThreadsAndObserver(page);
 
   const thread = await openThread(page, ROOT_A);
-  const activity = thread.getByTestId("agent-thread-session-activity");
+  const activity = thread;
   await expect(activity).toBeVisible();
   await expect(activity).toContainText("const routed = threadId;");
   await expect(activity).not.toContainText(
@@ -214,9 +219,7 @@ test("selected assistant code sends immutable feedback to the exact agent thread
   const codeLine = activity.locator('[data-code-line="2"]');
   await expect(codeLine).toHaveText("const routed = threadId;");
   await selectRenderedText(page, codeLine);
-  await activity
-    .getByRole("button", { name: "Comment on selected text" })
-    .click();
+  await page.keyboard.press("ControlOrMeta+Shift+M");
 
   const feedback = page.getByRole("textbox", { name: "Feedback" });
   await expect(feedback).toBeVisible();
@@ -234,15 +237,26 @@ test("selected assistant code sends immutable feedback to the exact agent thread
   expect(sent.mentionPubkeys).toEqual([AGENT_PUBKEY]);
   expect(sent.parentEventId).toBe(ROOT_A);
   expect(sent.rootEventId).toBe(ROOT_A);
-  expect(sent.content).toContain(
-    "Feedback on the selected part of your response:\n\n> const routed = threadId;",
+  expect(sent.content).toContain("Response · code block 1 · line 2");
+  expect(sent.content).toContain("> const routed = threadId;");
+  const receipt = JSON.parse(
+    sent.content.split("```buzz-annotation\n")[1].split("\n```")[0],
   );
-  expect(sent.content).toContain(`Source: \`${ASSISTANT_SOURCE_ID}\``);
-  expect(sent.content).toMatch(/at revision `fnv1a64:[0-9a-f]{16}`/);
-  expect(sent.content).toContain(
-    `code block \`${ASSISTANT_SOURCE_ID}:code:1\` lines 2-2`,
-  );
-  expect(sent.content.endsWith(FEEDBACK)).toBe(true);
+  expect(receipt.sourceId).toBe(ASSISTANT_SOURCE_ID);
+  expect(receipt.sourceRevision).toMatch(/^fnv1a64:[0-9a-f]{16}$/);
+  expect(receipt.codeRange).toEqual({
+    blockId: `${ASSISTANT_SOURCE_ID}:code:1`,
+    startLine: 2,
+    endLine: 2,
+  });
+  const original = thread.getByTestId("annotation-reference").first();
+  await expect(
+    original.getByText(ASSISTANT_SOURCE_ID, { exact: true }),
+  ).not.toBeVisible();
+  await original.locator("summary").click();
+  await expect(
+    original.getByText(ASSISTANT_SOURCE_ID, { exact: true }),
+  ).toBeVisible();
   await expect(thread.getByText(FEEDBACK, { exact: true })).toBeVisible();
 
   const publishedReply = thread.locator(
@@ -268,11 +282,10 @@ test("selected assistant code sends immutable feedback to the exact agent thread
   expect(publishedSent.mentionPubkeys).toEqual([AGENT_PUBKEY]);
   expect(publishedSent.parentEventId).toBe(PUBLISHED_AGENT_REPLY);
   expect(publishedSent.rootEventId).toBe(ROOT_A);
+  expect(publishedSent.content).toContain("Response · selected text");
+  expect(publishedSent.content).toContain("> Published agent conclusion.");
   expect(publishedSent.content).toContain(
-    "Feedback on the selected part of your response:\n\n> Published agent conclusion.",
-  );
-  expect(publishedSent.content).toContain(
-    `Source: \`${PUBLISHED_AGENT_REPLY}\` at revision \`fnv1a64:`,
+    `"sourceId":"${PUBLISHED_AGENT_REPLY}"`,
   );
   expect(publishedSent.content).not.toContain("code block");
   await expect(

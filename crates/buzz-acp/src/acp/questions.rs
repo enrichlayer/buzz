@@ -25,6 +25,7 @@ pub(super) struct PendingQuestion {
     request_id: Value,
     questions: Vec<AskQuestion>,
     cancel_tx: oneshot::Sender<()>,
+    permission: bool,
 }
 
 /// Bound on the `cancel` reply written when a turn times out.
@@ -86,6 +87,7 @@ impl AcpClient {
                         request_id: id,
                         questions: prompt.questions,
                         cancel_tx: handle.cancel_tx,
+                        permission: false,
                     });
                     return Ok(Some(handle.outcome_rx));
                 }
@@ -102,6 +104,36 @@ impl AcpClient {
         Ok(None)
     }
 
+    /// Permission requests share the cancellable card lifecycle, but never
+    /// accept free text or an answer from someone other than the owner.
+    pub(super) async fn ask_permission(
+        &mut self,
+        msg: &Value,
+    ) -> Result<Option<QuestionRx>, AcpError> {
+        let Some(id) = msg.get("id") else {
+            return Ok(None);
+        };
+        if self.pending_question.is_none() {
+            if let Some(asker) = &self.question_asker {
+                if let Ok(prompt) = super::permissions::permission_prompt(msg, asker) {
+                    let handle = asker.ask(&prompt);
+                    self.pending_question = Some(PendingQuestion {
+                        request_id: id.clone(),
+                        questions: prompt.questions,
+                        cancel_tx: handle.cancel_tx,
+                        permission: true,
+                    });
+                    return Ok(Some(handle.outcome_rx));
+                }
+            }
+        }
+        // Missing owner, unsupported payload, or another pending card: no
+        // implicit approval and no request left hanging.
+        self.write_ndjson(&super::permission_response_cancelled(id))
+            .await?;
+        Ok(None)
+    }
+
     /// Reply to the pending question's request with its card's outcome.
     pub(super) async fn finish_question(
         &mut self,
@@ -111,6 +143,30 @@ impl AcpClient {
             return Ok(());
         };
         let id = &pending.request_id;
+        if pending.permission {
+            let response = match outcome {
+                Ok(QuestionOutcome::Answered(answer)) => {
+                    let selected =
+                        answer
+                            .get("permission")
+                            .and_then(|a| a.first())
+                            .and_then(|label| {
+                                pending.questions[0]
+                                    .options
+                                    .iter()
+                                    .find(|(l, _)| l == label)
+                            });
+                    match selected {
+                        Some((_, option_id)) if !option_id.is_empty() => {
+                            super::permission_response_selected(id, option_id)
+                        }
+                        _ => super::permission_response_cancelled(id),
+                    }
+                }
+                _ => super::permission_response_cancelled(id),
+            };
+            return self.write_ndjson(&response).await;
+        }
         let response = match outcome {
             Ok(QuestionOutcome::Answered(answer)) => result(
                 id,
@@ -139,8 +195,12 @@ impl AcpClient {
         };
         let _ = pending.cancel_tx.send(());
         tracing::info!(target: "acp::question", "question cancelled id={}", pending.request_id);
-        self.write_ndjson(&result(&pending.request_id, json!({"action": "cancel"})))
-            .await
+        let response = if pending.permission {
+            super::permission_response_cancelled(&pending.request_id)
+        } else {
+            result(&pending.request_id, json!({"action": "cancel"}))
+        };
+        self.write_ndjson(&response).await
     }
 
     /// The turn hit its hard cap with a question open: withdraw the card and

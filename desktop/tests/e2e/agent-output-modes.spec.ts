@@ -143,10 +143,10 @@ async function openSession(page: Page, outputMode?: "full" | "summary") {
     .click();
   const activity = page.getByTestId("agent-thread-session-activity");
   await expect(activity).toBeVisible();
-  return activity;
+  return page.getByTestId("message-thread-panel");
 }
 
-test("summary preserves replies, failures and permissions; details reveal original activity", async ({
+test("conversation preserves replies, failures and permissions; full transcript reveals captured activity", async ({
   page,
 }) => {
   const activity = await openSession(page, "summary");
@@ -160,14 +160,14 @@ test("summary preserves replies, failures and permissions; details reveal origin
   await expect(activity).not.toContainText("Commands available: 97");
   await expect(activity).not.toContainText("bypassPermissions");
   await activity
-    .getByRole("button", { name: "Show details", exact: true })
+    .getByRole("button", { name: "Full transcript", exact: true })
     .click();
   await expect(activity).toContainText("src/endpoint.ts");
   await expect(activity).toContainText("Commands available: 97");
   await expect(activity).toContainText("bypassPermissions");
   await expect(activity).toContainText("Missing auth configuration");
   await activity
-    .getByRole("button", { name: "Show summary", exact: true })
+    .getByRole("button", { name: "Conversation", exact: true })
     .click();
   await expect(activity).not.toContainText("src/endpoint.ts");
   await expect(activity).not.toContainText("Commands available: 97");
@@ -181,15 +181,129 @@ test("summary preserves replies, failures and permissions; details reveal origin
   expect(policyWrites).toEqual([]);
 });
 
-test("legacy agents retain full decorated activity", async ({ page }) => {
+test("legacy agents show decorated activity with local transcript controls", async ({
+  page,
+}) => {
   const activity = await openSession(page);
   await expect(activity).toContainText("src/endpoint.ts");
   await expect(activity.locator('[data-code-line="1"]')).toHaveText(
     "const auth = null;",
   );
   await expect(
-    activity.getByRole("button", { name: "Show details", exact: true }),
-  ).toHaveCount(0);
+    activity.getByRole("button", { name: "Activity", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(activity).toContainText("Command failed");
+  const body = await activity.getByTestId("message-thread-body").boundingBox();
+  const dock = await activity
+    .getByTestId("thread-composer-overlay")
+    .boundingBox();
+  if (!body || !dock)
+    throw new Error("Coding transcript or composer has no bounds");
+  expect(body.y + body.height).toBeLessThanOrEqual(dock.y + 1);
+});
+
+test("publication receipts retain raw evidence and selection previews expand exactly", async ({
+  page,
+}) => {
+  const panel = await openSession(page);
+  const selected =
+    "First line\nSecond line\nThird line\nFourth line\nFifth line ending mid-wor";
+  await page.evaluate(
+    ({ agent, channel, root, session, turn, selected }) => {
+      const event = (seq: number, update: unknown) => ({
+        seq: 100 + seq,
+        timestamp: new Date(1_780_000_000_000 + seq * 1000).toISOString(),
+        kind: "acp_read",
+        agentIndex: 0,
+        channelId: channel,
+        sessionId: session,
+        turnId: turn,
+        payload: {
+          method: "session/update",
+          params: { sessionId: session, update },
+        },
+      });
+      window.__BUZZ_E2E_SEED_OBSERVER_EVENTS__?.({
+        agentPubkey: agent,
+        events: [
+          event(1, {
+            sessionUpdate: "user_message_chunk",
+            messageId: root,
+            content: { type: "text", text: "Inspect the endpoint" },
+          }),
+          event(2, {
+            sessionUpdate: "tool_call",
+            toolCallId: "publish-proof",
+            title: "Bash",
+            kind: "execute",
+            status: "completed",
+            rawInput: {
+              command: `cat <<'EOF' | buzz messages send --channel ${channel} --content -\nReply\nEOF`,
+            },
+            rawOutput: JSON.stringify({
+              accepted: true,
+              event_id: "5".repeat(64),
+            }),
+          }),
+          event(3, {
+            sessionUpdate: "agent_message_chunk",
+            content: {
+              type: "text",
+              text: "Warning: Desktop support remains pending.",
+            },
+          }),
+        ],
+      });
+      window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
+        channelName: "general",
+        id: "6".repeat(64),
+        parentEventId: root,
+        content: `Response · selected text\n\n${selected
+          .split("\n")
+          .map((line) => `> ${line}`)
+          .join(
+            "\n",
+          )}\n\nKeep the exact selection.\n\n\`\`\`buzz-annotation\n${JSON.stringify({ sourceId: "source", sourceRevision: "rev", selectedText: selected })}\n\`\`\``,
+      });
+    },
+    {
+      agent: AGENT,
+      channel: CHANNEL,
+      root: ROOT,
+      session: SESSION,
+      turn: TURN,
+      selected,
+    },
+  );
+  const receipt = panel.getByTestId("publication-receipt");
+  await expect(receipt).toBeVisible();
+  await receipt.locator("summary").press("Enter");
+  await expect(receipt).toContainText('"accepted": true');
+  await expect(receipt).toContainText("buzz messages send");
+  await expect(panel).toContainText(
+    "Warning: Desktop support remains pending.",
+  );
+  const feedback = panel.getByTestId("selection-feedback");
+  await expect(feedback).toBeVisible();
+  const quote = feedback.locator("blockquote");
+  expect(
+    await quote.evaluate((el) => el.getBoundingClientRect().height),
+  ).toBeLessThanOrEqual(73);
+  await feedback
+    .getByRole("button", { name: "Show full selection" })
+    .press("Enter");
+  await expect(quote).toHaveText(selected);
+  expect(
+    await quote.evaluate((el) => el.getBoundingClientRect().height),
+  ).toBeGreaterThan(73);
+  await feedback.getByRole("button", { name: "Show less" }).click();
+  await panel
+    .getByRole("button", { name: "Full transcript", exact: true })
+    .click();
+  await expect(receipt).toBeVisible();
+  await expect(panel).toContainText(
+    "Warning: Desktop support remains pending.",
+  );
 });
 
 test("persona output mode saves through the behavior group and reopens as Summary", async ({

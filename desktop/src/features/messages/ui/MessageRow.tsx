@@ -1,3 +1,5 @@
+import { SelectionFeedback } from "@/shared/ui/annotations/SelectionFeedback";
+import { parseAnnotationMessage } from "@/shared/ui/annotations/annotationModel";
 import * as React from "react";
 import { AlertTriangle } from "lucide-react";
 import {
@@ -371,7 +373,12 @@ export const MessageRow = React.memo(
         collapseDepthGuideActions.map((action) => [action.depth, action]),
       );
     }, [collapseDepthGuideActions]);
+    const annotation = React.useMemo(
+      () => parseAnnotationMessage(message.body),
+      [message.body],
+    );
     const renderBody = () => {
+      if (annotation) return <SelectionFeedback value={annotation} />;
       const KindCard = getMessageKindCard(message.kind);
       if (KindCard) {
         return (

@@ -25,7 +25,7 @@ export function useComposerHeightPadding(
   scrollContainerRef: React.RefObject<HTMLElement | null>,
   composerRef: React.RefObject<HTMLElement | null>,
   resetKey?: unknown,
-  mode: "padding" | "css-variable" = "padding",
+  mode: "padding" | "css-variable" | "none" = "padding",
   settleAtBottom?: () => boolean,
 ) {
   const settleAtBottomRef = React.useRef(settleAtBottom);
@@ -33,6 +33,8 @@ export function useComposerHeightPadding(
 
   React.useEffect(() => {
     void resetKey;
+    // A composer in normal document flow already reserves its own height.
+    if (mode === "none") return;
     const scrollEl = scrollContainerRef.current;
     const composerEl = composerRef.current;
 
