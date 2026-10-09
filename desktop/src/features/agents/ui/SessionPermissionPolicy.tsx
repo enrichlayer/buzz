@@ -9,8 +9,7 @@ export function SessionPermissionPolicy({
   const event = [...events]
     .reverse()
     .find((item) => item.kind === "permission_policy");
-  if (!event || !event.payload || typeof event.payload !== "object")
-    return null;
+  if (!event?.payload || typeof event.payload !== "object") return null;
   const policy = event.payload as Record<string, unknown>;
   const effective =
     typeof policy.effective === "string" ? policy.effective : null;
