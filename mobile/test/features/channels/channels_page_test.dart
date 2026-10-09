@@ -1,3 +1,5 @@
+import 'package:buzz/features/pairing/pairing_provider.dart';
+import 'package:buzz/shared/community/paired_community_landing.dart';
 import 'dart:async';
 
 import '../profile/presence_snapshot_test.dart'
@@ -18,7 +20,7 @@ import 'package:hooks_riverpod/misc.dart';
 import 'package:buzz/features/channels/channel_stars/channel_stars_provider.dart';
 import 'package:buzz/features/channels/channel_mutes/channel_mutes_provider.dart';
 import 'package:buzz/features/channels/channel_sort/channel_sort_provider.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:buzz/shared/theme/buzz_icons.dart';
 import 'package:buzz/features/channels/channel.dart';
 import 'package:buzz/features/channels/channel_management_provider.dart';
 import 'package:buzz/features/channels/channel_sections/channel_sections_provider.dart';
@@ -55,8 +57,7 @@ void main() {
     if (Platform.environment.containsKey('COMMUNITY_SCREENSHOTS')) {
       for (final font in {
         'Inter': 'assets/fonts/InterVariable.ttf',
-        'packages/lucide_icons_flutter/Lucide':
-            'packages/lucide_icons_flutter/assets/lucide.ttf',
+        'BuzzTabler': 'assets/fonts/TablerIcons.ttf',
       }.entries) {
         await (FontLoader(
           font.key,
@@ -288,8 +289,8 @@ void main() {
     expect(find.text('Community'), findsOneWidget);
     expect(find.byTooltip('Create or start conversation'), findsOneWidget);
     expect(find.byTooltip('Channels options'), findsOneWidget);
-    expect(find.byIcon(LucideIcons.ellipsisVertical), findsWidgets);
-    expect(find.byIcon(LucideIcons.arrowUpDown), findsNothing);
+    expect(find.byIcon(BuzzIcons.ellipsisVertical), findsWidgets);
+    expect(find.byIcon(BuzzIcons.arrowUpDown), findsNothing);
     expect(find.byTooltip('DMs options'), findsOneWidget);
 
     // DM identity display: the unnamed counterpart tile renders its
@@ -773,10 +774,10 @@ void main() {
       );
     }
     for (final icon in [
-      LucideIcons.pencil,
-      LucideIcons.arrowUp,
-      LucideIcons.arrowDown,
-      LucideIcons.trash2,
+      BuzzIcons.pencil,
+      BuzzIcons.arrowUp,
+      BuzzIcons.arrowDown,
+      BuzzIcons.trash2,
     ]) {
       expect(
         find.descendant(of: popover, matching: find.byIcon(icon)),
@@ -812,7 +813,7 @@ void main() {
     final error = Theme.of(tester.element(popover)).colorScheme.error;
     final deleteText = tester.widget<Text>(find.text('Delete section'));
     final deleteIcon = tester.widget<Icon>(
-      find.descendant(of: popover, matching: find.byIcon(LucideIcons.trash2)),
+      find.descendant(of: popover, matching: find.byIcon(BuzzIcons.trash2)),
     );
     expect(deleteText.style?.color, error);
     expect(deleteIcon.color, error);
@@ -894,7 +895,7 @@ void main() {
     expect(profileRect.center.dy, communityRect.center.dy);
   });
 
-  testWidgets('reveals channel content from same-slot reconnect skeletons', (
+  testWidgets('keeps cached channels visible while reconnecting', (
     tester,
   ) async {
     final relaySession = _ReconnectingRelaySession();
@@ -907,59 +908,53 @@ void main() {
       ),
     );
     await tester.pump();
-    await tester.pump(const Duration(seconds: 2));
-    await tester.pump();
-
-    final skeleton = find.byKey(const Key('channels-connection-skeleton'));
-    expect(skeleton, findsOneWidget);
-    expect(
-      find.descendant(of: skeleton, matching: find.byType(SkeletonBar)),
-      findsWidgets,
-    );
-    expect(
-      find.descendant(
-        of: skeleton,
-        matching: find.byType(CircularProgressIndicator),
-      ),
-      findsNothing,
-    );
-    expect(
-      tester
-          .widget<Opacity>(find.byKey(const Key('skeleton-reveal-placeholder')))
-          .opacity,
-      1,
-    );
-    expect(
-      tester
-          .widget<Opacity>(find.byKey(const Key('skeleton-reveal-content')))
-          .opacity,
-      0,
-    );
-
-    relaySession.connect();
-    await tester.pump();
-    await tester.pump();
+    await tester.pump(const Duration(seconds: 3));
     expect(
       tester.widget<SkeletonReveal>(find.byType(SkeletonReveal)).loading,
       isFalse,
     );
-    await tester.pump(const Duration(milliseconds: 200));
-
     expect(
       tester
-          .widget<Opacity>(find.byKey(const Key('skeleton-reveal-placeholder')))
+          .widget<Opacity>(find.byKey(const Key('skeleton-reveal-content')))
           .opacity,
-      closeTo(0.5, 0.01),
+      1,
+    );
+    expect(find.text('general'), findsOneWidget);
+    relaySession.connect();
+    await tester.pumpAndSettle();
+    expect(find.text('general'), findsOneWidget);
+  });
+
+  testWidgets('keeps a fetched empty channel list visible during reconnect', (
+    tester,
+  ) async {
+    final relaySession = _ReconnectingRelaySession(
+      initialStatus: SessionStatus.connected,
+    );
+    await tester.pumpWidget(
+      buildTestable(
+        overrides: [
+          channelsProvider.overrideWith(() => _FakeNotifier(const [])),
+          relaySessionProvider.overrideWith(() => relaySession),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('No conversations yet'), findsOneWidget);
+    relaySession.setReconnecting();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 3));
+    expect(
+      tester.widget<SkeletonReveal>(find.byType(SkeletonReveal)).loading,
+      isFalse,
     );
     expect(
       tester
           .widget<Opacity>(find.byKey(const Key('skeleton-reveal-content')))
           .opacity,
-      closeTo(0.5, 0.01),
+      1,
     );
-
-    await tester.pump(const Duration(milliseconds: 200));
-    expect(find.text('general'), findsOneWidget);
+    expect(find.text('No conversations yet'), findsOneWidget);
   });
 
   testWidgets('announces neutral loading outside connection transitions', (
@@ -1486,12 +1481,12 @@ void main() {
     expect(
       find.descendant(
         of: options,
-        matching: find.byIcon(LucideIcons.ellipsisVertical),
+        matching: find.byIcon(BuzzIcons.ellipsisVertical),
       ),
       findsNothing,
     );
     expect(find.text('Edit'), findsOneWidget);
-    expect(find.byIcon(LucideIcons.trash2), findsNothing);
+    expect(find.byIcon(BuzzIcons.trash2), findsNothing);
     expect(
       tester.getSize(find.byKey(const Key('community-switcher-avatar-alpha'))),
       const Size.square(88),
@@ -1530,14 +1525,14 @@ void main() {
     expect(
       find.descendant(
         of: activeSelection,
-        matching: find.byIcon(LucideIcons.check),
+        matching: find.byIcon(BuzzIcons.check),
       ),
       findsOneWidget,
     );
     expect(
       find.descendant(
         of: inactiveSelection,
-        matching: find.byIcon(LucideIcons.check),
+        matching: find.byIcon(BuzzIcons.check),
       ),
       findsNothing,
     );
@@ -1552,7 +1547,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Done'), findsOneWidget);
-    expect(find.byIcon(LucideIcons.trash2), findsNWidgets(2));
+    expect(find.byIcon(BuzzIcons.trash2), findsNWidgets(2));
     expect(activeSelection, findsNothing);
     expect(inactiveSelection, findsNothing);
 
@@ -1702,7 +1697,7 @@ void main() {
           .transform
           .storage[0];
       expect(opacity(), 0);
-      expect(find.byIcon(LucideIcons.check), findsOneWidget);
+      expect(find.byIcon(BuzzIcons.check), findsOneWidget);
       await tester.tap(find.text('Edit'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
@@ -1718,14 +1713,14 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.getCenter(badge), center);
       expect(opacity(), 0);
-      expect(find.byIcon(LucideIcons.check), findsOneWidget);
-      expect(find.byIcon(LucideIcons.trash2), findsNothing);
+      expect(find.byIcon(BuzzIcons.check), findsOneWidget);
+      expect(find.byIcon(BuzzIcons.trash2), findsNothing);
       await tester.tap(find.text('Edit'));
       await tester.pumpAndSettle();
       expect(tester.getCenter(badge), center);
       expect(opacity(), 1);
       expect(scale(), 1);
-      expect(find.byIcon(LucideIcons.trash2), findsNWidgets(2));
+      expect(find.byIcon(BuzzIcons.trash2), findsNWidgets(2));
       expect(tester.takeException(), isNull);
     },
   );
@@ -1765,7 +1760,7 @@ void main() {
     await tester.tap(find.text('Edit'));
     await tester.pump();
 
-    expect(find.byIcon(LucideIcons.trash2), findsOneWidget);
+    expect(find.byIcon(BuzzIcons.trash2), findsOneWidget);
     expect(
       tester.getSize(find.byKey(const Key('community-switcher-badge-alpha'))),
       const Size.square(36),
@@ -1779,6 +1774,95 @@ void main() {
       findsOneWidget,
     );
   });
+
+  for (final reduceMotion in [false, true]) {
+    testWidgets(
+      'paired community waits then uses the community landing (reduced motion: $reduceMotion)',
+      (tester) async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.android;
+        addTearDown(() => debugDefaultTargetPlatformOverride = null);
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final community = Community(
+          id: 'alpha',
+          name: 'Alpha',
+          relayUrl: 'wss://alpha.example.com',
+          addedAt: DateTime(2025),
+        );
+        final notifier = _FakeCommunityListNotifier([community]);
+        final loaded = Completer<List<Channel>>();
+        await tester.pumpWidget(
+          buildTestable(
+            disableAnimations: reduceMotion,
+            overrides: [
+              pairingProvider.overrideWith(_CompletedPairingNotifier.new),
+              channelsProvider.overrideWith(
+                () => _FakeNotifier(testChannels, load: () => loaded.future),
+              ),
+              communityListProvider.overrideWith(() => notifier),
+              activeCommunityProvider.overrideWith((ref) async => community),
+            ],
+          ),
+        );
+        await tester.pump();
+        final context = tester.element(find.byType(ChannelsPage));
+        final container = ProviderScope.containerOf(context);
+        // A successful add-community pairing still has a route to dismiss.
+        final navigator = Navigator.of(context);
+        unawaited(
+          navigator.push<void>(
+            MaterialPageRoute(
+              builder: (_) => const Scaffold(body: Text('Pairing complete')),
+            ),
+          ),
+        );
+        await tester.pump();
+        container
+            .read(pairedCommunityLandingProvider.notifier)
+            .request(community);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(find.byKey(const Key('community-flying-avatar')), findsNothing);
+        navigator.pop();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pump();
+        await tester.pump();
+        final avatar = find.byKey(const Key('community-flying-avatar'));
+        expect(avatar, findsOneWidget);
+        expect(tester.getCenter(avatar), const Offset(195, 422));
+        expect(
+          find.byKey(const Key('community-switch-loading')),
+          findsOneWidget,
+        );
+        expect(container.read(pairedCommunityLandingProvider), isNull);
+        expect(notifier.switchedIds, isEmpty);
+        loaded.complete(
+          testChannels.where((channel) => channel.channelType != 'dm').toList(),
+        );
+        for (var i = 0; i < 12; i++) {
+          await tester.pump();
+        }
+        await tester.pump(const Duration(milliseconds: 450));
+        for (var i = 0; i < 6; i++) {
+          await tester.pump();
+        }
+        if (!reduceMotion) {
+          await tester.pump(const Duration(milliseconds: 260));
+          expect(tester.getCenter(avatar).dy, lessThan(422));
+        }
+        await tester.pumpAndSettle();
+        expect(avatar, findsNothing);
+        expect(find.byKey(const Key('community-switch-loading')), findsNothing);
+        expect(notifier.switchedIds, isEmpty);
+        expect(container.read(pairingProvider).status, PairingStatus.idle);
+        expect(tester.takeException(), isNull);
+        debugDefaultTargetPlatformOverride = null;
+      },
+    );
+  }
 
   for (final nativeHeader in [false, true]) {
     for (final reduceMotion in [false, true]) {
@@ -1994,7 +2078,7 @@ void main() {
             expect(
               find.descendant(
                 of: find.byKey(Key('community-switcher-selection-$id')),
-                matching: find.byIcon(LucideIcons.check),
+                matching: find.byIcon(BuzzIcons.check),
               ),
               id == 'alpha' ? findsOneWidget : findsNothing,
             );
@@ -3008,7 +3092,7 @@ void main() {
       16,
     );
     expect(
-      find.descendant(of: aliceChip, matching: find.byIcon(LucideIcons.x)),
+      find.descendant(of: aliceChip, matching: find.byIcon(BuzzIcons.x)),
       findsNothing,
     );
     expect(find.bySemanticsLabel('Remove Alice'), findsOneWidget);
@@ -3386,6 +3470,75 @@ void main() {
       FontWeight.w700,
     );
   });
+
+  for (final (label, events, bold) in [
+    (
+      'catch-up marks read ordinary messages and thread replies',
+      [
+        _observed(id: 'msg-1', createdAt: 20),
+        _observed(
+          id: 'reply-1',
+          createdAt: 30,
+          rootId: 'root',
+          isThreadedReply: true,
+        ),
+      ],
+      false,
+    ),
+    (
+      'channel catch-up does not read a mention',
+      [_observed(id: 'mention-1', createdAt: 20, highPriority: true)],
+      true,
+    ),
+  ]) {
+    testWidgets(label, (tester) async {
+      final channels = [
+        Channel(
+          id: '1',
+          name: 'general',
+          channelType: 'stream',
+          visibility: 'open',
+          description: 'General discussion',
+          createdBy: 'abc',
+          createdAt: DateTime(2025),
+          memberCount: 10,
+          lastMessageAt: DateTime.fromMillisecondsSinceEpoch(
+            30 * 1000,
+            isUtc: true,
+          ),
+          isMember: true,
+        ),
+      ];
+      final readState = _FakeReadStateNotifier(
+        const ReadStateState(
+          isReady: true,
+          pubkey: 'pk',
+          contexts: {'1': 10, 'activity:1': 25, 'thread-activity:root': 30},
+          version: 0,
+        ),
+      );
+
+      await tester.pumpWidget(
+        buildTestable(
+          overrides: [
+            channelsProvider.overrideWith(
+              () => _FakeNotifier(
+                channels,
+                observedEventsByChannel: {'1': events},
+              ),
+            ),
+            readStateProvider.overrideWith(() => readState),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.widget<Text>(find.text('general')).style?.fontWeight,
+        bold ? FontWeight.w700 : FontWeight.w400,
+      );
+    });
+  }
 
   testWidgets('seeds first loaded channels as read', (tester) async {
     final channels = [
@@ -3832,4 +3985,9 @@ class _SwitchingUserCache extends UserCacheNotifier {
     };
     loaded.complete(true);
   }
+}
+
+class _CompletedPairingNotifier extends PairingNotifier {
+  @override
+  PairingState build() => const PairingState(status: PairingStatus.success);
 }
