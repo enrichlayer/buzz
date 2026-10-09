@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 const script = new URL(
   "./build-enrichlayer-release-config.mjs",
@@ -15,7 +16,7 @@ function run(overrides, check) {
   const cwd = mkdtempSync(resolve(tmpdir(), "buzz-fork-config-"));
   mkdirSync(resolve(cwd, "src-tauri"));
   try {
-    const result = spawnSync(process.execPath, [script.pathname], {
+    const result = spawnSync(process.execPath, [fileURLToPath(script)], {
       cwd,
       encoding: "utf8",
       env: {
