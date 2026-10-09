@@ -54,11 +54,12 @@ export function captureSelectionAnchor(
   root: HTMLElement,
   source: AnnotationSource,
   selection: Selection | null,
+  boundedRange?: Range,
 ): AnnotationAnchor | null {
   if (selection?.rangeCount !== 1 || selection.isCollapsed) {
     return null;
   }
-  const range = selection.getRangeAt(0);
+  const range = boundedRange ?? selection.getRangeAt(0);
   if (
     !root.contains(range.startContainer) ||
     !root.contains(range.endContainer)

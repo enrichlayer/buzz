@@ -33,7 +33,7 @@ export function SelectionFeedback({
       <div className="max-w-[75ch] space-y-1.5">
         <p className="text-xs text-muted-foreground">
           {value.label.includes("code block")
-            ? value.label.replace("Response ·", "Reply to")
+            ? value.label.replace(/^(Response|Selection) ·/, "Reply to")
             : "Reply to selection"}
         </p>
         <blockquote

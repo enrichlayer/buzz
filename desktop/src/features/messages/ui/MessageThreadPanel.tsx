@@ -1,3 +1,4 @@
+import { useThreadAnnotationSubmit } from "./useThreadAnnotationSubmit";
 import * as React from "react";
 import {
   ThreadSessionTimelineProvider,
@@ -29,10 +30,7 @@ import { useEscapeKey } from "@/shared/hooks/useEscapeKey";
 import { useIsThreadPanelOverlay } from "@/shared/hooks/use-mobile";
 import { VideoReviewNavigationProvider } from "@/shared/ui/VideoReviewNavigation";
 import { cn } from "@/shared/lib/cn";
-import {
-  AnnotationSubmitProvider,
-  type AnnotationSubmitRequest,
-} from "@/shared/ui/annotations";
+import { AnnotationSubmitProvider } from "@/shared/ui/annotations";
 import { RuntimePluginHostProvider } from "@/shared/plugins/runtime";
 import { AuxiliaryPanel } from "@/shared/layout/AuxiliaryPanel";
 import { AuxiliaryPanelBody } from "@/shared/layout/AuxiliaryPanel";
@@ -249,39 +247,14 @@ function MessageThreadPanelContent({
   >(null);
   const isOverlay = useIsThreadPanelOverlay();
   const threadHeadId = threadHead?.id ?? null;
-  const handlePublishedAnnotation = React.useCallback(
-    async (request: AnnotationSubmitRequest) => {
-      const source = [
-        threadHead,
-        ...threadReplies.map((entry) => entry.message),
-      ].find((message) => message?.id === request.anchor.sourceId);
-      if (
-        disabled ||
-        isSending ||
-        !channelId ||
-        !threadHeadId ||
-        !source?.pubkey ||
-        request.anchor.channelId !== channelId
-      ) {
-        throw new Error(
-          "This response is no longer available for feedback in this thread.",
-        );
-      }
-      await onSend(request.message, [source.pubkey], undefined, channelId, {
-        parentEventId: source.id,
-        threadHeadId,
-      });
-    },
-    [
-      channelId,
-      disabled,
-      isSending,
-      onSend,
-      threadHead,
-      threadHeadId,
-      threadReplies,
-    ],
-  );
+  const handlePublishedAnnotation = useThreadAnnotationSubmit({
+    disabled,
+    isSending,
+    channelId,
+    threadHead,
+    threadReplies,
+    onSend,
+  });
   useEscapeKey(
     onClose,
     !isHuddleTranscript && (isOverlay || isSinglePanelView || isFocusMode),
@@ -1014,7 +987,15 @@ function MessageThreadPanelContent({
 
   return (
     <VideoReviewNavigationProvider>
-      <AnnotationSubmitProvider onSubmit={handlePublishedAnnotation}>
+      <AnnotationSubmitProvider
+        onSubmit={handlePublishedAnnotation}
+        scope={{
+          id: `thread:${channelId}:${threadHeadId}`,
+          channelId,
+          label: `#${channelName} · ${threadHead?.body.slice(0, 60) || "thread"}`,
+          priority: 20,
+        }}
+      >
         <RuntimePluginHostProvider onCompose={handlePluginCompose}>
           <AuxiliaryPanel
             canResetWidth={canResetWidth}

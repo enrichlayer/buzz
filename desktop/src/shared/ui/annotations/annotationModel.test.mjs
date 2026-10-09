@@ -42,7 +42,7 @@ test("formatted feedback carries explicit quote and immutable source location", 
   assert.match(message, /> one\n> two/);
   assert.match(message, /assistant-message-7/);
   assert.match(message, /event:abc/);
-  assert.match(message, /Response · code block 2 · lines 4–6/);
+  assert.match(message, /Selection · code block 2 · lines 4–6/);
   assert.doesNotMatch(
     message.split("```buzz-annotation")[0],
     /event:abc|assistant-message-7/,
@@ -78,6 +78,12 @@ test("annotation presentation preserves exact source and refuses mismatched enve
   const parsed = parseAnnotationMessage(message);
   assert.equal(parsed.metadata.selectedText, anchor.selectedText);
   assert.equal(parsed.comment, "Keep this comment.");
+  assert.equal(parsed.label, "Selection · selected text");
+  assert.equal(
+    parseAnnotationMessage(message.replace("Selection ·", "Response ·"))
+      .comment,
+    "Keep this comment.",
+  );
   assert.equal(
     parseAnnotationMessage(message.replace("> first", "> altered")),
     null,
