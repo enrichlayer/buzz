@@ -37,8 +37,12 @@ import {
   useArchivedChannelEvents,
 } from "./useObserverEvents";
 import { buildTranscriptState } from "./agentSessionTranscript";
-import { presentAgentSessionTranscript } from "./agentSessionOutputMode";
-import { AgentSessionOutputModeControl } from "./AgentSessionOutputModeControl";
+import {
+  visibleSessionItems,
+  type SessionView,
+} from "./threadSessionPresentation";
+import { SessionViewControl } from "./SessionViewControl";
+import { SessionPermissionPolicy } from "./SessionPermissionPolicy";
 
 type ManagedAgentSessionPanelProps = {
   agent: Pick<ManagedAgent, "pubkey" | "name"> & {
@@ -123,22 +127,24 @@ export function ManagedAgentSessionPanel({
   );
   const displayTranscript = transcriptOverride ?? derivedTranscript;
   const detailScopeKey = `${agent.pubkey}:${channelId ?? "all"}`;
-  const [detailState, setDetailState] = React.useState({
-    scopeKey: detailScopeKey,
-    show: false,
-  });
-  const showDetails =
-    detailState.scopeKey === detailScopeKey && detailState.show;
   const effectiveOutputMode = outputMode ?? agent.outputMode;
-  const presentation = React.useMemo(
-    () =>
-      presentAgentSessionTranscript(
-        displayTranscript,
-        effectiveOutputMode,
-        showDetails,
-      ),
-    [displayTranscript, effectiveOutputMode, showDetails],
-  );
+  const [detailState, setDetailState] = React.useState<{
+    scopeKey: string;
+    view: SessionView;
+  }>({
+    scopeKey: detailScopeKey,
+    view: effectiveOutputMode === "summary" ? "conversation" : "activity",
+  });
+  const view =
+    detailState.scopeKey === detailScopeKey
+      ? detailState.view
+      : effectiveOutputMode === "summary"
+        ? "conversation"
+        : "activity";
+  const presentation = React.useMemo(() => {
+    const items = visibleSessionItems(displayTranscript, view);
+    return { items, hiddenCount: displayTranscript.length - items.length };
+  }, [displayTranscript, view]);
 
   const displayEvents = React.useMemo(
     () => resolveDisplayEvents(combinedEvents, rawEventsOverride),
@@ -169,16 +175,15 @@ export function ManagedAgentSessionPanel({
       ) : null}
 
       {!showRaw ? (
-        <AgentSessionOutputModeControl
-          hiddenCount={presentation.hiddenCount}
-          onShowDetailsChange={(show) =>
-            setDetailState({ scopeKey: detailScopeKey, show })
+        <SessionViewControl
+          value={view}
+          onChange={(view) =>
+            setDetailState({ scopeKey: detailScopeKey, view })
           }
-          outputMode={effectiveOutputMode}
-          showDetails={showDetails}
         />
       ) : null}
 
+      <SessionPermissionPolicy events={combinedEvents} />
       <SessionBody
         agentAvatarUrl={agent.avatarUrl ?? null}
         agentName={agent.name}

@@ -135,6 +135,8 @@ pub(crate) struct QuestionAsker {
     thread_root: Option<EventId>,
     agent_name: Option<String>,
     poll_interval: Duration,
+    pub(crate) permission_owner: Option<nostr::PublicKey>,
+    pub(crate) permission_cwd: String,
 }
 
 impl QuestionAsker {
@@ -152,7 +154,23 @@ impl QuestionAsker {
             thread_root,
             agent_name,
             poll_interval: POLL_INTERVAL,
+            permission_owner: None,
+            permission_cwd: String::new(),
         }
+    }
+
+    pub(crate) fn with_permission_context(
+        mut self,
+        owner: Option<nostr::PublicKey>,
+        cwd: String,
+    ) -> Self {
+        self.permission_owner = owner;
+        self.permission_cwd = cwd;
+        self
+    }
+
+    pub(crate) fn agent_pubkey(&self) -> String {
+        self.keys.public_key().to_hex()
     }
 
     #[cfg(test)]
@@ -252,6 +270,7 @@ impl QuestionAsker {
             Ok(card) => card,
             Err(e) => return QuestionOutcome::Failed(e),
         };
+        let original_card_id = card.id;
         *created = true;
         // The outer cancel select may drop this future at any point. Own the
         // submission in a task so cancellation cannot abandon an HTTP create
@@ -291,6 +310,22 @@ impl QuestionAsker {
             let Some(head) = head else {
                 return QuestionOutcome::Withdrawn;
             };
+            // A permission is authority, not a channel poll. Only the configured
+            // owner may answer an unchanged request, directly after its creation.
+            if serde_json::from_str::<Value>(content)
+                .ok()
+                .is_some_and(|v| v.get("permission").is_some())
+                && !permission_revision_matches(
+                    content,
+                    &head,
+                    self.permission_owner,
+                    original_card_id,
+                    self.channel_id,
+                    d,
+                )
+            {
+                continue;
+            }
             match parse_prompt_state(&head.content, &head.pubkey.to_hex()) {
                 Some(PromptState::Answered(answer)) if answer_conforms(questions, &answer) => {
                     return QuestionOutcome::Answered(answer)
@@ -398,6 +433,50 @@ impl QuestionAsker {
             Err(_) => Err("relay timed out".into()),
         }
     }
+}
+
+fn permission_revision_matches(
+    original: &str,
+    head: &Event,
+    owner: Option<nostr::PublicKey>,
+    original_id: EventId,
+    channel: Uuid,
+    d: &str,
+) -> bool {
+    let Some(owner) = owner else {
+        return false;
+    };
+    if head.pubkey != owner || head.verify().is_err() || head.kind != Kind::Custom(KIND_ARTIFACT) {
+        return false;
+    }
+    let tag_is = |name: &str, value: &str| {
+        let mut tags = head
+            .tags
+            .iter()
+            .filter(|t| t.as_slice().first().map(String::as_str) == Some(name));
+        tags.next()
+            .is_some_and(|t| t.as_slice().get(1).map(String::as_str) == Some(value))
+            && tags.next().is_none()
+    };
+    if !tag_is("prev", &original_id.to_hex())
+        || !tag_is("h", &channel.to_string())
+        || !tag_is("d", d)
+        || !tag_is("op", "update")
+    {
+        return false;
+    }
+    let Ok(mut candidate) = serde_json::from_str::<serde_json::Map<String, Value>>(&head.content)
+    else {
+        return false;
+    };
+    let Ok(mut original) = serde_json::from_str::<serde_json::Map<String, Value>>(original) else {
+        return false;
+    };
+    for key in ["state", "answer", "answeredBy"] {
+        candidate.remove(key);
+        original.remove(key);
+    }
+    candidate == original
 }
 
 #[cfg(test)]

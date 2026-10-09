@@ -543,6 +543,7 @@ export function useSendMessageMutation(
         emojiTags,
         mentionTags,
         linkPreviewTags,
+        shellTags,
       } = splitOutgoingTags(mediaTags);
       const recipientPubkeys = messageMentionPubkeys(
         effectiveChannel,
@@ -567,6 +568,7 @@ export function useSendMessageMutation(
       // tags, so emoji-only messages would otherwise lose their emoji tag.
       if (
         forceRest ||
+        shellTags.length > 0 ||
         transport === "http" ||
         parentEventId ||
         imetaTags.length > 0 ||
@@ -602,6 +604,7 @@ export function useSendMessageMutation(
           undefined,
           undefined,
           suppliedRootEventId,
+          shellTags,
         );
 
         // Build tags matching relay-emitted shape: h, author p, mention ps, reply es, imeta, emoji.
@@ -640,6 +643,7 @@ export function useSendMessageMutation(
             ...emojiTags,
             ...mentionTags,
             ...linkPreviewTags,
+            ...shellTags,
             ...(sentFromThreadTag ? [sentFromThreadTag] : []),
           ],
           content: content.trim(),

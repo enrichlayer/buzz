@@ -5,6 +5,32 @@ import { buildCompactToolSummary } from "./agentSessionToolSummary.ts";
 
 const baseTimestamp = "2026-06-14T19:00:00.000Z";
 
+test("pending commands never claim they ran", () => {
+  for (const [status, label] of [
+    ["pending", "Waiting to run"],
+    ["executing", "Running"],
+  ]) {
+    const summary = buildCompactToolSummary(
+      makeTool({ status, args: { command: "pwd" } }),
+    );
+    assert.equal(summary.label, label);
+    assert.equal(summary.action, null);
+  }
+});
+
+test("pending publication stays an action rather than a sent-message bubble", () => {
+  const summary = buildCompactToolSummary(
+    makeTool({
+      status: "pending",
+      toolName: "send_message",
+      buzzToolName: "send_message",
+      args: { content: "hello" },
+    }),
+  );
+  assert.equal(summary.presentation, "inline");
+  assert.equal(summary.label, "Waiting to post reply");
+});
+
 function makeTool(overrides = {}) {
   return {
     id: "tool:1",

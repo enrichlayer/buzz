@@ -24,6 +24,59 @@ pub struct ProjectTerminalResult {
     pub cloned: bool,
 }
 
+/// Open a human terminal for a locally managed agent. This accepts a directory,
+/// never a command, and never substitutes a local checkout for a remote host.
+#[tauri::command]
+pub async fn open_agent_permission_terminal(
+    pubkey: String,
+    cwd: String,
+    owner_pubkey: String,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<ProjectTerminalResult, String> {
+    if super::agents::workspace_owner_hex(&state)? != owner_pubkey {
+        return Err("Only the agent's owner can open this terminal.".into());
+    }
+    {
+        let _guard = state
+            .managed_agents_store_lock
+            .lock()
+            .map_err(|e| e.to_string())?;
+        let records = crate::managed_agents::load_managed_agents(&app)?;
+        let record = records
+            .iter()
+            .find(|r| r.pubkey == pubkey)
+            .ok_or("This agent is not managed on this device. Open a terminal on its host.")?;
+        if record.backend != crate::managed_agents::BackendKind::Local {
+            return Err("This agent runs on another host. Open a terminal there.".into());
+        }
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = permission_terminal_directory(&cwd)?;
+        launch_terminal_at(&path)?;
+        Ok(ProjectTerminalResult {
+            path: path.display().to_string(),
+            cloned: false,
+        })
+    })
+    .await
+    .map_err(|e| format!("open terminal failed: {e}"))?
+}
+
+fn permission_terminal_directory(cwd: &str) -> Result<std::path::PathBuf, String> {
+    let path = std::path::Path::new(cwd);
+    if cwd.chars().any(char::is_control) || !path.is_absolute() {
+        return Err("The requested working directory must be an absolute local path.".into());
+    }
+    let path = path
+        .canonicalize()
+        .map_err(|e| format!("Working directory unavailable: {e}"))?;
+    if !path.is_dir() {
+        return Err("The requested working directory is not a directory.".into());
+    }
+    Ok(path)
+}
+
 /// Inputs for preparing an authenticated local merge-conflict recovery.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -280,5 +333,31 @@ mod tests {
             merge_recovery_target_ref(&commit),
             format!("refs/buzz/merge-recovery-target/{commit}"),
         );
+    }
+}
+
+#[cfg(test)]
+mod permission_terminal_tests {
+    use super::*;
+    #[test]
+    fn directory_is_literal_existing_absolute_and_never_a_command() {
+        let temp = tempfile::tempdir().unwrap();
+        let literal = temp.path().join("space ' ; $(touch not-executed)");
+        std::fs::create_dir(&literal).unwrap();
+        assert_eq!(
+            permission_terminal_directory(literal.to_str().unwrap()).unwrap(),
+            literal.canonicalize().unwrap()
+        );
+        for path in [
+            ".",
+            "~/project",
+            "/tmp\ncommand",
+            "/does-not-exist-buzz-permission",
+        ] {
+            assert!(permission_terminal_directory(path).is_err());
+        }
+        let file = temp.path().join("file");
+        std::fs::write(&file, "x").unwrap();
+        assert!(permission_terminal_directory(file.to_str().unwrap()).is_err());
     }
 }

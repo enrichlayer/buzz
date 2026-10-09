@@ -40,3 +40,24 @@ messages, tool output, multi-block ranges, outside previews, modal focus,
 keyboard/pointer behavior, immutable quotes, failed-send retry, viewport fitting,
 navigation isolation and late send completions. Browser tests exercise the mock
 native bridge; native installation checks are recorded separately.
+
+## Integration with PR #4
+
+This branch includes `codex/DEV-11526-buzz-output-modes` at `5ae03ed` and
+preserves its integrated transcript and expandable annotation quote receipts.
+Each interleaved activity fragment registers its own annotation destination.
+New receipts use a neutral Selection label; existing Response receipts continue
+to parse and render. The PR targets that branch until its dependency merges.
+
+The four overlapping files were reconciled in this checkout without editing the
+peer checkout. TypeScript, the e2e frontend build and 16 focused annotation and
+timeline tests pass. Browser and native-hook results are recorded in the PR.
+The earlier installed native overlay was verified at `2d0457d`; it is separate
+from the latest source integration and is not a packaged release.
+
+| Finding | Disposition / owner | Evidence / next action |
+| --- | --- | --- |
+| Advanced PR #4 conflicted with the annotation controller, activity placement and receipt format | Fixed in this branch by the DEV-11903 author | Preserve both flows; focused tests and browser routing checks |
+| Local validation initially resolved this chat's Tools directory instead of the Buzz checkout | Resolved by supplying the explicit Buzz directory in the command as supported by the hook's cwd parser | The same resource-managed typecheck then passed; no gate override |
+| Existing custom-media origin rejection | Separate active repair: [DEV-12071](https://linear.app/verticalint/issue/DEV-12071/), assigned to the issue owner | Native response/header repair remains pending; text annotations are independently verified |
+| Review and human hands-on acceptance | Pending for this feature; draft PR | Complete the repository review checklist before marking ready |

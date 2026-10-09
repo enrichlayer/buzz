@@ -19,7 +19,7 @@ const FENCE_RE = /^buzz-[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const FIELD_ID_RE = /^[a-z][a-z0-9_-]{0,63}$/;
 const SEMVER_RE =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
-const BUILT_IN_FENCES = new Set(["mermaid"]);
+const BUILT_IN_FENCES = new Set(["mermaid", "buzz-annotation"]);
 const BLOCK_TYPES = new Set([
   "heading",
   "text",
