@@ -3638,8 +3638,8 @@ mod tests {
 
     #[tokio::test]
     async fn keepalive_resets_idle_past_deadline() {
-        // Keepalive session/update lines every 50ms against a 100ms idle deadline.
-        // The turn should survive well past the 100ms deadline (proves the fix).
+        // Keepalives every 50ms against a 1s idle deadline allow scheduler jitter.
+        // The turn must outlast that deadline; without resets it ends at 1s.
         let mut client = spawn_script(
             r#"for i in $(seq 1 20); do echo '{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"keepalive"}}}'; sleep 0.05; done; sleep 10"#,
         )
@@ -3651,19 +3651,19 @@ mod tests {
             .read_until_response_with_idle_timeout(
                 "test",
                 999,
-                std::time::Duration::from_millis(100),
+                std::time::Duration::from_secs(1),
                 hard_deadline,
                 max_dur,
             )
             .await;
         let elapsed = start.elapsed();
-        // 20 keepalives × 50ms = ~1000ms of activity, then idle fires after 100ms more.
-        // Must survive well past the 100ms deadline.
+        // ~1s of keepalives plus 1s idle should survive past the initial deadline.
+        // Keep the lower bound above idle so dropping all resets still fails.
         assert!(
-            elapsed >= std::time::Duration::from_millis(500),
+            elapsed >= std::time::Duration::from_millis(1500),
             "keepalive should reset idle past the deadline; elapsed only {elapsed:?}"
         );
-        assert!(elapsed < std::time::Duration::from_secs(5));
+        assert!(elapsed < std::time::Duration::from_secs(8));
         assert!(matches!(result, Err(AcpError::IdleTimeout(_))));
     }
 
