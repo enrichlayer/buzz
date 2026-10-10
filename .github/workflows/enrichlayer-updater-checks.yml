@@ -3,14 +3,20 @@ on:
   pull_request:
     paths:
       - '.github/workflows/enrichlayer-*.yml'
+      - '.github/workflows/_enrichlayer-*.yml'
       - 'desktop/scripts/build-*release-config*'
       - 'scripts/*enrichlayer-updater.py'
+      - 'scripts/*buzz-r2*'
+      - 'scripts/factory-linux.sh'
   push:
     branches: [main]
     paths:
       - '.github/workflows/enrichlayer-*.yml'
+      - '.github/workflows/_enrichlayer-*.yml'
       - 'desktop/scripts/build-*release-config*'
       - 'scripts/*enrichlayer-updater.py'
+      - 'scripts/*buzz-r2*'
+      - 'scripts/factory-linux.sh'
 permissions:
   contents: read
 jobs:
@@ -22,3 +28,4 @@ jobs:
           persist-credentials: false
       - run: node --test desktop/scripts/build-enrichlayer-release-config.test.mjs
       - run: python3 scripts/test-enrichlayer-updater.py
+      - run: python3 scripts/test-buzz-r2.py
