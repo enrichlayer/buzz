@@ -45,10 +45,10 @@ The browser run used an isolated static server at port 4187 so it did not reuse
 another worktree's application. The local rerun configuration is retained under
 `desktop/test-results/segmented-playwright.config.ts`.
 
-Screenshots inspected:
+Local screenshots inspected (generated artifacts, not repository files):
 
-- [Agent settings](../../desktop/test-results/segmented-choices/agent-settings.png)
-- [Plugin decision field](../../desktop/test-results/runtime-session-plugins/installed.png)
+- `desktop/test-results/segmented-choices/agent-settings.png`
+- `desktop/test-results/runtime-session-plugins/installed.png`
 
 The 200% test establishes overflow and value retention with DOM assertions; its
 full-card screenshot is clipped by the app's thread scroll viewport and is not
@@ -69,6 +69,7 @@ of this change.
 | Initial formatter invocation encountered nested root configs | Ran checks from the desktop package directory | This session, resolved | Package-local Biome check passed |
 | Plugin action and long text overflow at 200% text size | Allow wrapping within the card and constrain controls to its width | DEV-12463 implementation; resolved | Final plugin browser suite passed all 3 scenarios |
 | Host storage exhausted during final validation | Source and dependencies are on BuzzBuild; guarded cache cleanup reclaimed 2.5 GB with no worktree deletion | This session; interrupted checks retried after checking capacity | Build and browser retry passed; ENOSPC attempts are not counted as passes |
+| Pre-publication Rust checks approached build-volume capacity | Stopped this task's CI/push runners before exhaustion; replace this run's cold compiler outputs with private copy-on-write clones of the existing Buzz caches | DEV-12463 publication session; rerun normal checks and hooks | Interrupted runs are not passes; final outcomes belong in the PR |
 
 ## Publication review
 
