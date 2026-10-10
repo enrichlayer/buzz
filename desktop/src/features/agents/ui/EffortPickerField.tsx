@@ -4,7 +4,7 @@ import {
   effortPickerState,
   effortSelectionToPersistedValue,
 } from "./effortPicker";
-import { PersonaDropdownField } from "./PersonaDropdownField";
+import { PersonaChoiceField } from "./PersonaChoiceField";
 
 /**
  * Thinking-effort write control for the edit dialog.
@@ -57,9 +57,11 @@ export function EffortPickerField({
         Thinking effort
         <span className={PERSONA_LABEL_OPTIONAL_CLASS}>Optional</span>
       </label>
-      <PersonaDropdownField
+      <PersonaChoiceField
         disabled={disabled}
         id="edit-agent-effort"
+        label="Thinking effort"
+        maxOptions={4}
         onValueChange={(next) =>
           onChange(effortSelectionToPersistedValue(next))
         }

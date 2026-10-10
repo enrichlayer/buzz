@@ -19,6 +19,7 @@ import {
   agentAccessWarningText,
 } from "@/features/agents/lib/agentAccessWarning";
 import { useAgentRunLocation } from "./AgentRunLocationContext";
+import { AdaptiveSegmentedControl } from "@/shared/ui/adaptive-segmented-control";
 import { PersonaDropdownField } from "./PersonaDropdownField";
 import type { PersonaDropdownOption } from "./agentConfigOptions";
 
@@ -75,8 +76,8 @@ function formatSearchUserSecondary(user: UserSearchResult) {
 
 const RESPOND_TO_OPTIONS: PersonaDropdownOption[] = [
   { label: "Only me (default)", value: "owner-only" },
-  { label: "Anyone", value: "anyone" },
   { label: "Selected people", value: "allowlist" },
+  { label: "Anyone", value: "anyone" },
 ];
 
 export const OWNER_ONLY_ACCESS_DISABLED_REASON =
@@ -207,31 +208,41 @@ export function CreateAgentRespondToField({
       >
         Who can send instructions
       </label>
-      {isPersonaVariant ? (
-        <PersonaDropdownField
-          disabled={disabled}
-          id="agent-respond-to"
-          onValueChange={(value) => onModeChange(value as RespondToMode)}
-          options={RESPOND_TO_OPTIONS}
-          placeholder="Only me (default)"
-          value={mode}
-        />
-      ) : (
-        <select
-          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs"
-          data-testid="agent-respond-to-select"
-          disabled={disabled}
-          id="agent-respond-to"
-          onChange={(e) => onModeChange(e.target.value as RespondToMode)}
-          value={mode}
-        >
-          {RESPOND_TO_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      )}
+      <AdaptiveSegmentedControl
+        id="agent-respond-to"
+        legend="Who can send instructions"
+        disabled={disabled}
+        options={RESPOND_TO_OPTIONS}
+        value={mode}
+        onValueChange={(value) => onModeChange(value as RespondToMode)}
+        fallback={
+          isPersonaVariant ? (
+            <PersonaDropdownField
+              disabled={disabled}
+              id="agent-respond-to"
+              onValueChange={(value) => onModeChange(value as RespondToMode)}
+              options={RESPOND_TO_OPTIONS}
+              placeholder="Only me (default)"
+              value={mode}
+            />
+          ) : (
+            <select
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs"
+              data-testid="agent-respond-to-select"
+              disabled={disabled}
+              id="agent-respond-to"
+              onChange={(e) => onModeChange(e.target.value as RespondToMode)}
+              value={mode}
+            >
+              {RESPOND_TO_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          )
+        }
+      />
       {disabledReason ? (
         <p
           className="text-xs text-muted-foreground"

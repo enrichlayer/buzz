@@ -193,3 +193,80 @@ test("compose actions remain disabled when no thread host is present", async () 
     await view.cleanup();
   }
 });
+
+test("segmented selects preserve initial and submitted values without composing on selection", async () => {
+  const widthDescriptor = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "clientWidth",
+  );
+  const originalRect = HTMLElement.prototype.getBoundingClientRect;
+  Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+    configurable: true,
+    get: () => 500,
+  });
+  HTMLElement.prototype.getBoundingClientRect = function () {
+    return {
+      width: this.tagName === "SPAN" ? this.textContent.length * 7 + 20 : 500,
+    };
+  };
+  const composed = [];
+  const plugin = manifest([
+    {
+      type: "form",
+      id: "decision",
+      fields: [
+        {
+          id: "choice",
+          label: "Decision",
+          type: "select",
+          presentation: "segmented",
+          options: ["Approve", "Needs changes"],
+          initial: "Needs changes",
+          required: true,
+        },
+      ],
+      submit: {
+        kind: "compose",
+        label: "Add to composer",
+        template: "{{form.choice}}",
+      },
+    },
+  ]);
+  const view = await mount(
+    React.createElement(
+      RuntimePluginHostProvider,
+      { onCompose: (text) => composed.push(text) },
+      React.createElement(RuntimePluginRenderer, {
+        code: "{}",
+        fallback: null,
+        manifest: plugin,
+      }),
+    ),
+  );
+  try {
+    const group = view.container.querySelector("fieldset");
+    assert.ok(group);
+    assert.equal(
+      group.querySelector('[aria-pressed="true"]').textContent,
+      "Needs changes",
+    );
+    await act(async () => fireEvent.click(group.querySelector("button")));
+    assert.deepEqual(composed, []);
+    await act(async () =>
+      fireEvent.click(
+        view.container.querySelector('[data-runtime-action="compose"]'),
+      ),
+    );
+    assert.deepEqual(composed, ["Approve"]);
+  } finally {
+    await view.cleanup();
+    HTMLElement.prototype.getBoundingClientRect = originalRect;
+    if (widthDescriptor)
+      Object.defineProperty(
+        HTMLElement.prototype,
+        "clientWidth",
+        widthDescriptor,
+      );
+    else delete HTMLElement.prototype.clientWidth;
+  }
+});
