@@ -33,6 +33,22 @@ def pages(endpoint, key=None):
     raise ValueError("Release evidence exceeds pagination bound")
 
 
+def check_external(sha):
+    for run in pages(f"commits/{sha}/check-runs", "check_runs"):
+        # Actions checks are covered by their parent workflows above. In-progress
+        # release jobs must not wait for themselves, but external gates still count.
+        if (run.get("app") or {}).get("slug") != "github-actions" and (
+            run["status"] != "completed" or run["conclusion"] not in ("success", "neutral", "skipped")
+        ):
+            raise ValueError(f"External check not successful: {run['name']}")
+    latest = {}
+    for status in pages(f"commits/{sha}/statuses"):
+        latest.setdefault(status["context"], status)
+    for context, status in latest.items():
+        if status["state"] != "success":
+            raise ValueError(f"Commit status not successful: {context}")
+
+
 def check(sha):
     if not re.fullmatch(r"[0-9a-f]{40}", sha):
         raise ValueError("Expected full source commit SHA")
@@ -72,6 +88,8 @@ def check(sha):
         raise ValueError("GitHub approval is stale for the PR head")
     if any(r["state"] == "DISMISSED" for r in decisions.values()):
         raise ValueError("Dismissed review must be resolved before release")
+    check_external(sha)
+    check_external(pr["head"]["sha"])
     # A main update during evidence collection must not inherit this approval.
     if api("commits/main")["sha"] != sha:
         raise ValueError("Main changed while checking release evidence")

@@ -11,7 +11,8 @@ artifacts retain Tauri signatures from our own key. See the
 After `CI` or `Enrich Layer Updater Checks` completes on a push to `main`,
 **Enrich Layer Automatic Release** checks the latest main commit. Both workflows
 must have succeeded for that exact commit, and other selected main workflows
-must have completed without failure. An incomplete/missing check fails closed;
+must have completed without failure. Existing external check runs and commit
+statuses on the source and PR head must also be successful. An incomplete/missing check fails closed;
 the second workflow completion retries the gate. An hourly retry also catches
 delayed reviews or other workflows finishing later. Already-promoted sources
 are not rebuilt. Superseded commits are skipped.

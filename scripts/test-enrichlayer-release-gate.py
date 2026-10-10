@@ -24,6 +24,8 @@ class GateTest(unittest.TestCase):
         self.tags = []
         self.posts = []
         self.main = SHA
+        self.external = []
+        self.statuses = []
 
     def api(self, endpoint, **fields):
         if endpoint == "commits/main":
@@ -36,6 +38,10 @@ class GateTest(unittest.TestCase):
             return self.pr
         if endpoint.startswith("pulls/8/reviews?"):
             return self.reviews
+        if "/check-runs?" in endpoint:
+            return {"check_runs": self.external}
+        if "/statuses?" in endpoint:
+            return self.statuses
         if endpoint.startswith("releases?"):
             return []
         if endpoint.startswith("tags?"):
@@ -137,6 +143,19 @@ class GateTest(unittest.TestCase):
             self.assertEqual(gate.release_state({}, "1.2.3")["already_promoted"], "true")
             rolling["assets"].pop()
             self.assertEqual(gate.release_state({}, "1.2.3")["already_promoted"], "false")
+
+    def test_external_check_failure_and_pending_status_block(self):
+        self.external = [{"app": {"slug": "dco"}, "name": "DCO", "status": "completed", "conclusion": "failure"}]
+        with self.assertRaisesRegex(ValueError, "External check"):
+            self.check()
+        self.external = []
+        self.statuses = [{"context": "external-ci", "state": "pending"}]
+        with self.assertRaisesRegex(ValueError, "Commit status"):
+            self.check()
+
+    def test_latest_external_status_supersedes_failure(self):
+        self.statuses = [{"context": "external-ci", "state": "success"}, {"context": "external-ci", "state": "failure"}]
+        self.assertEqual(self.check()["source_sha"], SHA)
 
     def test_api_error_propagates(self):
         with patch.object(gate, "api", side_effect=RuntimeError("network unavailable")), self.assertRaises(RuntimeError):

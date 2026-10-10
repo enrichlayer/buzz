@@ -15,6 +15,8 @@ permissions:
   contents: read
   actions: read
   pull-requests: read
+  checks: read
+  statuses: read
 jobs:
   prepare:
     if: github.repository == 'enrichlayer/buzz' && github.ref == 'refs/heads/main' && (github.event_name != 'workflow_run' || github.event.workflow_run.event == 'push')
@@ -24,6 +26,8 @@ jobs:
       contents: write
       actions: read
       pull-requests: read
+      checks: read
+      statuses: read
     outputs:
       source_sha: ${{ steps.gate.outputs.source_sha }}
       version: ${{ steps.gate.outputs.version }}
@@ -52,6 +56,8 @@ jobs:
       contents: write
       actions: read
       pull-requests: read
+      checks: read
+      statuses: read
     uses: ./.github/workflows/enrichlayer-desktop-release.yml
     with:
       version: ${{ needs.prepare.outputs.version }}
