@@ -23,16 +23,21 @@ workspace. Development setup does not create a production team community.
 Keep personal keys, Vault credentials, `.env`, logs and database files outside
 version control.
 
-For non-developers, the intended entry point is our
-[GitHub Releases page](https://github.com/enrichlayer/buzz/releases). **No fork
-release is published as of 10 October 2026.** Do not ask teammates to install an
-upstream binary expecting our custom features. The first signed installer and
-automatic desktop updates are owned by
-[DEV-12467 / PR #6](https://github.com/enrichlayer/buzz/pull/6); Apple signing and
-native update acceptance remain pending. Once released, use the installer for
-your Mac's architecture and install the first fork build manually. Subsequent
-promoted releases use our updater feed. See PR #6's
-`docs/enrichlayer-desktop-updates.md` for the release procedure.
+For non-developers, the entry point is our
+[GitHub Releases page](https://github.com/enrichlayer/buzz/releases). Use an
+`el-desktop-v…` installer for macOS (Apple Silicon or Intel), Windows x64, or
+Linux x64 AppImage when available. Do not install an upstream binary expecting
+our custom features. The rollout is owned by
+[DEV-12467](https://linear.app/verticalint/issue/DEV-12467/).
+
+The agreed initial Mac distribution uses ad-hoc signing without Apple
+notarization or a paid Developer account. All platforms retain cryptographic
+updater signatures from our own key. Reviewed releases with passing checks roll
+out automatically; Buzz downloads the update and asks before restarting.
+The first custom build must be installed manually. See the
+[user installation guide](https://github.com/enrichlayer/buzz/blob/main/docs/enrichlayer-buzz-user-guide.md)
+once the release changes reach main. A draft release PR does not establish a
+published installer or a working installed update.
 
 ## One local entry point
 
@@ -80,7 +85,7 @@ The workflow runs the trusted sync script copied from our main branch before
 the merge, and does not execute newly fetched source with its write token.
 CI and the repository's agent/human acceptance checks remain required on the
 resulting PR head. Routine upstream synchronization is separate from shipping
-a new signed app to teammates.
+a new app release to teammates.
 
 Run the merge regression suite with:
 
@@ -89,6 +94,12 @@ python3 scripts/test-enrichlayer-upstream-sync.py
 ```
 
 ## Factory Orchestrator in Buzz
+
+The selected destination is the public **factory-orchestrator** channel in
+`https://verticalint.communities.buzz.xyz`, channel ID
+`134f0c59-68f7-45bb-a7d8-2bb5fe7026ed`. Creation and public visibility were
+verified on 10 October 2026. Public means discoverable within the community;
+creating the channel does not connect the Factory feed.
 
 The existing bridge is owned by
 [DEV-10851](https://linear.app/verticalint/issue/DEV-10851/), with
