@@ -1,0 +1,1 @@
+{"schemaVersion":1,"id":"example.feedback-card","name":"Feedback card","version":"1.0.0","fenceLanguage":"buzz-feedback-card","contentType":"json","blocks":[{"type":"heading","text":{"path":"title","fallback":"Feedback"}},{"type":"text","text":{"path":"summary"}},{"type":"action","action":{"kind":"compose","label":"Reply","template":"Re: {{data.title}}"}}]}

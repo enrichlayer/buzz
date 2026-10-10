@@ -322,13 +322,13 @@ test("actions-review-race: a late second Review never replaces the submitted int
     ids.push(intent.requestId);
     return replies[ids.length - 1]();
   });
-  const mounted = mountActions();
-  await settle();
+  // Finish the mounting act before resolving the deferred relay read.
+  // Overlapping act calls can poison the rest of this suite on loaded runners.
+  const { container: c, unmount } = await mountActions();
   // The tab reads the active relay once on mount to prefill the host.
   await act(async () => {
     for (const resolve of relays.splice(0)) resolve();
   });
-  const { container: c, unmount } = await mounted;
   try {
     await fillTimeout(c);
     await act(async () => {
