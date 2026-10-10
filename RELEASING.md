@@ -375,3 +375,27 @@ valid `latest.json`. The manifest covers all four platform keys
 (`darwin-aarch64`, `darwin-x86_64`, `linux-x86_64`,
 `windows-x86_64`); a missing entry usually means that platform's
 release job failed. Check the workflow run.
+
+### Enrich Layer build identity
+
+The desktop sidebar and Settings show the packaged release version plus an
+automatic build number, followed by the `enrichlayer/buzz` source commit.
+The native build embeds these values; changing the checkout after launching
+Buzz does not change the running app's label. Feedback diagnostics include the
+same identity.
+
+Cargo reruns the metadata generator when tracked inputs, frontend sources, or
+Git revision state change. Each run advances a millisecond-based build number
+(persisted in Cargo's output directory to advance even if the clock moves back).
+Release semver remains controlled by the existing release manifest workflow;
+local builds no longer need a manual semver edit to be distinguishable.
+Uncommitted source is marked `modified`. Source archives without Git metadata
+show `unknown revision` rather than claiming a repository commit.
+
+Run `python3 scripts/test-desktop-build-version.py` with the repository toolchain
+to exercise real Cargo invalidation for frontend edits, commits, added files,
+and source archives. An unchanged Cargo build may reuse its existing binary
+and identity. Rebuilding in a different target directory uses the build clock;
+the build number is an identifier, not a global release sequence or updater
+comparison version. To compare teammates' builds, compare the full displayed
+identity, including commit and modified status.
