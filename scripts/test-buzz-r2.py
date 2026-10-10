@@ -56,7 +56,7 @@ class R2Test(unittest.TestCase):
         r2.publish(self.store, '1.2.3', self.directory, 'a'*40)
 
     def test_fetch_factory_content_addressed_artifacts(self):
-        prefix = 'linux/' + 'a' * 40 + '/' + 'b' * 64
+        prefix = 'linux/' + 'a' * 40 + '/' + 'b' * 64 + '/attempt-2'
         data = b'remote build'
         sha = hashlib.sha256(data).hexdigest()
         name = 'buzz-linux.tar.gz'

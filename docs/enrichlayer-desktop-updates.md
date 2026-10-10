@@ -54,7 +54,7 @@ Factory exports `.tmp/factory-artifacts/` before sandbox teardown. The controlle
 resolves `secret/r2/buzz-builds` from Verticalint Vault and supplies short-lived,
 object-specific upload/download URLs; bucket credentials never enter the sandbox.
 Each binary and log is downloaded again and checksum-verified before Factory
-records an `r2://buzz-builds/linux/SOURCE_SHA/RUN_ID/artifacts.json` receipt.
+records an `r2://buzz-builds/linux/SOURCE_SHA/RUN_ID/attempt-N/artifacts.json` receipt.
 Export failure prevents a successful validation attestation. The catalog binds
 filenames to their content-addressed object keys and hashes.
 
@@ -62,7 +62,7 @@ To retrieve a completed run on an authorized remote runner, install
 `scripts/buzz-r2-requirements.txt` in a virtualenv and run:
 
 ```sh
-python3 scripts/buzz-r2.py fetch-build linux/SOURCE_SHA/RUN_ID verified
+python3 scripts/buzz-r2.py fetch-build linux/SOURCE_SHA/RUN_ID/attempt-N verified
 ```
 
 **Enrich Layer Remote macOS Validation** runs on arm64 and Intel macOS runners,
