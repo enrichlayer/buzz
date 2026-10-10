@@ -43,16 +43,16 @@ class _CommunityMenuSheet extends StatelessWidget {
                 children: [
                   if (canInvite && invitePageBuilder != null)
                     AppListRow(
-                      icon: LucideIcons.userPlus,
+                      icon: BuzzIcons.userPlus,
                       title: 'Invite',
-                      trailing: const Icon(LucideIcons.chevronRight, size: 18),
+                      trailing: const Icon(BuzzIcons.chevronRight, size: 18),
                       onTap: () => openPage(invitePageBuilder!),
                     ),
                   if (appearancePageBuilder != null)
                     AppListRow(
-                      icon: LucideIcons.sunMoon,
+                      icon: BuzzIcons.sunMoon,
                       title: 'Appearance',
-                      trailing: const Icon(LucideIcons.chevronRight, size: 18),
+                      trailing: const Icon(BuzzIcons.chevronRight, size: 18),
                       onTap: () => openPage(appearancePageBuilder!),
                     ),
                 ],
@@ -61,9 +61,9 @@ class _CommunityMenuSheet extends StatelessWidget {
               children: [
                 AppListRow(
                   key: const Key('community-menu-switch'),
-                  icon: LucideIcons.arrowLeftRight,
+                  icon: BuzzIcons.arrowLeftRight,
                   title: 'Switch Community',
-                  trailing: const Icon(LucideIcons.chevronRight, size: 18),
+                  trailing: const Icon(BuzzIcons.chevronRight, size: 18),
                   onTap: openSwitcher,
                 ),
               ],
@@ -131,7 +131,7 @@ class _CommunityIndicator extends ConsumerWidget {
         label: 'Community settings',
         child: Opacity(
           opacity: hidden ? 0 : 1,
-          child: _CommunityAvatar(
+          child: CommunityAvatar(
             key: avatarKey,
             name: activeCommunity?.name,
             relayUrl: activeCommunity?.relayUrl,
@@ -165,53 +165,6 @@ class _CommunityHeaderTitle extends ConsumerWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: style,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CommunityAvatar extends ConsumerWidget {
-  final String? name;
-  final String? relayUrl;
-  final double size;
-
-  const _CommunityAvatar({
-    super.key,
-    required this.name,
-    this.relayUrl,
-    this.size = _kTopSectionCommunityAvatarSize,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final trimmedName = name?.trim();
-    final initial = trimmedName != null && trimmedName.isNotEmpty
-        ? trimmedName.characters.first.toUpperCase()
-        : '?';
-    final relay = relayUrl;
-    final iconUrl = relay == null
-        ? null
-        : ref.watch(communityIconPresentationProvider(relay));
-
-    return ClipRSuperellipse(
-      borderRadius: BorderRadius.circular(Radii.card * size / 40),
-      child: ColoredBox(
-        color: context.colors.primaryContainer,
-        child: SizedBox.square(
-          dimension: size,
-          child: AvatarImageContent(
-            imageUrl: iconUrl,
-            fallback: Text(
-              initial,
-              textScaler: TextScaler.noScaling,
-              style: context.textTheme.labelMedium?.copyWith(
-                fontSize: size * 0.38,
-                color: context.colors.onPrimaryContainer,
-                fontWeight: FontWeight.w600,
-              ),
             ),
           ),
         ),

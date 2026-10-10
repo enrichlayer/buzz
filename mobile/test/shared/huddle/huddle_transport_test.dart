@@ -783,8 +783,10 @@ HuddleTransport _transport(_ControlledWebSocketChannel channel) =>
         ephemeralChannelId: _ephemeralChannelId,
       ),
       channelFactory: (_) => channel,
-      connectTimeout: const Duration(seconds: 1),
-      handshakeTimeout: const Duration(seconds: 1),
+      // These tests exercise protocol state, not deadline enforcement. Real
+      // authentication signing can take longer on a loaded test host.
+      connectTimeout: const Duration(seconds: 10),
+      handshakeTimeout: const Duration(seconds: 10),
     );
 
 Future<void> _connect(

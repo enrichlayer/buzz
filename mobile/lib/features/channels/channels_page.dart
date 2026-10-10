@@ -9,10 +9,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter/physics.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:buzz/shared/theme/buzz_icons.dart';
 
 import '../../shared/auth/auth.dart';
 import '../../shared/community/community_icon_provider.dart';
+import '../../shared/community/community_avatar.dart';
+import '../../shared/community/paired_community_landing.dart';
 import '../../shared/community/community_membership_provider.dart';
 import '../../shared/widgets/app_list_card_item.dart';
 import '../../shared/widgets/app_list.dart';
@@ -54,7 +56,6 @@ import 'channel_sort/channel_sort_storage.dart';
 import 'channel_stars/channel_stars_provider.dart';
 import 'channels_provider.dart';
 import '../../shared/read_state/deferred_read_state_update.dart';
-import '../../shared/read_state/read_state_format.dart';
 import '../../shared/read_state/read_state_provider.dart';
 import '../../shared/read_state/read_state_time.dart';
 import 'unread_badge/observed_unread_event.dart';
@@ -96,7 +97,6 @@ const double _kChannelLabelInset =
 /// sections while the labels stay on [_kChannelLabelInset].
 const double _kDmAvatarSize = _kChannelIconSize;
 
-const double _kTopSectionCommunityAvatarSize = 40.0;
 const double _kTopSectionProfileAvatarSize = 36.0;
 const double _kTopSectionBottomPadding = Grid.xxs;
 
@@ -150,9 +150,8 @@ _UnreadChannelState _computeUnreadChannelState({
     int? readAtForObservedEvent(ObservedUnreadEvent event) =>
         observedUnreadEventReadAt(
           event,
-          channelReadAt,
-          (rootId) => readState.effectiveTimestamp(threadContextKey(rootId)),
-          (messageId) => readState.effectiveTimestamp(msgContextKey(messageId)),
+          channel.id,
+          readState.effectiveTimestamp,
         );
 
     final unreadCount = countUnreadObservedEvents(
@@ -312,24 +311,6 @@ class ChannelsPage extends HookConsumerWidget {
       return timer.cancel;
     }, [canSurfaceError]);
 
-    // Keep cached content steady through brief socket flaps. A sustained
-    // reconnect swaps to element-shaped skeletons that match desktop.
-    final showConnectionSkeleton = useState(false);
-    final isReconnectingWithContent =
-        channels != null &&
-        (sessionState.status == SessionStatus.connecting ||
-            sessionState.status == SessionStatus.reconnecting);
-    useEffect(() {
-      if (!isReconnectingWithContent) {
-        showConnectionSkeleton.value = false;
-        return null;
-      }
-      final timer = Timer(const Duration(seconds: 2), () {
-        showConnectionSkeleton.value = true;
-      });
-      return timer.cancel;
-    }, [isReconnectingWithContent]);
-
     Rect? measureCommunityAvatar() {
       if (defaultTargetPlatform == TargetPlatform.iOS) {
         final header = headerKey.currentContext?.findRenderObject();
@@ -386,6 +367,54 @@ class ChannelsPage extends HookConsumerWidget {
       }
       return null;
     }
+
+    final arrivingCommunity = ref.watch(pairedCommunityLandingProvider);
+    useEffect(() {
+      if (arrivingCommunity == null) return null;
+      var cancelled = false;
+      Future<void> revealPairedCommunity() async {
+        // Add-community pairing is a pushed route. Let it finish dismissing
+        // before placing the loading surface above the destination Home page.
+        do {
+          await WidgetsBinding.instance.endOfFrame;
+          if (cancelled || !context.mounted) return;
+        } while (ModalRoute.of(context)?.isCurrent == false);
+        if (ref.read(pairedCommunityLandingProvider)?.id !=
+            arrivingCommunity.id) {
+          return;
+        }
+        ref.read(pairedCommunityLandingProvider.notifier).clear();
+        communityFlightActive.value = true;
+        final completedPairing = ref.read(pairingProvider);
+        final navigator = Navigator.of(context, rootNavigator: true);
+        await navigator.push<void>(
+          PageRouteBuilder<void>(
+            opaque: false,
+            transitionDuration: Duration.zero,
+            reverseTransitionDuration: Duration.zero,
+            pageBuilder: (_, _, _) => _CommunitySwitcherPage(
+              arrivingCommunity: arrivingCommunity,
+              destination: measureCommunityAvatar(),
+              prepareLanding: prepareCommunityLanding,
+              onFlightChanged: (flying) {
+                if (context.mounted) communityFlightActive.value = flying;
+              },
+              onTransitionProgress: onSettingsTransitionProgress,
+            ),
+          ),
+        );
+        if (context.mounted) {
+          communityFlightActive.value = false;
+          if (completedPairing.status == PairingStatus.success &&
+              identical(ref.read(pairingProvider), completedPairing)) {
+            ref.read(pairingProvider.notifier).reset();
+          }
+        }
+      }
+
+      unawaited(revealPairedCommunity());
+      return () => cancelled = true;
+    }, [arrivingCommunity]);
 
     void openCommunityGrid() {
       if (!context.mounted) return;
@@ -538,7 +567,6 @@ class ChannelsPage extends HookConsumerWidget {
         channelsAsync: channelsAsync,
         showError: showError.value,
         sessionStatus: sessionState.status,
-        showConnectionSkeleton: showConnectionSkeleton.value,
         currentPubkey: currentPubkey,
         topSectionHeight: topSectionHeight,
         usesPinnedGradient: usesPinnedGradient,
@@ -557,11 +585,14 @@ class _SettingsPageRoute extends PageRouteBuilder<void> {
   _SettingsPageRoute({
     required WidgetBuilder builder,
     required this.onTransitionProgress,
+    bool? opaque,
   }) : super(
          pageBuilder: (context, animation, secondaryAnimation) =>
              builder(context),
          transitionsBuilder: _buildSettingsTransition,
-         opaque: false,
+         // Stop compositing Home's UIKit controls once Settings has settled.
+         // Opaque routes still paint the previous page during both transitions.
+         opaque: opaque ?? defaultTargetPlatform == TargetPlatform.iOS,
          allowSnapshotting: false,
          transitionDuration: const Duration(milliseconds: 150),
          reverseTransitionDuration: const Duration(milliseconds: 150),

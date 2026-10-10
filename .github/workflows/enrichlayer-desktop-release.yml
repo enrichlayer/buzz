@@ -1,0 +1,49 @@
+name: Enrich Layer Desktop Release
+on:
+  push:
+    tags: ['el-desktop-v[0-9]*']
+permissions:
+  contents: read
+concurrency:
+  group: enrichlayer-release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  arm64:
+    uses: ./.github/workflows/_enrichlayer-desktop-build.yml
+    with:
+      runner: macos-15
+      platform: darwin-aarch64
+    secrets: inherit
+  intel:
+    uses: ./.github/workflows/_enrichlayer-desktop-build.yml
+    with:
+      runner: macos-15-intel
+      platform: darwin-x86_64
+    secrets: inherit
+  publish:
+    needs: [arm64, intel]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Install R2 publisher
+        run: |
+          python3 -m venv "$RUNNER_TEMP/buzz-r2"
+          "$RUNNER_TEMP/buzz-r2/bin/pip" install -r scripts/buzz-r2-requirements.txt
+      - name: Retrieve verified platform artifacts from private R2
+        env:
+          ARM64_PREFIX: ${{ needs.arm64.outputs.artifact-prefix }}
+          INTEL_PREFIX: ${{ needs.intel.outputs.artifact-prefix }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.BUZZ_BUILD_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BUZZ_BUILD_R2_SECRET_ACCESS_KEY }}
+        run: |
+          test -n "$ARM64_PREFIX" && test -n "$INTEL_PREFIX"
+          "$RUNNER_TEMP/buzz-r2/bin/python" scripts/buzz-r2.py fetch-build "$ARM64_PREFIX" staged
+          "$RUNNER_TEMP/buzz-r2/bin/python" scripts/buzz-r2.py fetch-build "$INTEL_PREFIX" staged
+      - name: Publish immutable downloads and verify public checksums
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BUZZ_RELEASE_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BUZZ_RELEASE_R2_SECRET_ACCESS_KEY }}
+        run: '"$RUNNER_TEMP/buzz-r2/bin/python" scripts/buzz-r2.py publish "${GITHUB_REF_NAME#el-desktop-v}" staged'

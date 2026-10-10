@@ -1,0 +1,70 @@
+name: Enrich Layer Remote macOS Validation
+on:
+  push:
+    branches: ['codex/DEV-12467-buzz-upstream-updater']
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+concurrency:
+  group: enrichlayer-macos-validation-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native:
+    if: github.repository == 'enrichlayer/buzz'
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Require private build storage credentials
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BUZZ_BUILD_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BUZZ_BUILD_R2_SECRET_ACCESS_KEY }}
+        run: |
+          test -n "$AWS_ACCESS_KEY_ID" && test -n "$AWS_SECRET_ACCESS_KEY" || {
+            echo 'Configure the dedicated buzz-builds R2 secrets before running remote validation.' >&2
+            exit 1
+          }
+      - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Validate publisher
+        run: |
+          node --test desktop/scripts/build-enrichlayer-release-config.test.mjs
+          python3 scripts/test-enrichlayer-updater.py
+          python3 scripts/test-buzz-r2.py
+      - name: Build and test native desktop
+        run: |
+          set -euo pipefail
+          mkdir -p staged
+          just desktop-install-ci
+          just desktop-build desktop-tauri-check desktop-tauri-test 2>&1 | tee staged/native-validation.log
+          cargo build --locked --release -p buzz-acp -p buzz-agent -p buzz-backend-kubernetes -p buzz-dev-mcp -p git-credential-nostr -p buzz-cli
+          scripts/bundle-sidecars.sh
+          tar -czf staged/buzz-cli-macos.tar.gz -C target/release buzz
+      - name: Package private unsigned validation app
+        env:
+          CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+          MACOSX_DEPLOYMENT_TARGET: '10.15'
+          CMAKE_OSX_DEPLOYMENT_TARGET: '10.15'
+        run: |
+          set -euo pipefail
+          cat > desktop/src-tauri/tauri.validation.conf.json <<'JSON'
+          {"identifier":"co.enrichlayer.buzz.validation","bundle":{"createUpdaterArtifacts":false},"plugins":{"updater":{"endpoints":[]}}}
+          JSON
+          (cd desktop && pnpm tauri build --no-sign --bundles app --config src-tauri/tauri.validation.conf.json) 2>&1 | tee staged/native-packaging.log
+          tar -czf staged/Buzz-validation.app.tar.gz -C desktop/src-tauri/target/release/bundle/macos Buzz.app
+      - name: Verify private R2 artifact round trip
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BUZZ_BUILD_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BUZZ_BUILD_R2_SECRET_ACCESS_KEY }}
+          RUNNER_KIND: ${{ matrix.runner }}
+        run: |
+          python3 -m venv "$RUNNER_TEMP/buzz-r2"
+          "$RUNNER_TEMP/buzz-r2/bin/pip" install -r scripts/buzz-r2-requirements.txt
+          "$RUNNER_TEMP/buzz-r2/bin/python" scripts/buzz-r2.py upload-build "validation/$GITHUB_SHA/$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT/$RUNNER_KIND" staged
+          "$RUNNER_TEMP/buzz-r2/bin/python" scripts/buzz-r2.py fetch-build "validation/$GITHUB_SHA/$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT/$RUNNER_KIND" verified

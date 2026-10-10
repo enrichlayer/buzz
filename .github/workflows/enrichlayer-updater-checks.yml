@@ -1,0 +1,31 @@
+name: Enrich Layer Updater Checks
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/enrichlayer-*.yml'
+      - '.github/workflows/_enrichlayer-*.yml'
+      - 'desktop/scripts/build-*release-config*'
+      - 'scripts/*enrichlayer-updater.py'
+      - 'scripts/*buzz-r2*'
+      - 'scripts/factory-linux.sh'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/enrichlayer-*.yml'
+      - '.github/workflows/_enrichlayer-*.yml'
+      - 'desktop/scripts/build-*release-config*'
+      - 'scripts/*enrichlayer-updater.py'
+      - 'scripts/*buzz-r2*'
+      - 'scripts/factory-linux.sh'
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - run: node --test desktop/scripts/build-enrichlayer-release-config.test.mjs
+      - run: python3 scripts/test-enrichlayer-updater.py
+      - run: python3 scripts/test-buzz-r2.py

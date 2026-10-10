@@ -1,0 +1,34 @@
+name: Promote Enrich Layer Desktop Update
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Tested Enrich Layer version (X.Y.Z)
+        required: true
+        type: string
+concurrency:
+  group: enrichlayer-desktop-promotion
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  promote:
+    if: github.repository == 'enrichlayer/buzz' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Install R2 publisher
+        run: |
+          python3 -m venv "$RUNNER_TEMP/buzz-r2"
+          "$RUNNER_TEMP/buzz-r2/bin/pip" install -r scripts/buzz-r2-requirements.txt
+      - name: Promote tested release and verify served manifest
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BUZZ_RELEASE_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BUZZ_RELEASE_R2_SECRET_ACCESS_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: '"$RUNNER_TEMP/buzz-r2/bin/python" scripts/buzz-r2.py promote "$VERSION"'
