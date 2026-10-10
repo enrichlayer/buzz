@@ -1,5 +1,7 @@
 <h1 align="center">Buzz 🐝</h1>
 
+**Enrich Layer team:** start with [our setup, custom builds and update guide](ENRICHLAYER.md).
+
 <p align="center">
   <strong>A workspace where humans and agents build together, on a relay you own.</strong>
 </p>

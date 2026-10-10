@@ -1,0 +1,29 @@
+name: Enrich Layer workspace checks
+
+on:
+  pull_request:
+    paths:
+      - scripts/enrichlayer-upstream-sync.py
+      - scripts/test-enrichlayer-upstream-sync.py
+      - .github/workflows/enrichlayer-upstream-sync.yml
+      - .github/workflows/enrichlayer-workspace-checks.yml
+  push:
+    branches: [main]
+    paths:
+      - scripts/enrichlayer-upstream-sync.py
+      - scripts/test-enrichlayer-upstream-sync.py
+      - .github/workflows/enrichlayer-upstream-sync.yml
+      - .github/workflows/enrichlayer-workspace-checks.yml
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - run: actionlint .github/workflows/enrichlayer-upstream-sync.yml .github/workflows/enrichlayer-workspace-checks.yml
+      - run: python3 scripts/test-enrichlayer-upstream-sync.py
