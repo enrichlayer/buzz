@@ -37,7 +37,7 @@ use super::{
     readiness::EffectiveHarnessDescriptor,
     runtime::{resolve_session_title, SESSION_TITLE_ENV_VAR},
     types::{AgentDefinition, ManagedAgentRecord, TeamRecord},
-    AcpSessionPolicy, GlobalAgentConfig,
+    AcpSessionPolicy, AgentOutputMode, GlobalAgentConfig,
 };
 
 pub(crate) mod diff;
@@ -80,6 +80,8 @@ pub(crate) struct SpawnConfigInputs<'a> {
     /// boundary; captured here so editing the definition while an agent runs
     /// drives the existing restart-required path.
     pub session_policy: AcpSessionPolicy,
+    /// Effective visible output policy applied at launch.
+    pub output_mode: AgentOutputMode,
 }
 
 /// The effective spawn configuration of one managed-agent process.
@@ -151,6 +153,8 @@ pub(crate) struct SpawnConfigSnapshot {
     /// via layered env), so it must be captured explicitly rather than read back
     /// out of `env`.
     pub session_policy: String,
+    /// Effective visible output policy applied at launch (`full` or `summary`).
+    pub output_mode: String,
 }
 
 /// The startup effort a spawn actually applied, read from the single effort key
@@ -190,6 +194,7 @@ impl SpawnConfigSnapshot {
             provider,
             enforced_owner_only,
             session_policy,
+            output_mode,
         } = inputs;
         let (respond_to, respond_to_allowlist) =
             super::projected_access_with_policy(record, enforced_owner_only);
@@ -257,6 +262,7 @@ impl SpawnConfigSnapshot {
             // what launched regardless of which tier supplied the value.
             effort_level: effective_effort(descriptor),
             session_policy: session_policy.as_str().to_string(),
+            output_mode: output_mode.as_str().to_string(),
         }
     }
 
@@ -348,6 +354,7 @@ pub(crate) fn prospective_spawn_config_snapshot(
         provider: provider.as_deref(),
         enforced_owner_only,
         session_policy: record.session_policy,
+        output_mode: record.output_mode,
     })
 }
 

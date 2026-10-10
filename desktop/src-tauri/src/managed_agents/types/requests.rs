@@ -9,7 +9,7 @@ use super::{
     default_start_on_app_launch, validate_respond_to_allowlist, AgentDefinition, BackendKind,
     CatalogSource, RelayMeshConfig, RespondTo,
 };
-use crate::managed_agents::AcpSessionPolicy;
+use crate::managed_agents::{AcpSessionPolicy, AgentOutputMode};
 
 /// The NIP-AP behavioral group as one grouped request field.
 ///
@@ -30,6 +30,9 @@ pub struct PersonaBehaviorRequest {
     /// Absent inside a present behavior group selects the channel default.
     #[serde(default)]
     pub session_policy: Option<AcpSessionPolicy>,
+    /// Absent inside a present behavior group selects legacy full output.
+    #[serde(default)]
+    pub output_mode: Option<AgentOutputMode>,
 }
 
 /// Validate a behavior group and apply it onto a persona record.
@@ -73,6 +76,7 @@ pub fn apply_persona_behavior(
     };
     record.parallelism = behavior.parallelism;
     record.session_policy = behavior.session_policy.unwrap_or_default();
+    record.output_mode = behavior.output_mode.unwrap_or_default();
     Ok(())
 }
 
@@ -296,6 +300,7 @@ mod tests {
     fn record_without_quad() -> AgentDefinition {
         AgentDefinition {
             session_policy: Default::default(),
+            output_mode: Default::default(),
             description: None,
             id: "p-1".to_string(),
             display_name: "Test".to_string(),
@@ -345,6 +350,7 @@ mod tests {
                 respond_to_allowlist: Vec::new(),
                 parallelism: None,
                 session_policy: None,
+                output_mode: None,
             }),
         )
         .unwrap();
@@ -434,6 +440,7 @@ mod tests {
                 respond_to_allowlist: vec!["c".repeat(64)],
                 parallelism: Some(3),
                 session_policy: Some(AcpSessionPolicy::Thread),
+                output_mode: Some(AgentOutputMode::Summary),
             }),
         )
         .unwrap();
@@ -442,6 +449,7 @@ mod tests {
         assert_eq!(content.respond_to_allowlist, vec!["c".repeat(64)]);
         assert_eq!(content.parallelism, Some(3));
         assert_eq!(content.session_policy, AcpSessionPolicy::Thread);
+        assert_eq!(content.output_mode, AgentOutputMode::Summary);
     }
 
     #[test]

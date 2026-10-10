@@ -24,15 +24,15 @@ def recv():
     log.write(line); log.flush()
     return json.loads(line)
 prompt = json.loads(sys.stdin.readline())
-send({"jsonrpc": "2.0", "id": "ask-1", "method": "elicitation/create", "params": request})
-if mode == "cancel-request":
+send({"jsonrpc": "2.0", "id": "ask-1", "method": "session/request_permission" if mode.startswith("permission") else "elicitation/create", "params": request})
+if mode.endswith("cancel-request"):
     time.sleep(0.5)  # let the card be posted first
     send({"jsonrpc": "2.0", "method": "$/cancel_request", "params": {"requestId": "ask-1"}})
 if mode == "twice":
     send({"jsonrpc": "2.0", "id": "ask-2", "method": "elicitation/create", "params": request})
     recv()
 recv()
-if mode == "session-cancel":
+if mode.endswith("session-cancel"):
     recv()
     send({"jsonrpc": "2.0", "id": prompt["id"], "result": {"stopReason": "cancelled"}})
 else:
@@ -53,7 +53,11 @@ impl Agent {
             AGENT.to_string(),
             log.to_string_lossy().into_owned(),
             mode.to_string(),
-            single_question_request().to_string(),
+            if mode.starts_with("permission") {
+                permission_request().to_string()
+            } else {
+                single_question_request().to_string()
+            },
         ];
         let client = AcpClient::spawn("python3", &args, &[], false)
             .await
@@ -257,4 +261,138 @@ async fn the_hard_cap_answers_the_open_question_cancel_and_withdraws_it() {
         vec![json!({"jsonrpc": "2.0", "id": "ask-1", "result": {"action": "cancel"}})]
     );
     wait_for_cancelled_card(&relay).await;
+}
+
+fn permission_request() -> Value {
+    json!({"sessionId":"s-1", "toolCall": {"toolCallId":"tool-1", "title":"Run test command", "rawInput":{"command":"pwd", "cwd":"/tmp"}},
+        "options":[{"optionId":"adapter-yes", "name":"Allow", "kind":"allow_once"}, {"optionId":"adapter-no", "name":"Deny", "kind":"reject_once"}]})
+}
+
+#[tokio::test]
+async fn permission_waits_for_owner_and_maps_exact_adapter_option() {
+    for (choice, expected) in [("Allow once", "adapter-yes"), ("Deny", "adapter-no")] {
+        let owner = nostr::Keys::generate();
+        let relay = FakeRelay::new(130, Some((owner.clone(), json!({"permission":[choice]}))));
+        let mut agent = Agent::spawn("permission").await;
+        agent.client.install_question_asker(Some(
+            asker(relay.clone(), None)
+                .with_permission_context(Some(owner.public_key()), "/tmp".into()),
+        ));
+        assert_eq!(
+            agent.prompt(Duration::from_secs(1)).await.unwrap(),
+            StopReason::EndTurn
+        );
+        assert_eq!(
+            agent.replies(),
+            vec![
+                json!({"jsonrpc":"2.0", "id":"ask-1", "result":{"outcome":{"outcome":"selected", "optionId":expected}}})
+            ]
+        );
+    }
+}
+
+#[tokio::test]
+async fn permission_non_owner_answer_never_approves() {
+    let owner = nostr::Keys::generate();
+    let relay = FakeRelay::new(
+        1,
+        Some((
+            nostr::Keys::generate(),
+            json!({"permission":["Allow once"]}),
+        )),
+    );
+    let mut agent = Agent::spawn("permission").await;
+    agent.client.install_question_asker(Some(
+        asker(relay, None).with_permission_context(Some(owner.public_key()), "/tmp".into()),
+    ));
+    assert!(agent
+        .prompt_capped(Duration::from_secs(1), Duration::from_secs(2))
+        .await
+        .is_err());
+    let replies = agent.wait_for_replies(1).await;
+    assert_eq!(replies[0]["result"]["outcome"]["outcome"], "cancelled");
+    assert!(replies
+        .iter()
+        .all(|v| v["result"]["outcome"]["outcome"] != "selected"));
+}
+
+#[tokio::test]
+async fn permission_abandoned_request_withdraws_card_without_execution() {
+    let owner = nostr::Keys::generate();
+    let relay = FakeRelay::new(usize::MAX, None);
+    let mut agent = Agent::spawn("permission-cancel-request").await;
+    agent.client.install_question_asker(Some(
+        asker(relay.clone(), None).with_permission_context(Some(owner.public_key()), "/tmp".into()),
+    ));
+    assert_eq!(
+        agent.prompt(Duration::from_secs(2)).await.unwrap(),
+        StopReason::EndTurn
+    );
+    assert_eq!(
+        agent.replies()[0]["result"]["outcome"]["outcome"],
+        "cancelled"
+    );
+    wait_for_cancelled_card(&relay).await;
+}
+
+#[tokio::test]
+async fn permission_stop_withdraws_card_and_cancels_the_adapter() {
+    let owner = nostr::Keys::generate();
+    let relay = FakeRelay::new(usize::MAX, None);
+    let mut agent = Agent::spawn("permission-session-cancel").await;
+    agent.client.install_question_asker(Some(
+        asker(relay.clone(), None).with_permission_context(Some(owner.public_key()), "/tmp".into()),
+    ));
+    tokio::select! {
+        _ = agent.prompt(Duration::from_secs(5)) => panic!("permission must wait"),
+        _ = relay.wait_for(2) => {}
+    }
+    assert_eq!(
+        agent
+            .client
+            .cancel_with_cleanup_grace("s-1", Duration::from_secs(5))
+            .await
+            .unwrap(),
+        StopReason::Cancelled
+    );
+    let replies = agent.replies();
+    assert_eq!(replies[0]["result"]["outcome"]["outcome"], "cancelled");
+    assert_eq!(replies[1]["method"], "session/cancel");
+    wait_for_cancelled_card(&relay).await;
+}
+
+#[tokio::test]
+async fn permission_without_an_owner_is_cancelled_without_a_card() {
+    let relay = FakeRelay::new(0, None);
+    let mut agent = Agent::spawn("permission").await;
+    agent
+        .client
+        .install_question_asker(Some(asker(relay, None)));
+    assert_eq!(
+        agent.prompt(Duration::from_secs(2)).await.unwrap(),
+        StopReason::EndTurn
+    );
+    assert_eq!(
+        agent.replies()[0]["result"]["outcome"]["outcome"],
+        "cancelled"
+    );
+}
+
+#[test]
+fn permission_v2_preserves_tool_payload_and_rejects_ambiguous_allow_options() {
+    let owner = nostr::Keys::generate();
+    let asker = asker(FakeRelay::new(0, None), None)
+        .with_permission_context(Some(owner.public_key()), "/tmp".into());
+    let mut params = permission_request();
+    let tool = params.as_object_mut().unwrap().remove("toolCall").unwrap();
+    params["subject"] = json!({"toolCall": tool});
+    let mut request = json!({"id":"v2-permission", "params":params});
+    let prompt = super::super::permissions::permission_prompt(&request, &asker).unwrap();
+    let content: Value = serde_json::from_str(&prompt.content).unwrap();
+    assert_eq!(content["permission"]["toolCall"], tool);
+    request["params"]["options"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"kind":"allow_once","optionId":"second"}));
+    assert!(super::super::permissions::permission_prompt(&request, &asker).is_err());
 }

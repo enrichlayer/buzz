@@ -28,10 +28,14 @@ test("a mermaid fence renders as a diagram", async ({ page }) => {
   );
 
   const row = page.getByTestId("message-row").last();
-  const diagram = row.getByRole("img", { name: "Diagram" });
+  const diagram = row.getByRole("img", {
+    name: "Start leads to Review. Review leads to Ship.",
+  });
   await expect(diagram.locator("svg")).toBeVisible();
   await expect(diagram).toContainText("Review");
   await expect(row.locator("[data-code-block]")).toHaveCount(0);
+  await row.getByText("Diagram source", { exact: true }).click();
+  await expect(row.locator("pre")).toContainText("Start --> Review --> Ship");
   await diagram.screenshot({ path: `${SHOTS}/01-flowchart.png` });
 });
 

@@ -502,6 +502,7 @@ fn sample_agent_record() -> ManagedAgentRecord {
 fn sample_persona() -> AgentDefinition {
     AgentDefinition {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         description: None,
         id: "custom:helper".to_string(),
         display_name: "Helper".to_string(),
@@ -749,6 +750,7 @@ fn summary_fixture(
 ) -> super::ManagedAgentSummary {
     super::ManagedAgentSummary {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         pubkey: "aa".repeat(32),
         name: "test".into(),
         persona_id: None,

@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "example.review-card",
+  "name": "Review card",
+  "version": "1.0.0",
+  "description": "Shows a review summary, diff, and mediated reply form.",
+  "fenceLanguage": "buzz-review-card",
+  "contentType": "json",
+  "blocks": [
+    { "type": "heading", "text": { "path": "title", "fallback": "Review" }, "level": 2 },
+    { "type": "text", "text": { "path": "summary" } },
+    {
+      "type": "accordion",
+      "title": "Proposed change",
+      "children": [
+        { "type": "diff", "value": { "path": "diff" }, "filename": { "path": "file" } }
+      ]
+    },
+    {
+      "type": "form",
+      "id": "review-reply",
+      "title": "Compose feedback",
+      "fields": [
+        { "id": "decision", "label": "Decision", "type": "select", "options": ["Approve", "Needs changes"] },
+        { "id": "feedback", "label": "Feedback", "type": "textarea", "placeholder": "Add concrete feedback" }
+      ],
+      "submit": {
+        "kind": "compose",
+        "label": "Add to composer",
+        "template": "{{form.decision}}: {{form.feedback}}"
+      }
+    }
+  ]
+}

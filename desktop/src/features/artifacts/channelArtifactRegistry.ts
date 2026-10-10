@@ -24,7 +24,7 @@ export type ChannelArtifactRegistryDeps = {
   isRegisteredType: (type: string) => boolean;
   /** Rows remount as the timeline virtualizes; don't churn the REQ meanwhile. */
   releaseGraceMs: number;
-  /** Only tests override the bounded terminal-CLOSED retry schedule. */
+  /** Only tests override the bounded subscription retry schedule. */
   closedRetryDelaysMs?: readonly number[];
 };
 
@@ -72,6 +72,31 @@ export function createChannelArtifactRegistry(
     entry.subscription = null;
   }
 
+  function scheduleRetry(channelId: string, entry: Entry, reason: unknown) {
+    if (
+      entries.get(channelId) !== entry ||
+      entry.refs === 0 ||
+      entry.retryTimer !== null
+    )
+      return;
+    const delay = (deps.closedRetryDelaysMs ?? CLOSED_RETRY_DELAYS_MS)[
+      entry.retryAttempt++
+    ];
+    if (delay === undefined) {
+      console.error(
+        "[artifacts] subscription exhausted retries:",
+        channelId,
+        reason,
+      );
+      return;
+    }
+    entry.retryTimer = setTimeout(() => {
+      entry.retryTimer = null;
+      if (entry.refs > 0 && entries.get(channelId) === entry)
+        subscribe(channelId, entry);
+    }, delay);
+  }
+
   function subscribe(channelId: string, entry: Entry) {
     if (entry.subscription || entries.get(channelId) !== entry) return;
     let guarded: Promise<Dispose | null>;
@@ -86,29 +111,14 @@ export function createChannelArtifactRegistry(
           return;
         entry.subscription = null;
         void pending.then((close) => close?.()).catch(() => {});
-        if (entry.refs === 0 || entry.retryTimer !== null) return;
-        const delay = (deps.closedRetryDelaysMs ?? CLOSED_RETRY_DELAYS_MS)[
-          entry.retryAttempt++
-        ];
-        if (delay === undefined) {
-          console.error(
-            "[artifacts] terminal CLOSED exhausted retries:",
-            channelId,
-            message,
-          );
-          return;
-        }
-        entry.retryTimer = setTimeout(() => {
-          entry.retryTimer = null;
-          if (entry.refs > 0 && entries.get(channelId) === entry)
-            subscribe(channelId, entry);
-        }, delay);
+        scheduleRetry(channelId, entry, message);
       },
     );
     guarded = pending.catch((error) => {
       console.error("[artifacts] subscription failed:", channelId, error);
       if (entries.get(channelId) === entry && entry.subscription === guarded) {
         entry.subscription = null;
+        scheduleRetry(channelId, entry, error);
       }
       return null;
     });

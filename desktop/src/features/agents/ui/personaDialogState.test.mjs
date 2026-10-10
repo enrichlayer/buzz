@@ -260,6 +260,7 @@ test("edit and duplicate seed the behavior group from a quad-bearing persona", (
     respondToAllowlist: ["a".repeat(64)],
     parallelism: 4,
     sessionPolicy: "thread",
+    outputMode: "full",
     createdAt: "2025-01-01T00:00:00Z",
     updatedAt: "2025-01-02T00:00:00Z",
   };
@@ -269,6 +270,7 @@ test("edit and duplicate seed the behavior group from a quad-bearing persona", (
     respondToAllowlist: ["a".repeat(64)],
     parallelism: 4,
     sessionPolicy: "thread",
+    outputMode: "full",
   };
   assert.deepEqual(
     editPersonaDialogState(persona).initialValues.behavior,
@@ -277,6 +279,40 @@ test("edit and duplicate seed the behavior group from a quad-bearing persona", (
   assert.deepEqual(
     duplicatePersonaDialogState(persona).initialValues.behavior,
     expected,
+  );
+});
+
+test("edit and duplicate preserve summary output mode", () => {
+  const persona = {
+    id: "persona-summary",
+    displayName: "Concise",
+    avatarUrl: null,
+    description: null,
+    systemPrompt: "Be concise.",
+    acpCommand: "buzz-acp",
+    runtime: null,
+    model: null,
+    provider: null,
+    namePool: [],
+    isBuiltIn: false,
+    isActive: true,
+    shared: false,
+    envVars: {},
+    respondTo: null,
+    respondToAllowlist: [],
+    parallelism: null,
+    sessionPolicy: "channel",
+    outputMode: "summary",
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+  };
+  assert.equal(
+    editPersonaDialogState(persona).initialValues.behavior.outputMode,
+    "summary",
+  );
+  assert.equal(
+    duplicatePersonaDialogState(persona).initialValues.behavior.outputMode,
+    "summary",
   );
 });
 
@@ -295,6 +331,7 @@ test("a linked instance overrides stale definition access in the edit dialog", (
     respondToAllowlist: [],
     parallelism: 2,
     sessionPolicy: "channel",
+    outputMode: "full",
     createdAt: "2025-01-01T00:00:00Z",
     updatedAt: "2025-01-02T00:00:00Z",
   };
@@ -309,6 +346,7 @@ test("a linked instance overrides stale definition access in the edit dialog", (
     respondToAllowlist: ["c".repeat(64)],
     parallelism: 2,
     sessionPolicy: "channel",
+    outputMode: "full",
   });
 });
 

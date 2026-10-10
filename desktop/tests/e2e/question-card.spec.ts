@@ -289,3 +289,102 @@ test("a withdrawn prompt shows as cancelled without a form", async ({
   await expect(card.getByRole("radio")).toHaveCount(0);
   await expect(card.getByTestId("agent-prompt-submit")).toHaveCount(0);
 });
+
+function permissionPrompt(owner = "deadbeef".repeat(8)) {
+  return JSON.stringify({
+    version: 1,
+    kind: "question",
+    state: "open",
+    permission: {
+      version: 1,
+      ownerPubkey: owner,
+      agentPubkey: AGENT,
+      cwd: "/tmp/buzz-permission-test",
+      command: "pwd",
+      toolCall: {
+        title: "Inspect the working directory",
+        rawInput: { command: "pwd" },
+      },
+    },
+    questions: [
+      {
+        id: "permission",
+        header: "Permission",
+        question: "Allow this agent action?",
+        multiSelect: false,
+        allowOther: false,
+        options: [{ label: "Allow once" }, { label: "Deny" }],
+      },
+    ],
+  });
+}
+
+for (const decision of ["Allow once", "Deny"]) {
+  test(`permission card sends owner decision: ${decision}`, async ({
+    page,
+  }) => {
+    await postPrompt(page, permissionPrompt());
+    const card = page.getByTestId("permission-card");
+    await expect(card.getByTestId("permission-command")).toHaveText("pwd");
+    await expect(card).toContainText("/tmp/buzz-permission-test");
+    await card.getByRole("button", { name: decision, exact: true }).focus();
+    await page.keyboard.press("Enter");
+    await expect(card).toHaveAttribute("data-state", "answered");
+    await expect(card).toContainText(
+      decision === "Deny" ? "Denial sent" : "Approval sent",
+    );
+    await expect(card).toContainText("Tool completion will appear separately");
+  });
+}
+
+test("permission card is read-only for other channel members", async ({
+  page,
+}) => {
+  await postPrompt(page, permissionPrompt(TEST_IDENTITIES.bob.pubkey));
+  const card = page.getByTestId("permission-card");
+  await expect(
+    card.getByRole("button", { name: "Allow once", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    card.getByRole("button", { name: "Deny", exact: true }),
+  ).toBeDisabled();
+  await card.getByText("Handle this in a terminal", { exact: true }).click();
+  await expect(
+    card.getByRole("button", { name: "Open local terminal" }),
+  ).toBeDisabled();
+  await expect(card).toContainText("Waiting for the agent’s owner");
+});
+
+test("manual handoff attributes the actual command and rejects oversized output", async ({
+  page,
+}) => {
+  await postPrompt(page, permissionPrompt());
+  const card = page.getByTestId("permission-card");
+  await card.getByRole("button", { name: "Deny", exact: true }).click();
+  await expect(card).toContainText("Denial sent");
+  await card.getByText("Handle this in a terminal", { exact: true }).click();
+  const share = card.getByRole("button", { name: "Share result with agent" });
+  await card
+    .getByLabel("Manual command executed")
+    .fill("printf 'manual proof'");
+  await card.getByLabel("Manual command exit status").fill("256");
+  await expect(share).toBeDisabled();
+  await card.getByLabel("Manual command exit status").fill("0");
+  await card.getByLabel("Manual command output").fill("🙂".repeat(4100));
+  await expect(share).toBeDisabled();
+  await card.getByLabel("Manual command output").fill("manual proof");
+  await share.click();
+  await expect(
+    card.getByRole("button", { name: "Result shared" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /View thread with 1 reply/ }).click();
+  await expect(
+    page.getByText(
+      "I changed the command from the original permission request.",
+      { exact: false },
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Human-reported terminal result · exit 0", { exact: false }),
+  ).toBeVisible();
+});

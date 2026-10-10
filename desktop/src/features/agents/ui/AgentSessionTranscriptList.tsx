@@ -122,6 +122,7 @@ export function AgentSessionTranscriptList({
   items,
   profiles,
   contentContainerClassName,
+  isTurnLive: isTurnLiveOverride,
   scrollScopeKey,
   variant = "default",
 }: AgentTranscriptIdentityProps & {
@@ -132,14 +133,17 @@ export function AgentSessionTranscriptList({
   items: TranscriptItem[];
   profiles?: UserProfileLookup;
   contentContainerClassName?: string;
+  /** Exact liveness supplied by thread-scoped surfaces. */
+  isTurnLive?: boolean;
   scrollScopeKey?: string | null;
   variant?: AgentSessionTranscriptVariant;
 }) {
   const activeTurns = useActiveAgentTurns(agentPubkey);
-  const isTurnLive = React.useMemo(
+  const channelTurnIsLive = React.useMemo(
     () => isAgentTurnLive(activeTurns, channelId),
     [activeTurns, channelId],
   );
+  const isTurnLive = isTurnLiveOverride ?? channelTurnIsLive;
 
   // Subscribe to the observer relay store so we read the latest-live-session-id
   // reactively. We don't need the full snapshot — only the key for boundary labeling.

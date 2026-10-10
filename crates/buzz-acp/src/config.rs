@@ -367,6 +367,9 @@ pub struct CliArgs {
         value_enum
     )]
     pub session_policy: crate::scope::SessionPolicy,
+    /// Detail level requested for user-visible agent messages.
+    #[arg(long, env = "BUZZ_ACP_OUTPUT_MODE", default_value = "full", value_enum)]
+    pub output_mode: crate::output_mode::AgentOutputMode,
 
     /// How to handle new @mentions while a turn is already in-flight.
     /// steer (default): cancel+re-prompt, framing the new mention as a message
@@ -565,6 +568,8 @@ pub struct Config {
     pub dedup_mode: DedupMode,
     /// How ACP provider sessions are scoped in channels (channel vs thread).
     pub session_policy: crate::scope::SessionPolicy,
+    /// Detail level requested for user-visible agent messages.
+    pub output_mode: crate::output_mode::AgentOutputMode,
     pub multiple_event_handling: MultipleEventHandling,
     pub ignore_self: bool,
     pub kinds_override: Option<Vec<u32>>,
@@ -1178,6 +1183,7 @@ impl Config {
             subscribe_mode: args.subscribe,
             dedup_mode: args.dedup,
             session_policy: args.session_policy,
+            output_mode: args.output_mode,
             multiple_event_handling: args.multiple_event_handling,
             ignore_self: !args.no_ignore_self,
             kinds_override: args.kinds,
@@ -1230,7 +1236,7 @@ impl Config {
             format!(" allowed_respond_to=[{}]", modes.join(","))
         };
         format!(
-            "relay={} pubkey={} agent_cmd={} {} mcp_cmd={} idle_timeout={}s max_turn={}s agents={} heartbeat={}s subscribe={:?} dedup={:?} session_policy={} meh={:?} ignore_self={} context_limit={} max_turns_per_session={} presence={} typing={} memory={} model={} permission_mode={} {}{}",
+            "relay={} pubkey={} agent_cmd={} {} mcp_cmd={} idle_timeout={}s max_turn={}s agents={} heartbeat={}s subscribe={:?} dedup={:?} session_policy={} output_mode={} meh={:?} ignore_self={} context_limit={} max_turns_per_session={} presence={} typing={} memory={} model={} permission_mode={} {}{}",
             self.relay_url,
             self.keys.public_key().to_hex(),
             self.agent_command,
@@ -1243,6 +1249,7 @@ impl Config {
             self.subscribe_mode,
             self.dedup_mode,
             self.session_policy,
+            self.output_mode,
             self.multiple_event_handling,
             self.ignore_self,
             self.context_message_limit,
@@ -1559,6 +1566,7 @@ mod tests {
             subscribe_mode: mode,
             dedup_mode: DedupMode::Queue,
             session_policy: crate::scope::SessionPolicy::Channel,
+            output_mode: crate::output_mode::AgentOutputMode::Full,
             multiple_event_handling: MultipleEventHandling::Queue,
             ignore_self: true,
             kinds_override: None,
@@ -2740,6 +2748,42 @@ channels = "ALL"
         ]);
         assert_eq!(args.session_policy, crate::scope::SessionPolicy::Thread);
         assert_eq!(args.session_policy.to_string(), "thread");
+    }
+
+    // ── Output mode parsing + default ────────────────────────────────────────
+
+    #[test]
+    fn test_output_mode_default_is_full() {
+        let args = CliArgs::parse_from(["buzz-acp", "--private-key", &"0".repeat(64)]);
+        assert_eq!(args.output_mode, crate::output_mode::AgentOutputMode::Full);
+    }
+
+    #[test]
+    fn test_output_mode_summary_flag_parses() {
+        let args = CliArgs::parse_from([
+            "buzz-acp",
+            "--private-key",
+            &"0".repeat(64),
+            "--output-mode",
+            "summary",
+        ]);
+        assert_eq!(
+            args.output_mode,
+            crate::output_mode::AgentOutputMode::Summary
+        );
+        assert_eq!(args.output_mode.to_string(), "summary");
+    }
+
+    #[test]
+    fn test_output_mode_rejects_unknown_value() {
+        assert!(CliArgs::try_parse_from([
+            "buzz-acp",
+            "--private-key",
+            &"0".repeat(64),
+            "--output-mode",
+            "compact",
+        ])
+        .is_err());
     }
 
     // ── Multiple-event-handling validation + default ──────────────────────────

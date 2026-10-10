@@ -33,6 +33,7 @@ export type RawPersona = {
   respond_to_allowlist?: string[];
   parallelism?: number | null;
   session_policy?: "channel" | "thread";
+  output_mode?: AgentPersona["outputMode"];
   created_at: string;
   updated_at: string;
   /** Non-null when the pack `.persona.md` write-back failed (non-fatal). */
@@ -66,6 +67,7 @@ export function fromRawPersona(persona: RawPersona): AgentPersona {
     respondToAllowlist: persona.respond_to_allowlist ?? [],
     parallelism: persona.parallelism ?? null,
     sessionPolicy: persona.session_policy ?? "channel",
+    outputMode: persona.output_mode,
     createdAt: persona.created_at,
     updatedAt: persona.updated_at,
   };
@@ -131,7 +133,7 @@ function updatePersonaPayload(input: UpdatePersonaInput) {
     // tells the backend "don't touch the stored env vars" so editing
     // unrelated fields can't silently wipe saved credentials.
     envVars: input.envVars,
-    // Same absent-vs-present contract as envVars for the behavioral quad.
+    // Same absent-vs-present contract as envVars for the behavioral group.
     behavior: input.behavior,
   };
 }

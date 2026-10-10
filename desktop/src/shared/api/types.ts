@@ -297,6 +297,9 @@ export type ManagedAgentBackend =
 /** ACP conversation boundary configured on an agent definition. */
 export type AcpSessionPolicy = "channel" | "thread";
 
+/** Default amount of observer activity shown for an agent conversation. */
+export type AgentOutputMode = "full" | "summary";
+
 import type { RestartDiffEntry } from "./restartDiff";
 export type { JsonValue, RestartChange, RestartDiffEntry } from "./restartDiff";
 export type ManagedAgent = {
@@ -327,6 +330,7 @@ export type ManagedAgent = {
   maxTurnDurationSeconds: number | null;
   parallelism: number;
   sessionPolicy: AcpSessionPolicy;
+  outputMode?: AgentOutputMode;
   systemPrompt: string | null;
   avatarUrl: string | null;
   model: string | null;
@@ -453,7 +457,9 @@ export type SwitchManagedAgentModelStatus =
   | "failure";
 
 export type ControlResultFrame = {
-  type: "cancel_turn" | "switch_model";
+  type: "cancel_turn" | "cancel_thread_turn" | "switch_model";
+  /** Exact thread root echoed by a scoped stop command. */
+  threadRootEventId?: string;
   status: string;
   modelId?: string;
   /** Opaque per-pick id echoed from the request; correlates late frames. */

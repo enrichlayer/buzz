@@ -19,6 +19,7 @@ use crate::{
     app_state::AppState,
     managed_agents::{
         validate_agent_definition_text, validate_agent_description_text, AcpSessionPolicy,
+        AgentOutputMode,
     },
     native_relay_client::NativeRelayClient,
 };
@@ -61,6 +62,7 @@ struct CatalogAgentProjection {
     respond_to: Option<String>,
     parallelism: Option<u64>,
     session_policy: AcpSessionPolicy,
+    output_mode: AgentOutputMode,
 }
 
 /// Fetches the active community's relay-confirmed persona catalog.
@@ -260,6 +262,12 @@ fn parse_agent(content: &str) -> Option<CatalogAgentProjection> {
         Some("thread") => AcpSessionPolicy::Thread,
         _ => AcpSessionPolicy::Channel,
     };
+    let output_mode = match object.get("output_mode") {
+        None => AgentOutputMode::Full,
+        Some(Value::String(value)) if value == "full" => AgentOutputMode::Full,
+        Some(Value::String(value)) if value == "summary" => AgentOutputMode::Summary,
+        Some(_) => return None,
+    };
     let name_pool = object
         .get("name_pool")
         .and_then(Value::as_array)
@@ -289,6 +297,7 @@ fn parse_agent(content: &str) -> Option<CatalogAgentProjection> {
         respond_to,
         parallelism,
         session_policy,
+        output_mode,
     })
 }
 

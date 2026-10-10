@@ -1,4 +1,5 @@
 import mermaid from "mermaid";
+import { diagramDescription } from "./diagramDescription";
 import * as React from "react";
 import type { CodeFenceRendererProps } from "@/shared/plugins/codeFences";
 import { useTheme } from "@/shared/theme/ThemeProvider";
@@ -82,12 +83,22 @@ export default function MermaidDiagram({
   }
 
   return (
-    <div
-      className="my-2 overflow-x-auto rounded-md border border-border/50 p-3 [&_svg]:mx-auto [&_svg]:h-auto [&_svg]:max-w-full"
-      // biome-ignore lint/security/noDangerouslySetInnerHtml: SVG produced by mermaid in strict mode
-      dangerouslySetInnerHTML={{ __html: state.svg }}
-      role="img"
-      aria-label="Diagram"
-    />
+    <figure className="my-2">
+      <div
+        className="overflow-x-auto rounded-md border border-border/50 p-3 [&_svg]:mx-auto [&_svg]:h-auto [&_svg]:max-w-full"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: SVG produced by mermaid in strict mode
+        dangerouslySetInnerHTML={{ __html: state.svg }}
+        role="img"
+        aria-label={diagramDescription(code)}
+      />
+      <details className="mt-2">
+        <summary className="cursor-pointer text-sm text-foreground">
+          Diagram source
+        </summary>
+        <pre className="mt-2 overflow-auto whitespace-pre-wrap rounded-md bg-muted p-3 text-sm text-foreground">
+          {code}
+        </pre>
+      </details>
+    </figure>
   );
 }

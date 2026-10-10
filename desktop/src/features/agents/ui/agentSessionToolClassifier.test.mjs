@@ -189,3 +189,24 @@ test("classifyTool falls back once to a generic descriptor", () => {
   assert.equal(descriptor.preview, "notes.md");
   assert.equal(descriptor.source, "fallback");
 });
+
+test("unknown harness command wrappers recognize a heredoc publication without losing failures", () => {
+  const args = {
+    command:
+      "cat <<'EOF' | buzz messages send --channel agents --content -\nHello\nEOF",
+  };
+  const input = {
+    title: "Execute",
+    toolName: "custom_harness_exec",
+    buzzToolName: null,
+    args,
+    result: '{"accepted":true,"event_id":"abc"}',
+    isError: false,
+  };
+  assert.equal(classifyTool(input).renderClass, "message");
+  assert.equal(classifyTool({ ...input, isError: true }).renderClass, "error");
+  assert.equal(
+    classifyTool({ ...input, args: { command: "node --test" } }).renderClass,
+    "shell",
+  );
+});

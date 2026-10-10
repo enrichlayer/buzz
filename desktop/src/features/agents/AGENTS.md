@@ -330,9 +330,9 @@ with a TypeScript lookup table or an id comparison in a component.
     for resets; owner replay of a redacted head preserves only a nonportable
     local override. That local path is not synchronized through catalog heads.
 
-## Channel-only runtime controls
+## Scoped runtime controls
 
-Desktop observer controls identify a channel, not a thread session. The harness
+Legacy desktop observer controls identify a channel. The harness
 rejects `cancel_turn` and `switch_model` with `ambiguous_target` when that channel
 has multiple known session scopes, including retained idle scopes. Do not treat
 that result as success or a deferred model switch. Stop feedback waits for the
@@ -342,7 +342,11 @@ not success. The activity pane must use its resolved `sessionChannelId` for
 both the outgoing control and result correlation, even without a loaded
 `Channel` object. Stop is unavailable in an unscoped all-channel pane.
 
-Per-thread observer controls remain a separate protocol/UI change. Do not tell
+Thread session Stop uses `cancel_thread_turn` with `channelId` and the exact
+`threadRootEventId`. It never falls back to channel cancellation. Results must
+also match the thread root. The distinct command type makes older harnesses
+ignore the request safely; a timeout remains unconfirmed. Model switching is
+still channel-scoped. Do not tell
 users to type `!cancel` beside an inline mention: the owner command requires
 kind 9, body exactly `!cancel` after trimming, and the agent's separate `p` tag.
 The automatic-mention picker also inserts literal `@Name` into the body, so it
@@ -406,6 +410,16 @@ buzz messages send --channel <channel-id> --reply-to <thread-root-id> \
 - Rust: `definition_validation` and inbound persona tests pin the shared
   Unicode/control-character policy at local, import, publish, and sync gates.
 
+## Permission decisions
+
+Channel ACP permission requests use the built-in agent-prompt permission card;
+see `docs/agent-permissions.md`. Keep decisions owner-only and bound to the
+original signed request and tool payload. An answered card means the decision
+was sent, not that a tool succeeded. Never execute a command while opening its
+terminal; validate local agent ownership and the literal directory. Preserve
+the harness's configured permission policy and distinguish a manual human
+result from a harness tool result.
+
 ## Managed avatar media
 
 Desktop-managed profiles retain the saved persona/instance avatar as the desired
@@ -433,3 +447,21 @@ matches the code is worse than no rule; a new pattern that isn't written down
 here will be broken by the next agent that never learns it existed. Reviewers:
 treat a config-behavior diff without a matching AGENTS.md diff (or an explicit
 "no rules changed" note) as incomplete.
+
+## Reader transcript views
+
+Conversation, Activity and Full transcript are local presentation preferences;
+changing them never persists or changes an agent's configured output policy.
+Thread activity remains bound to exact triggering messages and turn IDs, with
+published messages authoritative. Insert captured activity between published
+messages in DOM reading order; collapsed replies must not strand activity in
+missing slots. Infer terminal outcomes from explicit turn/result evidence, never
+from a missing liveness badge. A turn-completed cleanup event must not override
+an earlier error or cancelled result for that turn.
+
+Successful publication tools that resolve to a message in the visible thread render
+as one compact receipt, with exact arguments/results behind disclosure. Never
+infer publication success from a command string or hide failures. Captured
+assistant follow-up stays readable, including distinct warnings. Reader view
+selection never rewrites captured content. Activity shares the message-body
+alignment; agent changes retain attribution even when display names match.

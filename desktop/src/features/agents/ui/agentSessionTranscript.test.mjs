@@ -42,6 +42,31 @@ function activityTitle(item) {
   return formatToolTitle(item.buzzToolName ?? item.toolName, item.title);
 }
 
+test("human command keeps its signed message identity without a model prompt", () => {
+  const messageId = "ab".repeat(32);
+  const transcript = buildTranscript([
+    {
+      ...baseEvent,
+      kind: "human_command_requested",
+      payload: { messageId, content: "!pwd", authorPubkey: "cd".repeat(32) },
+    },
+    {
+      ...baseEvent,
+      seq: 2,
+      kind: "human_command_completed",
+      payload: { messageId, status: "failed", exitCode: 7 },
+    },
+  ]);
+  assert.equal(
+    transcript.find((item) => item.type === "message").messageId,
+    messageId,
+  );
+  assert.equal(
+    transcript.find((item) => item.type === "lifecycle").title,
+    "Human command failed · exit 7",
+  );
+});
+
 // --- stub-overflow vanish (pins the pre-existing degraded-frame behavior) ---
 
 test("buildTranscript drops a session/prompt turn whose frame was stubbed by the size trimmer", () => {
@@ -826,6 +851,59 @@ test("buildTranscript appends Approved outcome when allow_once is selected", () 
   assert.equal(item.renderClass, "permission");
   assert.equal(item.outcome, "Approved (allow_once)");
   assert.doesNotMatch(item.text ?? "", /Approved/);
+});
+
+test("two permission decisions in one turn keep distinct outcomes", () => {
+  const transcript = buildTranscript([
+    makePermissionRequest(1, "first"),
+    makePermissionResponse(2, "first", "selected", "allow_once"),
+    makePermissionRequest(3, "second"),
+    makePermissionResponse(4, "second", "selected", "reject_once"),
+  ]);
+  assert.equal(transcript.length, 2);
+  assert.deepEqual(
+    transcript.map((item) => item.outcome),
+    ["Approved (allow_once)", "Denied (reject_once)"],
+  );
+});
+
+test("partial tool updates do not manufacture completion", () => {
+  const transcript = buildTranscript([
+    acpToolUpdate(1, {
+      sessionUpdate: "tool_call",
+      toolCallId: "waiting",
+      title: "Bash",
+      status: "pending",
+      rawInput: { command: "pwd" },
+    }),
+    acpToolUpdate(2, {
+      sessionUpdate: "tool_call_update",
+      toolCallId: "waiting",
+      rawInput: { command: "pwd" },
+    }),
+  ]);
+  const tool = transcript.find((item) => item.type === "tool");
+  assert.equal(tool.status, "pending");
+  assert.equal(tool.completedAt, null);
+});
+
+test("concurrent workers reusing a permission id keep their own decision", () => {
+  const other = (event) => ({
+    ...event,
+    agentIndex: 1,
+    sessionId: "session-2",
+    turnId: "turn-2",
+  });
+  const transcript = buildTranscript([
+    makePermissionRequest(1, 1),
+    other(makePermissionRequest(2, 1)),
+    makePermissionResponse(3, 1, "selected", "allow_once"),
+    other(makePermissionResponse(4, 1, "selected", "reject_once")),
+  ]);
+  assert.deepEqual(
+    transcript.map((item) => item.outcome),
+    ["Approved (allow_once)", "Denied (reject_once)"],
+  );
 });
 
 test("buildTranscript appends Denied outcome when reject_once is selected", () => {

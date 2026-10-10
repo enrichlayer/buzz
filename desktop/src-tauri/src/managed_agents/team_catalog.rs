@@ -154,6 +154,12 @@ pub struct TeamCatalogMember {
         skip_serializing_if = "crate::managed_agents::AcpSessionPolicy::is_channel"
     )]
     pub session_policy: crate::managed_agents::AcpSessionPolicy,
+    /// Visible output policy copied with this portable team member.
+    #[serde(
+        default,
+        skip_serializing_if = "crate::managed_agents::AgentOutputMode::is_full"
+    )]
+    pub output_mode: crate::managed_agents::AgentOutputMode,
     /// Reuse hint: the built-in slug this member was installed from.
     ///
     /// Present only for built-in members. A recipient may substitute its own
@@ -318,6 +324,7 @@ fn member_projection(record: &AgentDefinition) -> TeamCatalogMember {
         respond_to: sanitized_respond_to(record),
         parallelism: record.parallelism.map(|value| value.clamp(1, 32)),
         session_policy: record.session_policy,
+        output_mode: record.output_mode,
         builtin_slug: None,
         projection_hash: None,
     }

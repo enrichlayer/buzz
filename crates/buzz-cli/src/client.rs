@@ -498,7 +498,7 @@ fn advance_query_cursor(
 ) -> Result<(), CliError> {
     let last = page
         .last()
-        .expect("a full query page always has a last event");
+        .ok_or_else(|| CliError::Other("cannot advance query cursor from an empty page".into()))?;
     let created_at = last
         .get("created_at")
         .and_then(serde_json::Value::as_u64)
@@ -694,7 +694,16 @@ impl BuzzClient {
             let done = page.len() < page_limit;
 
             if !done {
+                let previous_until = filter.get("until").cloned();
+                let previous_before_id = filter.get("before_id").cloned();
                 advance_query_cursor(&mut filter, &page)?;
+                if filter.get("until") == previous_until.as_ref()
+                    && filter.get("before_id") == previous_before_id.as_ref()
+                {
+                    return Err(CliError::Other(
+                        "relay pagination cursor did not advance".into(),
+                    ));
+                }
             }
             events.extend(page);
             if done {
@@ -2463,6 +2472,20 @@ mod tests {
 
         assert_eq!(filter["until"], serde_json::json!(10));
         assert_eq!(filter["before_id"], serde_json::json!("b".repeat(64)));
+    }
+
+    #[test]
+    fn query_cursor_keeps_event_id_when_a_page_shares_one_second() {
+        let mut filter = serde_json::json!({"kinds": [9], "limit": 500});
+        let page = vec![
+            serde_json::json!({"id": "f".repeat(64), "created_at": 20}),
+            serde_json::json!({"id": "a".repeat(64), "created_at": 20}),
+        ];
+
+        advance_query_cursor(&mut filter, &page).unwrap();
+
+        assert_eq!(filter["until"], serde_json::json!(20));
+        assert_eq!(filter["before_id"], serde_json::json!("a".repeat(64)));
     }
 
     #[test]

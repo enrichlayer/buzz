@@ -1,3 +1,5 @@
+import { PermissionCard } from "./PermissionCard";
+import { parsePermissionRequest } from "./permissionContent";
 import * as React from "react";
 import { CircleHelp, CircleSlash } from "lucide-react";
 
@@ -44,7 +46,9 @@ export function AgentPromptCard({
 
   const handleSubmit = React.useCallback(
     async (answer: AgentPromptAnswer) => {
-      if (!prompt || !myPubkey) return;
+      if (!prompt || !myPubkey || prompt.state !== "open") return;
+      const permission = parsePermissionRequest(prompt.raw.permission);
+      if (permission && permission.ownerPubkey !== myPubkey) return;
       submittedRef.current = true;
       setSubmit({ status: "submitting" });
       try {
@@ -96,6 +100,22 @@ export function AgentPromptCard({
           This question can't be shown in this version of Buzz.
         </p>
       </AgentPromptCardFrame>
+    );
+  }
+
+  const permission = parsePermissionRequest(prompt.raw.permission);
+  if (permission) {
+    return (
+      <PermissionCard
+        channelId={channelId}
+        parentEventId={artifact.root}
+        prompt={prompt}
+        permission={permission}
+        currentPubkey={myPubkey}
+        submitting={submit.status === "submitting"}
+        errorMessage={submit.status === "error" ? submit.message : null}
+        onSubmit={handleSubmit}
+      />
     );
   }
 

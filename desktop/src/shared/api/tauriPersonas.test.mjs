@@ -37,3 +37,11 @@ test("fromRawPersona maps authored description and defaults absence to null", ()
   );
   assert.equal(fromRawPersona(rawPersona()).description, null);
 });
+
+test("fromRawPersona preserves output mode while legacy absence remains optional", () => {
+  assert.equal(
+    fromRawPersona(rawPersona({ output_mode: "summary" })).outputMode,
+    "summary",
+  );
+  assert.equal(fromRawPersona(rawPersona()).outputMode, undefined);
+});

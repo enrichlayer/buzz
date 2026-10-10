@@ -13,6 +13,7 @@ const TEAM_ID: &str = "team-alpha";
 fn member(id: &str, prompt: &str) -> AgentDefinition {
     AgentDefinition {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         id: id.to_string(),
         display_name: id.to_string(),
         description: None,
