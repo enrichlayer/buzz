@@ -152,6 +152,11 @@ See **Quick start** below — this is the developer / self-host path.
 
 ---
 
+## Enrich Layer coding demo
+
+For our local desktop build, exact revision checks, and coding plugin setup, see
+[LOCAL-INSTALL.md](LOCAL-INSTALL.md). Upstream release versions are a separate channel.
+
 ## Quick start
 
 You'll need [Docker](https://docs.docker.com/get-docker/) and [Hermit](https://cashapp.github.io/hermit/) (or Rust 1.88+, Node 24+, pnpm 10+, `just`).
