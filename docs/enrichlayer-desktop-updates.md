@@ -50,20 +50,29 @@ frontend validation and builds Linux relay/CLI binaries. macOS native tests and
 mobile checks remain separate gates; Linux unit tests do not substitute for
 Postgres/Redis integration coverage.
 
-The Linux outputs are `.tmp/factory-artifacts/`. Upload them from the remote
-workspace with a bucket-scoped credential using:
+Factory exports `.tmp/factory-artifacts/` before sandbox teardown. The controller
+resolves `secret/r2/buzz-builds` from Verticalint Vault and supplies short-lived,
+object-specific upload/download URLs; bucket credentials never enter the sandbox.
+Each binary and log is downloaded again and checksum-verified before Factory
+records an `r2://buzz-builds/linux/SOURCE_SHA/RUN_ID/artifacts.json` receipt.
+Export failure prevents a successful validation attestation. The catalog binds
+filenames to their content-addressed object keys and hashes.
+
+To retrieve a completed run on an authorized remote runner, install
+`scripts/buzz-r2-requirements.txt` in a virtualenv and run:
 
 ```sh
-python3 scripts/buzz-r2.py upload-build linux/SOURCE_SHA/RUN_ID .tmp/factory-artifacts
 python3 scripts/buzz-r2.py fetch-build linux/SOURCE_SHA/RUN_ID verified
 ```
 
-Install `scripts/buzz-r2-requirements.txt` in a remote virtualenv first. Resolve
-credentials through the approved Factory secret-staging path, not shell command
-arguments. No upload is claimed until that path and the round trip are verified.
-
 **Enrich Layer Remote macOS Validation** runs on arm64 and Intel macOS runners,
 builds/tests native desktop code and verifies a private R2 artifact round trip.
+Before this new workflow is present on the default branch, dispatch the existing
+`macos-intel-canary.yml` workflow with `--ref` set to the candidate branch. In our
+fork it delegates to the same two-platform validation workflow; upstream keeps
+its existing Intel canary job. Wait until the dedicated R2 secrets are configured
+before dispatching.
+
 It does not need Apple credentials. **Enrich Layer Desktop Release** uses those
 same remote platforms for signed and notarized distributable apps.
 

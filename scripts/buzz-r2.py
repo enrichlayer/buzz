@@ -143,7 +143,10 @@ def fetch(store, prefix, directory):
     for name, expected in catalog.items():
         if not re.fullmatch(r"[a-zA-Z0-9_.-]+", name) or name in (".", ".."):
             raise ValueError("Invalid artifact name")
-        response = store.get(f"{prefix}/{name}")
+        key = expected.get("key", f"{prefix}/{name}")
+        if key not in (f"{prefix}/{name}", f"{prefix}/{expected['sha256']}/{name}"):
+            raise ValueError("Artifact key escapes its build identity")
+        response = store.get(key)
         if response is None:
             raise ValueError("Missing build artifact")
         path = directory / name
@@ -158,7 +161,7 @@ def fetch(store, prefix, directory):
                     raise ValueError("Artifact exceeds size limit")
                 output.write(chunk)
         with path.open("rb") as stream:
-            if digest(stream) != expected:
+            if digest(stream) != {"sha256": expected["sha256"], "size": expected["size"]}:
                 raise ValueError("Downloaded artifact checksum mismatch")
 
 

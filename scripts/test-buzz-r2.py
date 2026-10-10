@@ -55,6 +55,21 @@ class R2Test(unittest.TestCase):
     def publish(self):
         r2.publish(self.store, '1.2.3', self.directory, 'a'*40)
 
+    def test_fetch_factory_content_addressed_artifacts(self):
+        prefix = 'linux/' + 'a' * 40 + '/' + 'b' * 64
+        data = b'remote build'
+        sha = hashlib.sha256(data).hexdigest()
+        name = 'buzz-linux.tar.gz'
+        key = f'{prefix}/{sha}/{name}'
+        self.store.put(key, data)
+        self.store.put(f'{prefix}/artifacts.json', r2.encode({name: {'sha256': sha, 'size': len(data), 'key': key}}))
+        output = self.directory / 'fetched'
+        r2.fetch(self.store, prefix, output)
+        self.assertEqual((output / name).read_bytes(), data)
+        self.store.objects[f'{prefix}/artifacts.json'] = (r2.encode({name: {'sha256': sha, 'size': len(data), 'key': 'other/build/file'}}), 100)
+        with self.assertRaisesRegex(ValueError, 'escapes'):
+            r2.fetch(self.store, prefix, self.directory / 'bad')
+
     def test_publish_retry_is_identical(self):
         self.publish()
         old = dict(self.store.objects)
