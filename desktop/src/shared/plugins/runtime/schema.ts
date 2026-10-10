@@ -122,6 +122,15 @@ function parseField(value: unknown, label: string): RuntimePluginField {
   } else if (options !== undefined) {
     throw new Error(`${label}.options is only valid for select fields`);
   }
+  if (
+    value.presentation !== undefined &&
+    (type !== "select" ||
+      (value.presentation !== "dropdown" && value.presentation !== "segmented"))
+  ) {
+    throw new Error(
+      `${label}.presentation must be dropdown or segmented on a select field`,
+    );
+  }
   if (value.required !== undefined && typeof value.required !== "boolean") {
     throw new Error(`${label}.required must be a boolean`);
   }
@@ -133,6 +142,12 @@ function parseField(value: unknown, label: string): RuntimePluginField {
       ? {}
       : { initial: parseValue(value.initial, `${label}.initial`) }),
     ...(Array.isArray(options) ? { options: options as string[] } : {}),
+    ...(value.presentation === undefined
+      ? {}
+      : {
+          presentation:
+            value.presentation as RuntimePluginField["presentation"],
+        }),
     ...(value.placeholder === undefined
       ? {}
       : {

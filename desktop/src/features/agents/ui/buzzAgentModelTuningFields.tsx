@@ -6,6 +6,7 @@
  * PersonaAdvancedFields and EditAgentAdvancedFields.
  */
 import * as React from "react";
+import { AdaptiveSegmentedControl } from "@/shared/ui/adaptive-segmented-control";
 import { Input } from "@/shared/ui/input";
 import { cn } from "@/shared/lib/cn";
 import type { EnvVarsValue } from "./EnvVarsEditor";
@@ -128,7 +129,7 @@ export function EffortSelectField({
     ...(effortValid as readonly string[]),
     ...BUZZ_AGENT_THINKING_EFFORT_VALUES.filter((v) => !effortValidSet.has(v)),
   ];
-  const effortOptions: AgentDropdownOption[] = [
+  const effortOptions: (AgentDropdownOption & { label: string })[] = [
     { label: emptyOptionLabel ?? inheritLabel, value: "" },
     ...allValues.flatMap((v) => {
       const isValid = effortValidSet.has(v);
@@ -153,41 +154,53 @@ export function EffortSelectField({
       >
         {label}
       </label>
-      {useCustomSelect ? (
-        <AgentDropdownSelect
-          className={selectClassName}
-          disabled={disabled}
-          id={htmlFor}
-          onValueChange={onChange}
-          options={effortOptions}
-          placeholderClassName={placeholderClassName}
-          placeholderValue={emptyOptionLabel ? "" : undefined}
-          testId={testId}
-          value={currentEffort}
-        />
-      ) : (
-        <select
-          className={cn(
-            "flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs disabled:cursor-not-allowed disabled:opacity-60",
-            selectClassName,
-          )}
-          data-testid={testId}
-          disabled={disabled}
-          id={htmlFor}
-          onChange={(event) => onChange(event.target.value)}
-          value={currentEffort}
-        >
-          {effortOptions.map((option) => (
-            <option
-              disabled={option.disabled}
-              key={option.value}
-              value={option.value}
+      <AdaptiveSegmentedControl
+        id={htmlFor}
+        legend={label}
+        disabled={disabled}
+        maxOptions={4}
+        options={effortOptions}
+        value={currentEffort}
+        onValueChange={onChange}
+        testId={testId}
+        fallback={
+          useCustomSelect ? (
+            <AgentDropdownSelect
+              className={selectClassName}
+              disabled={disabled}
+              id={htmlFor}
+              onValueChange={onChange}
+              options={effortOptions}
+              placeholderClassName={placeholderClassName}
+              placeholderValue={emptyOptionLabel ? "" : undefined}
+              testId={testId}
+              value={currentEffort}
+            />
+          ) : (
+            <select
+              className={cn(
+                "flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs disabled:cursor-not-allowed disabled:opacity-60",
+                selectClassName,
+              )}
+              data-testid={testId}
+              disabled={disabled}
+              id={htmlFor}
+              onChange={(event) => onChange(event.target.value)}
+              value={currentEffort}
             >
-              {option.label}
-            </option>
-          ))}
-        </select>
-      )}
+              {effortOptions.map((option) => (
+                <option
+                  disabled={option.disabled}
+                  key={option.value}
+                  value={option.value}
+                >
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          )
+        }
+      />
     </div>
   );
 }

@@ -44,6 +44,14 @@ Without a host, compose actions remain visible and disabled.
 Required fields, including checkboxes, block both actions until they are valid
 and expose an inline announced error.
 
+Select fields may opt into `"presentation": "segmented"`. Two or three unique
+choices render as the shared segmented buttons when every label fits at the
+current panel width and text size. Longer lists, narrow panels, and unknown
+initial values retain the dropdown. Omitted presentation or `"dropdown"`
+preserves the original appearance. Switching presentation never changes the
+value or submits the form; the explicit copy/compose button remains the action.
+The review-card example uses this for Approve / Needs changes.
+
 ## Safety and failure behavior
 
 Runtime plugins contain no JavaScript, commands, native calls, URL-opening, or

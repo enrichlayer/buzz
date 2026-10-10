@@ -32,7 +32,7 @@ import type {
   AcpSessionPolicy,
   AgentOutputMode,
 } from "@/shared/api/types";
-import { PersonaDropdownField } from "./PersonaDropdownField";
+import { PersonaChoiceField } from "./PersonaChoiceField";
 import {
   deriveNumericDescriptors,
   structuredEnvKeys,
@@ -171,10 +171,11 @@ export function PersonaAdvancedFields({
           >
             Conversation context
           </label>
-          <PersonaDropdownField
+          <PersonaChoiceField
             ariaDescribedBy="persona-session-policy-description"
             disabled={disabled}
             id="persona-session-policy"
+            label="Conversation context"
             onValueChange={(value) =>
               onBehaviorDraftChange({
                 ...behaviorDraft,
@@ -205,10 +206,11 @@ export function PersonaAdvancedFields({
           >
             Agent output
           </label>
-          <PersonaDropdownField
+          <PersonaChoiceField
             ariaDescribedBy="persona-output-mode-description"
             disabled={disabled}
             id="persona-output-mode"
+            label="Agent output"
             onValueChange={(value) =>
               onBehaviorDraftChange({
                 ...behaviorDraft,

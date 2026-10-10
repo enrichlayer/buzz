@@ -450,6 +450,15 @@ treat a config-behavior diff without a matching AGENTS.md diff (or an explicit
 
 ## Reader transcript views
 
+Small fixed configuration choices (conversation context, output policy and
+instruction audience) use PersonaChoiceField / AdaptiveSegmentedControl.
+Effort selectors use it only when the complete option set, including inherited
+or adapter-default and unavailable values, has at most four choices and fits
+the available width. Never truncate the runtime catalog to make buttons fit.
+Longer lists or labels retain their existing dropdown. This is presentation
+only: access warnings, owner-only locks, save/cancel, clearing policy and
+runtime capability gating remain authoritative in the existing callers.
+
 Conversation, Activity and Full transcript are local presentation preferences;
 changing them never persists or changes an agent's configured output policy.
 Thread activity remains bound to exact triggering messages and turn IDs, with

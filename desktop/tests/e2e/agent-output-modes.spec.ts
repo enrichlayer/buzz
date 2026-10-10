@@ -1,3 +1,4 @@
+import { waitForAnimations } from "../helpers/animations";
 import { expect, test, type Page } from "@playwright/test";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
@@ -354,10 +355,38 @@ test("persona output mode saves through the behavior group and reopens as Summar
   const dialog = page.getByTestId("persona-dialog");
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Advanced", exact: true }).click();
-  await dialog.locator("#persona-output-mode").click();
-  await page
-    .getByRole("menuitemradio", { name: "Summary", exact: true })
+  const output = dialog.getByRole("group", {
+    name: "Agent output",
+    exact: true,
+  });
+  await output.getByRole("button", { name: "Summary", exact: true }).click();
+  const context = dialog.getByRole("group", {
+    name: "Conversation context",
+    exact: true,
+  });
+  await context
+    .getByRole("button", { name: "Each thread", exact: true })
     .click();
+  const audience = dialog.getByRole("group", {
+    name: "Who can send instructions",
+    exact: true,
+  });
+  await audience
+    .getByRole("button", { name: "Selected people", exact: true })
+    .click();
+  await expect(dialog.getByTestId("agent-access-warning")).toBeVisible();
+  await audience.getByRole("button", { name: "Anyone", exact: true }).click();
+  await expect(dialog.getByTestId("agent-access-warning")).toContainText(
+    "Anyone",
+  );
+  await audience
+    .getByRole("button", { name: "Only me (default)", exact: true })
+    .click();
+  await expect(dialog.getByTestId("agent-access-warning")).toHaveCount(0);
+  await waitForAnimations(page);
+  await dialog.screenshot({
+    path: "test-results/segmented-choices/agent-settings.png",
+  });
   await dialog.getByTestId("persona-dialog-submit").click();
   await expect(dialog).not.toBeVisible();
 
@@ -366,13 +395,28 @@ test("persona output mode saves through the behavior group and reopens as Summar
       .reverse()
       .find((candidate) => candidate.command === "update_persona");
     return entry?.payload as
-      | { input?: { behavior?: { outputMode?: string } } }
+      | {
+          input?: {
+            behavior?: {
+              outputMode?: string;
+              sessionPolicy?: string;
+              respondTo?: string;
+            };
+          };
+        }
       | undefined;
   });
   expect(updatePayload?.input?.behavior?.outputMode).toBe("summary");
+  expect(updatePayload?.input?.behavior?.sessionPolicy).toBe("thread");
+  expect(updatePayload?.input?.behavior?.respondTo).toBe("owner-only");
 
   await page.getByTestId("user-profile-edit-agent").click();
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Advanced", exact: true }).click();
-  await expect(dialog.locator("#persona-output-mode")).toHaveText("Summary");
+  await expect(
+    output.getByRole("button", { name: "Summary", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    context.getByRole("button", { name: "Each thread", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
 });
