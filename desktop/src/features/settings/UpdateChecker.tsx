@@ -146,11 +146,11 @@ export function UpdateChecker() {
                 className="text-sm font-normal text-muted-foreground/70"
                 data-settings-subcopy
               >
-                Update downloaded. Click to apply.
+                Update downloaded. Restart when you’re ready.
               </p>
             </div>
             <Button size="sm" onClick={installAndRelaunch}>
-              Update Now
+              Restart to update
             </Button>
           </SettingsOptionRow>
         )}

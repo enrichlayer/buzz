@@ -1,0 +1,59 @@
+name: Enrich Layer Automatic Release
+on:
+  workflow_run:
+    workflows: [CI, Enrich Layer Updater Checks]
+    branches: [main]
+    types: [completed]
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+# Serialize version reservation and rollout; never cancel a publishing run.
+concurrency:
+  group: enrichlayer-automatic-release
+  cancel-in-progress: false
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+jobs:
+  prepare:
+    if: github.repository == 'enrichlayer/buzz' && github.ref == 'refs/heads/main' && (github.event_name != 'workflow_run' || github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+      pull-requests: read
+    outputs:
+      source_sha: ${{ steps.gate.outputs.source_sha }}
+      version: ${{ steps.gate.outputs.version }}
+      already_promoted: ${{ steps.gate.outputs.already_promoted }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify checks and reviews, reserve immutable version
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRIGGER_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          SOURCE_SHA=$(git rev-parse HEAD)
+          if [ -n "$TRIGGER_SHA" ] && [ "$SOURCE_SHA" != "$TRIGGER_SHA" ]; then
+            echo 'A newer main commit superseded this check completion.'
+            exit 0
+          fi
+          python3 scripts/enrichlayer-release-gate.py reserve "$SOURCE_SHA"
+  release:
+    needs: prepare
+    if: needs.prepare.outputs.version != '' && needs.prepare.outputs.already_promoted != 'true'
+    permissions:
+      contents: write
+      actions: read
+      pull-requests: read
+    uses: ./.github/workflows/enrichlayer-desktop-release.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      source_sha: ${{ needs.prepare.outputs.source_sha }}
+    secrets: inherit
