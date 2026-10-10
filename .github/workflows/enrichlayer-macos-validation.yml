@@ -43,8 +43,21 @@ jobs:
           mkdir -p staged
           just desktop-install-ci
           just desktop-build desktop-tauri-check desktop-tauri-test 2>&1 | tee staged/native-validation.log
-          cargo build --locked -p buzz-cli
-          tar -czf staged/buzz-cli-macos.tar.gz -C target/debug buzz
+          cargo build --locked --release -p buzz-acp -p buzz-agent -p buzz-backend-kubernetes -p buzz-dev-mcp -p git-credential-nostr -p buzz-cli
+          scripts/bundle-sidecars.sh
+          tar -czf staged/buzz-cli-macos.tar.gz -C target/release buzz
+      - name: Package private unsigned validation app
+        env:
+          CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+          MACOSX_DEPLOYMENT_TARGET: '10.15'
+          CMAKE_OSX_DEPLOYMENT_TARGET: '10.15'
+        run: |
+          set -euo pipefail
+          cat > desktop/src-tauri/tauri.validation.conf.json <<'JSON'
+          {"identifier":"co.enrichlayer.buzz.validation","bundle":{"createUpdaterArtifacts":false},"plugins":{"updater":{"endpoints":[]}}}
+          JSON
+          (cd desktop && pnpm tauri build --no-sign --bundles app --config src-tauri/tauri.validation.conf.json) 2>&1 | tee staged/native-packaging.log
+          tar -czf staged/Buzz-validation.app.tar.gz -C desktop/src-tauri/target/release/bundle/macos Buzz.app
       - name: Verify private R2 artifact round trip
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.BUZZ_BUILD_R2_ACCESS_KEY_ID }}

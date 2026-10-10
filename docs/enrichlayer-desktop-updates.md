@@ -66,7 +66,10 @@ python3 scripts/buzz-r2.py fetch-build linux/SOURCE_SHA/RUN_ID verified
 ```
 
 **Enrich Layer Remote macOS Validation** runs on arm64 and Intel macOS runners,
-builds/tests native desktop code and verifies a private R2 artifact round trip.
+builds/tests native desktop code, packages a private unsigned `.app`, and verifies
+a private R2 artifact round trip. This validation app uses the default feature
+set, a separate `co.enrichlayer.buzz.validation` identity, and no updater feed.
+The signed release workflow retains the Mesh feature build.
 Before this new workflow is present on the default branch, dispatch the existing
 `macos-intel-canary.yml` workflow with `--ref` set to the candidate branch. In our
 fork it delegates to the same two-platform validation workflow; upstream keeps
