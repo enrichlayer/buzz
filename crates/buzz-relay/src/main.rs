@@ -4767,6 +4767,39 @@ mod composition_tests {
     fn composition_log_does_not_leak_issuer_url() {
         use std::io::Write;
 
+        // Callsite interest is process-global. Other composition tests can
+        // first register the library's warning without this thread's capture
+        // subscriber, making the privacy assertion race under parallel tests.
+        // Run the unchanged production paths in an isolated, bounded child.
+        const CHILD: &str = "BUZZ_JWKS_PRIVACY_TEST_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "composition_tests::composition_log_does_not_leak_issuer_url",
+                    "--nocapture",
+                ])
+                .env(CHILD, "1")
+                .spawn()
+                .expect("spawn isolated privacy test");
+            let deadline = std::time::Instant::now() + Duration::from_secs(10);
+            let status = loop {
+                match child.try_wait() {
+                    Ok(Some(status)) => break status,
+                    Ok(None) if std::time::Instant::now() < deadline => {
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    result => {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        panic!("isolated privacy test did not finish: {result:?}");
+                    }
+                }
+            };
+            assert!(status.success(), "isolated privacy test failed: {status}");
+            return;
+        }
+
         // Sentinel must be lowercase: JwksSourceContract::new() canonicalizes
         // the URI and lowercases the host component. An uppercase sentinel would
         // never match the canonicalized output even when the URI leaks.
