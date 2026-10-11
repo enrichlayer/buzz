@@ -34,11 +34,10 @@ jobs:
     outputs:
       artifact-prefix: ${{ steps.upload.outputs.prefix }}
     timeout-minutes: 120
+    environment: ${{ inputs.publish && 'desktop-release' || 'desktop-candidate' }}
     env:
       BUZZ_UPDATER_ENDPOINT: https://buzz-downloads.enrichlayer.com/latest.json
       BUZZ_UPDATER_PUBLIC_KEY: ${{ secrets.BUZZ_UPDATER_PUBLIC_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       APPLE_SIGNING_IDENTITY: '-'
       VERSION: ${{ inputs.version }}
     steps:
@@ -51,6 +50,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PUBLISH: ${{ inputs.publish }}
+          HAS_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
         run: |
           set -euo pipefail
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
@@ -59,9 +59,8 @@ jobs:
             python3 scripts/enrichlayer-release-gate.py check "$(git rev-parse HEAD)"
             git merge-base --is-ancestor HEAD origin/main
           fi
-          for key in BUZZ_UPDATER_PUBLIC_KEY TAURI_SIGNING_PRIVATE_KEY; do
-            [[ -n "${!key}" ]] || { echo "::error::Missing $key"; exit 1; }
-          done
+          [[ -n "$BUZZ_UPDATER_PUBLIC_KEY" ]] || { echo "::error::Missing BUZZ_UPDATER_PUBLIC_KEY"; exit 1; }
+          [[ "$HAS_SIGNING_KEY" == true ]] || { echo "::error::Missing TAURI_SIGNING_PRIVATE_KEY"; exit 1; }
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
       - name: Install dependencies and set release version
@@ -113,6 +112,8 @@ jobs:
           LLAMA_STAGE_BUILD_DIR: ${{ github.workspace }}/.cache/mesh-llama/build-stage-abi-metal
           SKIPPY_LLAMA_AUTO_BUILD: '0'
           TAURI_BUNDLER_DMG_IGNORE_CI: 'true'
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       - name: Verify ad-hoc signature and stage release assets
         env:
           PLATFORM: ${{ inputs.platform }}
