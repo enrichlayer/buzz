@@ -14,7 +14,7 @@ class GateTest(unittest.TestCase):
     def setUp(self):
         self.pr = {"number": 8, "merged_at": "2026-10-11T00:00:00Z", "merge_commit_sha": SHA,
                    "base": {"ref": "main", "repo": {"full_name": gate.REPOSITORY}},
-                   "head": {"sha": HEAD}, "draft": False, "body": "buzz-review-completed",
+                   "head": {"sha": HEAD}, "draft": False, "body": "",
                    "user": {"login": "author"}}
         self.reviews = [{"id": 1, "state": "APPROVED", "commit_id": HEAD,
                          "user": {"login": "reviewer", "type": "User"}, "author_association": "MEMBER"}]
@@ -26,6 +26,8 @@ class GateTest(unittest.TestCase):
         self.main = SHA
         self.external = []
         self.statuses = []
+        self.permissions = {"reviewer": "write", "author": "admin", "reader": "read"}
+        self.compare = "ahead"
 
     def api(self, endpoint, **fields):
         if endpoint == "commits/main":
@@ -42,6 +44,10 @@ class GateTest(unittest.TestCase):
             return {"check_runs": self.external}
         if "/statuses?" in endpoint:
             return self.statuses
+        if endpoint.startswith("collaborators/"):
+            return {"permission": self.permissions.get(endpoint.split("/")[1], "none")}
+        if endpoint.startswith(f"compare/{SHA}...main"):
+            return {"status": self.compare}
         if endpoint.startswith("releases?"):
             return []
         if endpoint.startswith("tags?"):
@@ -51,21 +57,26 @@ class GateTest(unittest.TestCase):
             return fields
         raise AssertionError(endpoint)
 
-    def check(self):
+    def check(self, **kwargs):
         with patch.object(gate, "api", side_effect=self.api):
-            return gate.check(SHA)
+            return gate.check(SHA, **kwargs)
 
     def test_current_reviewed_green_source_passes(self):
         self.assertEqual(self.check()["review_ids"], [1])
 
-    def test_fail_closed_for_missing_pending_failed_or_skipped_required_checks(self):
+    def test_fail_closed_for_failed_or_skipped_required_checks(self):
         for status in (None, "failure", "skipped", "cancelled"):
             with self.subTest(status=status):
                 self.runs[0]["conclusion"] = status
                 with self.assertRaises(ValueError):
                     self.check()
+
+    def test_running_or_missing_required_check_is_pending_not_failure(self):
+        self.runs[0].update(status="in_progress", conclusion=None)
+        with self.assertRaisesRegex(gate.Pending, "still running"):
+            self.check()
         self.runs = []
-        with self.assertRaises(ValueError):
+        with self.assertRaises(gate.Pending):
             self.check()
 
     def test_later_failed_attempt_overrides_old_success(self):
@@ -78,41 +89,72 @@ class GateTest(unittest.TestCase):
         self.runs.append(dict(self.runs[0], id=100, path=".github/workflows/security.yml", conclusion="failure"))
         with self.assertRaises(ValueError):
             self.check()
+        self.runs[-1].update(status="in_progress", conclusion=None)
+        with self.assertRaises(gate.Pending):
+            self.check()
 
-    def test_old_main_and_direct_push_refused(self):
+    def test_old_main_and_direct_push_are_not_release_candidates(self):
         self.main = "c" * 40
-        with self.assertRaises(ValueError):
+        with self.assertRaises(gate.Pending):
             self.check()
         self.main = SHA
         self.pr["merge_commit_sha"] = "c" * 40
-        with self.assertRaises(ValueError):
+        with self.assertRaises(gate.Pending):
             self.check()
 
-    def test_marker_and_non_draft_required(self):
-        for field, value in (("body", ""), ("draft", True)):
-            original = self.pr[field]
-            self.pr[field] = value
-            with self.assertRaises(ValueError):
-                self.check()
-            self.pr[field] = original
+    def test_manual_promotion_accepts_reviewed_ancestor_of_main_only(self):
+        self.main = "c" * 40
+        self.assertEqual(self.check(allow_ancestor=True)["source_sha"], SHA)
+        self.compare = "diverged"
+        with self.assertRaisesRegex(ValueError, "not on main"):
+            self.check(allow_ancestor=True)
 
-    def test_stale_approval_refused(self):
-        self.reviews[0]["commit_id"] = "c" * 40
-        with self.assertRaises(ValueError):
-            self.check()
-
-    def test_repository_attestation_accepts_comment_based_agent_review(self):
+    def test_body_marker_is_not_approval_and_draft_refused(self):
+        self.pr["body"] = "buzz-review-completed"
         self.reviews = []
-        self.assertEqual(self.check()["review_ids"], [])
-        self.pr["body"] = ""
+        with self.assertRaisesRegex(ValueError, "lacks an approval"):
+            self.check()
+        self.reviews = [{"id": 1, "state": "APPROVED", "commit_id": HEAD, "user": {"login": "reviewer", "type": "User"}}]
+        self.pr["draft"] = True
         with self.assertRaises(ValueError):
             self.check()
 
-    def test_revoked_review_or_outstanding_changes_block(self):
-        for state in ("DISMISSED", "CHANGES_REQUESTED"):
-            self.reviews = [dict(self.reviews[0], state=state)]
-            with self.assertRaises(ValueError):
-                self.check()
+    def test_author_self_approval_and_read_only_approver_do_not_count(self):
+        for login in ("author", "reader", "stranger"):
+            with self.subTest(login=login):
+                self.reviews = [dict(self.reviews[0], user={"login": login, "type": "User"})]
+                with self.assertRaisesRegex(ValueError, "lacks an approval"):
+                    self.check()
+
+    def test_trusted_bot_reviewer_counts_and_unknown_bot_does_not(self):
+        self.reviews = [dict(self.reviews[0], user={"login": "enrichlayer-el-bot[bot]", "type": "Bot"})]
+        self.assertEqual(self.check()["review_ids"], [1])
+        self.reviews = [dict(self.reviews[0], user={"login": "other[bot]", "type": "Bot"})]
+        with self.assertRaises(ValueError):
+            self.check()
+
+    def test_stale_approval_ignored_but_current_one_passes(self):
+        stale = dict(self.reviews[0], id=0, commit_id="c" * 40, user={"login": "other", "type": "User"})
+        self.permissions["other"] = "write"
+        self.reviews.insert(0, stale)
+        self.assertEqual(self.check()["review_ids"], [1])
+        self.reviews = [stale]
+        with self.assertRaisesRegex(ValueError, "lacks an approval"):
+            self.check()
+
+    def test_dismissed_review_ignored_rather_than_refused(self):
+        dismissed = dict(self.reviews[0], id=0, state="DISMISSED", user={"login": "other", "type": "User"})
+        self.reviews.insert(0, dismissed)
+        self.assertEqual(self.check()["review_ids"], [1])
+        # A dismissed approval is not an approval.
+        self.reviews = [dict(self.reviews[1], id=2, state="DISMISSED")]
+        with self.assertRaises(ValueError):
+            self.check()
+
+    def test_outstanding_changes_requested_blocks(self):
+        self.reviews.append(dict(self.reviews[0], id=2, state="CHANGES_REQUESTED", user={"login": "other", "type": "User"}))
+        with self.assertRaisesRegex(ValueError, "changes requested"):
+            self.check()
 
     def test_main_movement_during_check_blocks(self):
         real_api = self.api
@@ -124,7 +166,7 @@ class GateTest(unittest.TestCase):
                 if calls == 2:
                     return {"sha": "c" * 40}
             return real_api(endpoint, **fields)
-        with patch.object(gate, "api", side_effect=moving), self.assertRaises(ValueError):
+        with patch.object(gate, "api", side_effect=moving), self.assertRaises(gate.Pending):
             gate.check(SHA)
 
     def test_version_reservation_is_retryable_and_numeric(self):
@@ -144,13 +186,24 @@ class GateTest(unittest.TestCase):
             rolling["assets"].pop()
             self.assertEqual(gate.release_state({}, "1.2.3")["already_promoted"], "false")
 
+    def test_published_unpromoted_release_is_reported_for_promotion_only(self):
+        versioned = {"tag_name": "el-desktop-v1.2.3", "draft": False, "assets": []}
+        with patch.object(gate, "pages", return_value=[versioned]):
+            state = gate.release_state({}, "1.2.3")
+            self.assertEqual((state["published"], state["already_promoted"]), ("true", "false"))
+            versioned["draft"] = True
+            self.assertEqual(gate.release_state({}, "1.2.3")["published"], "false")
+
     def test_external_check_failure_and_pending_status_block(self):
         self.external = [{"app": {"slug": "dco"}, "name": "DCO", "status": "completed", "conclusion": "failure"}]
         with self.assertRaisesRegex(ValueError, "External check"):
             self.check()
         self.external = []
-        self.statuses = [{"context": "external-ci", "state": "pending"}]
+        self.statuses = [{"context": "external-ci", "state": "error"}]
         with self.assertRaisesRegex(ValueError, "Commit status"):
+            self.check()
+        self.statuses = [{"context": "external-ci", "state": "pending"}]
+        with self.assertRaises(gate.Pending):
             self.check()
 
     def test_latest_external_status_supersedes_failure(self):

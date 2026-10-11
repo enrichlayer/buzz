@@ -12,24 +12,27 @@ After `CI` or `Enrich Layer Updater Checks` completes on a push to `main`,
 **Enrich Layer Automatic Release** checks the latest main commit. Both workflows
 must have succeeded for that exact commit, and other selected main workflows
 must have completed without failure. Existing external check runs and commit
-statuses on the source and PR head must also be successful. An incomplete/missing check fails closed;
-the second workflow completion retries the gate. An hourly retry also catches
-delayed reviews or other workflows finishing later. Already-promoted sources
-are not rebuilt. Superseded commits are skipped.
+statuses on the source and PR head must also be successful. While a required
+workflow, another main workflow or an external check is still running, or when
+the commit is not a PR merge, the run is a green no-op: the next workflow
+completion or the hourly retry re-evaluates it. A failed or missing-review
+gate turns the run red. Already-promoted sources are not rebuilt, and a
+published but unpromoted release is promoted from its existing assets without
+rebuilding. Superseded commits are skipped.
 
-The source must be the merge commit of a main PR with:
+The source must be the merge commit of exactly one main PR with:
 
-- the `buzz-review-completed` attestation required by [AGENTS.md](../AGENTS.md),
-  covering agent review/exercise and the required human test;
-- any GitHub approvals still applying to the current PR head;
-- no outstanding changes-requested review and no draft state.
+- an `APPROVED` review on the PR's final head commit from someone other than
+  the PR author: a collaborator with write, maintain or admin access, or the
+  `enrichlayer-el-bot[bot]` reviewer app;
+- no reviewer whose latest review requests changes, and no draft state.
 
-This does not waive review or human testing. A direct main push, stale review,
-dismissed approval, missing attestation, or missing checks cannot release.
-Buzz agent reviews normally arrive as comments; the repository attestation
-covers those reviews and human acceptance. No additional human approval round
-is introduced by this automation.
-The workflow gate applies even when branch protection is not configured.
+Dismissed reviews and approvals of an earlier head are ignored, not counted.
+The PR-body `buzz-review-completed` attestation from [AGENTS.md](../AGENTS.md)
+remains required by the review process, but it is not release evidence: the
+release gate never accepts text in the PR body as approval. A direct main push,
+self-approval or missing checks cannot release. The workflow gate applies even
+when branch protection is not configured.
 
 The coordinator reserves `el-desktop-vX.Y.Z` at that source commit. It increments
 the patch above the highest existing fork tag or checked-in stable app version.
@@ -53,11 +56,23 @@ for the user's **Restart to update** action before installing/relaunching.
 ## One-time repository setup
 
 Reuse the updater key already backed up at `secret/buzz/desktop-updater` in
-Verticalint Vault. Do not regenerate it during ordinary releases. Set Actions
-secrets `BUZZ_UPDATER_PUBLIC_KEY`, `TAURI_SIGNING_PRIVATE_KEY` and
-`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (empty for the existing unencrypted key).
-No Apple credentials are required. `signingIdentity: "-"` enables ad-hoc signing;
+Verticalint Vault. Do not regenerate it during ordinary releases. No Apple
+credentials are required. `signingIdentity: "-"` enables ad-hoc signing;
 never disable updater signature verification to work around OS prompts.
+
+The workflows reference two GitHub Environments, which a maintainer must create
+before the first release (a job that names a missing Environment creates an
+unprotected one):
+
+| Environment | Used by | Deployment branches and tags | Secrets |
+| --- | --- | --- | --- |
+| `desktop-release` | release `build`, `linux`, `windows`, `publish` | branch `main`, tag `el-desktop-v*` | `BUZZ_UPDATER_PUBLIC_KEY`, `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (empty for the existing unencrypted key) |
+| `desktop-promote` | **Promote Enrich Layer Desktop Update**, automatic `promote` | branch `main` | none |
+
+Move the three secrets from repository secrets into `desktop-release` and then
+delete the repository-level copies, so a workflow on any other branch cannot
+read them. Inside a job, the private key is passed only to the steps that run
+the Tauri bundler or re-sign the repaired AppImage.
 
 Enable Actions in the fork and merge this workflow and its dependency changes
 through the normal review process. The automatic workflow only runs from main.
@@ -82,7 +97,10 @@ Promotion requires every platform and signature, only our versioned asset URLs,
 and matching source/tag identity. A durable promotion journal prevents a failed
 feed replacement from losing its version floor. Older versions and changed
 same-version manifests are rejected. Both automatic and manual promotion share
-a concurrency group. The manual recovery workflow retains the same review gate.
+a concurrency group. The manual recovery workflow retains the same review gate
+and accepts a release whose source is an ancestor of current main, so a tested
+release can still be promoted after later merges; the downgrade refusal still
+applies.
 
 For a bad release, publish a fixed higher version. Do not overwrite artifacts,
 reuse a tag, silently downgrade clients or rotate the updater key. Installation

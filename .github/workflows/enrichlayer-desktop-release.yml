@@ -48,11 +48,12 @@ jobs:
             platform: darwin-x86_64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
+    # Signing and updater secrets live in this Environment, limited to main
+    # and el-desktop-v* tags; see docs/enrichlayer-desktop-updates.md.
+    environment: desktop-release
     env:
       BUZZ_UPDATER_ENDPOINT: https://github.com/enrichlayer/buzz/releases/download/buzz-desktop-latest/latest.json
       BUZZ_UPDATER_PUBLIC_KEY: ${{ secrets.BUZZ_UPDATER_PUBLIC_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       APPLE_SIGNING_IDENTITY: '-'
       VERSION: ${{ inputs.version }}
     steps:
@@ -64,15 +65,15 @@ jobs:
       - name: Verify source and signing prerequisites
         env:
           GH_TOKEN: ${{ github.token }}
+          HAS_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
         run: |
           set -euo pipefail
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
           GITHUB_REF="refs/tags/el-desktop-v$VERSION" scripts/verify-release-ref.sh el-desktop-v "$VERSION"
           python3 scripts/enrichlayer-release-gate.py check "$(git rev-parse HEAD)"
           git merge-base --is-ancestor HEAD origin/main
-          for key in BUZZ_UPDATER_PUBLIC_KEY TAURI_SIGNING_PRIVATE_KEY; do
-            [[ -n "${!key}" ]] || { echo "::error::Missing $key"; exit 1; }
-          done
+          [[ -n "$BUZZ_UPDATER_PUBLIC_KEY" ]] || { echo "::error::Missing BUZZ_UPDATER_PUBLIC_KEY"; exit 1; }
+          [[ "$HAS_SIGNING_KEY" == true ]] || { echo "::error::Missing TAURI_SIGNING_PRIVATE_KEY"; exit 1; }
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
       - name: Install dependencies and set release version
@@ -124,6 +125,9 @@ jobs:
           LLAMA_STAGE_BUILD_DIR: ${{ github.workspace }}/.cache/mesh-llama/build-stage-abi-metal
           SKIPPY_LLAMA_AUTO_BUILD: '0'
           TAURI_BUNDLER_DMG_IGNORE_CI: 'true'
+          # The signing key is visible only to the Tauri bundler step.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       - name: Verify ad-hoc signature and stage release assets
         env:
           PLATFORM: ${{ matrix.platform }}
@@ -143,12 +147,11 @@ jobs:
     needs: verify
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    environment: desktop-release
     env:
       VERSION: ${{ inputs.version }}
       BUZZ_UPDATER_ENDPOINT: https://github.com/enrichlayer/buzz/releases/download/buzz-desktop-latest/latest.json
       BUZZ_UPDATER_PUBLIC_KEY: ${{ secrets.BUZZ_UPDATER_PUBLIC_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       APPIMAGE_EXTRACT_AND_RUN: '1'
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -195,7 +198,7 @@ jobs:
           sudo install -D -m 644 /tmp/appimage-runtime /usr/local/lib/appimage-runtime
           echo "APPIMAGETOOL_RUNTIME_FILE=/usr/local/lib/appimage-runtime" >> "$GITHUB_ENV"
 
-      - name: Prepare and build Linux AppImage
+      - name: Prepare Linux release build
         env:
           CMAKE_POLICY_VERSION_MINIMUM: '3.5'
         run: |
@@ -207,13 +210,31 @@ jobs:
           cd ../..
           cargo build --release -p buzz-acp -p buzz-agent -p buzz-backend-kubernetes -p buzz-dev-mcp -p git-credential-nostr -p buzz-cli
           scripts/bundle-sidecars.sh
-          cd desktop
-          pnpm tauri build --ci --bundles appimage --features mesh-llm --config src-tauri/tauri.release.conf.json
-      - name: Repair and stage Linux updater artifact
+      - name: Build Linux AppImage
+        working-directory: desktop
+        env:
+          CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+          # The signing key is visible only to the Tauri bundler step.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --ci --bundles appimage --features mesh-llm --config src-tauri/tauri.release.conf.json
+      - name: Repair and re-sign Linux AppImage
+        env:
+          # fix-appimage.sh repacks the AppImage and must re-sign it; without the
+          # key it skips signing and the bundler's .sig no longer matches.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
+          set -euo pipefail
+          [[ -n "$TAURI_SIGNING_PRIVATE_KEY" ]] || { echo "::error::Missing TAURI_SIGNING_PRIVATE_KEY"; exit 1; }
           mapfile -t images < <(find desktop/src-tauri/target/release/bundle/appimage -name '*.AppImage' -type f)
           test "${#images[@]}" -eq 1
           bash desktop/scripts/fix-appimage.sh "${images[0]}"
+      - name: Stage Linux updater artifact
+        run: |
+          set -euo pipefail
+          mapfile -t images < <(find desktop/src-tauri/target/release/bundle/appimage -name '*.AppImage' -type f)
+          test "${#images[@]}" -eq 1
           mkdir staged
           cp "${images[0]}" "staged/Buzz_${VERSION}_linux-x86_64.AppImage"
           cp "${images[0]}.sig" "staged/Buzz_${VERSION}_linux-x86_64.AppImage.sig"
@@ -226,6 +247,7 @@ jobs:
     needs: verify
     runs-on: windows-latest
     timeout-minutes: 120
+    environment: desktop-release
     defaults:
       run:
         shell: bash
@@ -234,8 +256,6 @@ jobs:
       TARGET: x86_64-pc-windows-msvc
       BUZZ_UPDATER_ENDPOINT: https://github.com/enrichlayer/buzz/releases/download/buzz-desktop-latest/latest.json
       BUZZ_UPDATER_PUBLIC_KEY: ${{ secrets.BUZZ_UPDATER_PUBLIC_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -251,7 +271,7 @@ jobs:
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 11.4.0
-      - name: Build Windows installer
+      - name: Prepare Windows release build
         env:
           CMAKE_POLICY_VERSION_MINIMUM: '3.5'
         run: |
@@ -263,8 +283,14 @@ jobs:
           cd ../..
           cargo build --release --target "$TARGET" -p buzz-acp -p buzz-agent -p buzz-dev-mcp -p git-credential-nostr -p buzz-cli
           scripts/bundle-sidecars.sh "$TARGET"
-          cd desktop
-          pnpm tauri build --ci --target "$TARGET" --bundles nsis --config src-tauri/tauri.release.conf.json
+      - name: Build Windows installer
+        working-directory: desktop
+        env:
+          CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+          # The signing key is visible only to the Tauri bundler step.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --ci --target "$TARGET" --bundles nsis --config src-tauri/tauri.release.conf.json
       - name: Stage Windows updater artifact
         run: |
           mapfile -t installers < <(find "desktop/src-tauri/target/$TARGET/release/bundle/nsis" -name '*.exe' -type f)
@@ -281,6 +307,7 @@ jobs:
     needs: [build, linux, windows]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    environment: desktop-release
     concurrency:
       group: enrichlayer-desktop-promotion
       cancel-in-progress: false
