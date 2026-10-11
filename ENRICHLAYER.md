@@ -58,7 +58,8 @@ Current separately reviewed work:
 | --- | --- |
 | Coding transcripts, plugins and verified CLI transport | [PR #4](https://github.com/enrichlayer/buzz/pull/4) |
 | Floating annotations | [PR #5](https://github.com/enrichlayer/buzz/pull/5) |
-| Upstream integration and desktop updater | [PR #6](https://github.com/enrichlayer/buzz/pull/6) |
+| Upstream integration and R2 build storage | [PR #6](https://github.com/enrichlayer/buzz/pull/6) |
+| Reconciled team installers and automatic updates | [PR #8](https://github.com/enrichlayer/buzz/pull/8) |
 | Visible build identity | [DEV-12462](https://linear.app/verticalint/issue/DEV-12462/) |
 
 ## Keeping the fork current
@@ -73,6 +74,11 @@ Actions runs; inspect them rather than treating absence of a PR as success.
 
 The schedule becomes active only after this workflow is merged to `main` and
 enabled in the fork's Actions settings. Allow Actions to create pull requests.
+GitHub may separately suspend inherited fork workflows because of compute usage,
+even while the permissions API reports Actions enabled. If a dispatch reports
+`Actions has been disabled for this repository`, open the repository's Actions
+page and use its maintainer re-enable control. This suspension was cleared on
+11 October 2026; a newly accepted run confirms admission, not passing tests.
 The built-in token can create the draft, but its PR workflow runs may require
 **Approve workflows to run**. For unattended CI, configure `BUZZ_SYNC_TOKEN`
 using an authorized repository-scoped bot token with contents, workflows and
