@@ -72,6 +72,21 @@ Conflicts produce a failed run and one updated GitHub issue with the affected
 paths. Resolve the sync branch, push it, and rerun. Other failures remain failed
 Actions runs; inspect them rather than treating absence of a PR as success.
 
+The job never pushes changes under `.github/` that `main` does not already
+contain, because workflows on a same-repository branch run with our secrets.
+When upstream touches `.github/`, or the push is rejected for modifying
+workflow files, the run fails and the same issue asks a maintainer to review
+those changes, merge upstream locally and push `codex/upstream-sync` with their
+own credentials. Later runs keep that maintainer-pushed branch.
+
+**Merge the sync PR with a merge commit only.** Squash or rebase merging
+rewrites the upstream commits, so the next sync no longer shares history with
+`block/buzz` and re-merges or conflicts on everything already taken. When the
+sync branch tip is already on `main` (merged with a merge commit), the next run
+recreates the branch from `main` before merging upstream. After an accidental
+squash or rebase merge, delete `codex/upstream-sync` and redo the upstream merge
+locally with a merge commit.
+
 The schedule becomes active only after this workflow is merged to `main` and
 enabled in the fork's Actions settings. Allow Actions to create pull requests.
 GitHub may separately suspend inherited fork workflows because of compute usage,
@@ -81,8 +96,10 @@ page and use its maintainer re-enable control. This suspension was cleared on
 11 October 2026; a newly accepted run confirms admission, not passing tests.
 The built-in token can create the draft, but its PR workflow runs may require
 **Approve workflows to run**. For unattended CI, configure `BUZZ_SYNC_TOKEN`
-using an authorized repository-scoped bot token with contents, workflows and
-pull-request write access (plus issues write for conflict tracking).
+as an authorized fine-grained token scoped to `enrichlayer/buzz` with Contents,
+Pull requests and Issues write access. Do **not** grant the Workflows
+permission: the sync must be unable to push workflow changes, which stay a
+maintainer action.
 See [GitHub's token event rules](https://docs.github.com/en/actions/concepts/security/github_token).
 Public-repository schedules can be disabled after 60 days without activity;
 see [GitHub's schedule rules](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).

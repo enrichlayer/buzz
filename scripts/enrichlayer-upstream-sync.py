@@ -35,9 +35,16 @@ def prepare(root, upstream=UPSTREAM):
         return {"status": "current", "base": base, "upstream": central}
     remote = git(root, "ls-remote", "--heads", "origin", f"refs/heads/{BRANCH}").stdout.strip()
     start = base
+    recreated = False
     if remote:
         git(root, "fetch", "--quiet", "origin", f"refs/heads/{BRANCH}", capture=False)
-        start = git(root, "rev-parse", "FETCH_HEAD").stdout.strip()
+        tip = git(root, "rev-parse", "FETCH_HEAD").stdout.strip()
+        # A tip already on main was merged; it carries no pending maintainer
+        # fixes, so start fresh from main instead of stacking on stale history.
+        if git(root, "merge-base", "--is-ancestor", tip, base, check=False).returncode == 0:
+            recreated = True
+        else:
+            start = tip
     git(root, "checkout", "--quiet", "-B", BRANCH, start, capture=False)
     for label, revision in (("fork main", base), ("upstream main", central)):
         result = git(root, "merge", "--quiet", "--no-edit", "--no-ff", "--signoff", revision, capture=False, check=False)
@@ -51,7 +58,21 @@ def prepare(root, upstream=UPSTREAM):
                 raise RuntimeError(f"Git merge failed for {label} (exit {result.returncode})")
             return {"status": "conflict", "base": base, "upstream": central, "stage": label, "paths": paths[:100]}
     head = git(root, "rev-parse", "HEAD").stdout.strip()
-    return {"status": "ready", "base": base, "upstream": central, "head": head, "changed": head != start}
+    # Never publish workflow or repository-automation changes that main does not
+    # already contain: a same-repository branch runs them with our secrets.
+    pushed = set(git(root, "diff", "--name-only", start, head, "--", ".github/").stdout.splitlines())
+    untrusted = [path for path in git(root, "diff", "--name-only", base, head, "--", ".github/").stdout.splitlines()
+                 if path in pushed]
+    if untrusted:
+        return {"status": "needs-maintainer", "reason": "github-paths", "base": base, "upstream": central,
+                "head": head, "paths": untrusted[:100]}
+    return {"status": "ready", "base": base, "upstream": central, "head": head, "changed": head != start,
+            "recreated": recreated}
+
+
+def encode(result):
+    """JSON without backticks, so embedding it in a Markdown fence cannot break out."""
+    return json.dumps(result, indent=2).replace("`", "\\u0060") + "\n"
 
 
 def main():
@@ -61,11 +82,11 @@ def main():
     if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("GITHUB_REPOSITORY") != "enrichlayer/buzz":
         parser.error("Run this command only in the fork's disposable GitHub Actions checkout")
     result = prepare(Path.cwd())
-    args.result.write_text(json.dumps(result, indent=2) + "\n")
+    args.result.write_text(encode(result))
     if output := os.environ.get("GITHUB_OUTPUT"):
         with open(output, "a") as stream:
             stream.write(f"status={result['status']}\n")
-    print(json.dumps(result))
+    print(encode(result), end="")
 
 
 if __name__ == "__main__":

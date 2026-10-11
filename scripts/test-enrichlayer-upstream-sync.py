@@ -2,6 +2,7 @@
 """Exercise the production merge path using real local Git repositories."""
 
 import importlib.util
+import json
 from pathlib import Path
 import subprocess
 import tempfile
@@ -37,6 +38,7 @@ class SyncTest(unittest.TestCase):
         git(root, "config", "user.email", "sync@example.invalid")
 
     def commit(self, root, name, text):
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
         (root / name).write_text(text)
         git(root, "add", name)
         git(root, "commit", "-s", "-m", name)
@@ -83,6 +85,47 @@ class SyncTest(unittest.TestCase):
         self.commit(self.upstream, "next", "second")
         self.assertTrue(self.prepare()["changed"])
         self.assertEqual((self.worker / "manual").read_text(), "maintainer fix")
+
+    def test_upstream_github_changes_need_a_maintainer(self):
+        self.commit(self.upstream, ".github/workflows/new.yml", "on: push")
+        self.commit(self.upstream, "feature", "central feature")
+        result = self.prepare()
+        self.assertEqual(result["status"], "needs-maintainer")
+        self.assertEqual(result["paths"], [".github/workflows/new.yml"])
+        self.assertNotIn(SYNC.BRANCH, git(self.origin, "branch", "--list"))
+
+    def test_trusted_main_and_already_pushed_github_changes_do_not_block(self):
+        self.commit(self.worker, ".github/workflows/ours.yml", "fork workflow")
+        git(self.worker, "push", "origin", "main")
+        self.commit(self.upstream, "central", "first")
+        self.assertEqual(self.prepare()["status"], "ready")
+        # A maintainer pushed a reviewed workflow fix to the sync branch with
+        # their own credentials; a later unrelated upstream change still syncs.
+        self.commit(self.worker, ".github/workflows/fix.yml", "maintainer fix")
+        git(self.worker, "push", "origin", SYNC.BRANCH)
+        self.commit(self.upstream, "next", "second")
+        result = self.prepare()
+        self.assertEqual(result["status"], "ready")
+        self.assertTrue(result["changed"])
+
+    def test_merged_sync_branch_is_recreated_from_main(self):
+        self.commit(self.upstream, "central", "first")
+        self.prepare()
+        git(self.worker, "push", "origin", SYNC.BRANCH)
+        git(self.worker, "checkout", "--quiet", "main")
+        git(self.worker, "merge", "--quiet", "--no-ff", "-m", "merge sync", SYNC.BRANCH)
+        git(self.worker, "push", "origin", "main")
+        base = git(self.worker, "rev-parse", "HEAD")
+        self.commit(self.upstream, "next", "second")
+        result = self.prepare()
+        self.assertEqual(result["status"], "ready")
+        self.assertTrue(result["recreated"])
+        self.assertEqual(git(self.worker, "rev-parse", "HEAD^1"), base)
+
+    def test_result_json_cannot_break_out_of_a_markdown_fence(self):
+        encoded = SYNC.encode({"status": "conflict", "paths": ["```\n@everyone `x`"]})
+        self.assertNotIn("`", encoded)
+        self.assertEqual(json.loads(encoded)["paths"], ["```\n@everyone `x`"])
 
     def test_uncommitted_files_are_rejected(self):
         (self.worker / "unsaved").write_text("user work")
