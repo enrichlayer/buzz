@@ -2,7 +2,9 @@ import { Portal as PopoverPortal } from "@radix-ui/react-popover";
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { MessageSquarePlus } from "lucide-react";
+import { toast } from "sonner";
 
+import { writeTextToClipboard } from "@/shared/lib/clipboard";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import {
@@ -116,7 +118,10 @@ export function SelectionAnnotationEditor({
           );
         await selection.scope.submit(request);
       } else {
-        await navigator.clipboard.writeText(request.message);
+        await writeTextToClipboard(request.message).catch(() => {
+          throw new Error("Could not copy the annotation. Try again.");
+        });
+        toast.success("Annotation copied");
       }
       onOpenChange(false);
     } catch (submitError) {
@@ -202,7 +207,7 @@ export function SelectionAnnotationEditor({
           >
             {selection.scope
               ? `Send to ${selection.scope.scope.label}`
-              : "No conversation is open. Copy this annotation to use it anywhere."}
+              : "This selection is outside a conversation. Copy this annotation to use it anywhere."}
           </p>
           {sourceChanged ? (
             <p className="text-xs text-muted-foreground" role="status">

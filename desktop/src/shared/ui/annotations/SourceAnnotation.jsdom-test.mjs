@@ -20,7 +20,7 @@ test.before(() => {
   globalThis.cancelAnimationFrame = clearTimeout;
 });
 
-test("unwrapped tools and outside previews share the active thread, and navigation invalidates an open draft", async () => {
+test("unwrapped tools send to their thread, outside previews are copy-only, and navigation invalidates an open draft", async () => {
   const requests = [];
   const container = document.createElement("div");
   document.body.append(container);
@@ -36,7 +36,6 @@ test("unwrapped tools and outside previews share the active thread, and navigati
             id: "channel",
             label: "#general",
             channelId: "channel-1",
-            priority: 10,
           },
           onSubmit: async () => {
             throw new Error("Wrong channel destination");
@@ -50,7 +49,6 @@ test("unwrapped tools and outside previews share the active thread, and navigati
                   id: "thread",
                   label: "the test thread",
                   channelId: "channel-1",
-                  priority: 20,
                 },
                 onSubmit: async (request) => requests.push(request),
               },
@@ -113,8 +111,25 @@ test("unwrapped tools and outside previews share the active thread, and navigati
     await open("#preview");
     input = document.body.querySelector('textarea[aria-label="Feedback"]');
     assert.ok(input, "outside preview selection opens the same editor");
+    assert.match(
+      document.body.querySelector('[data-testid="annotation-destination"]')
+        .textContent,
+      /outside a conversation/,
+    );
     await act(async () =>
       fireEvent.change(input, { target: { value: "Comment on this file" } }),
+    );
+    assert.ok(buttonNamed("Copy annotation"));
+    assert.equal(
+      buttonNamed("Send feedback"),
+      undefined,
+      "a selection outside every conversation cannot be sent",
+    );
+    await act(async () => fireEvent.click(buttonNamed("Cancel")));
+    await open("#tool");
+    input = document.body.querySelector('textarea[aria-label="Feedback"]');
+    await act(async () =>
+      fireEvent.change(input, { target: { value: "Comment on this tool" } }),
     );
     await act(async () =>
       root.render(React.createElement(Tree, { thread: false })),

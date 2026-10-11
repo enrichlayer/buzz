@@ -993,7 +993,6 @@ function MessageThreadPanelContent({
           id: `thread:${channelId}:${threadHeadId}`,
           channelId,
           label: `#${channelName} · ${threadHead?.body.slice(0, 60) || "thread"}`,
-          priority: 20,
         }}
       >
         <RuntimePluginHostProvider onCompose={handlePluginCompose}>

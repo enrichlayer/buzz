@@ -8,12 +8,12 @@ import {
 function fixture() {
   const root = document.createElement("div");
   root.innerHTML =
-    '<section id="channel"><p id="human">A human message</p><section id="thread"><p id="tool">Tool output: tests passed</p><p id="code">const result = true;</p></section><div contenteditable="true" id="draft">Private unsent draft</div></section><article id="file">File preview content</article>';
+    '<section id="channel"><p id="human">A human message</p><section id="thread"><p id="tool">Tool output: tests passed</p><p id="code">const result = true;</p></section><div contenteditable="true" id="draft">Private unsent draft</div></section><article id="file">File preview content</article><div role="dialog" id="profile"><p id="bio">Profile bio text</p></div>';
   document.body.append(root);
   const registry = createAnnotationRegistry();
   const channel = {
     root: root.querySelector("#channel"),
-    scope: { id: "channel-a", label: "#general", channelId: "a", priority: 10 },
+    scope: { id: "channel-a", label: "#general", channelId: "a" },
     submit: async () => {},
   };
   const thread = {
@@ -22,7 +22,6 @@ function fixture() {
       id: "thread-a",
       label: "this thread",
       channelId: "a",
-      priority: 20,
     },
     submit: async () => {},
   };
@@ -67,13 +66,22 @@ test("human text, tools and selections spanning multiple blocks do not need sour
   }
 });
 
-test("outside previews use the active conversation, with source provenance preserved", () => {
+test("selections outside every conversation are copy-only, with source provenance preserved", () => {
   const f = fixture();
   try {
-    f.select("#tool");
+    assert.equal(f.select("#tool").scope, f.thread);
     const file = f.select("#file");
-    assert.equal(file.scope, f.thread);
+    assert.equal(
+      file.scope,
+      null,
+      "a previously used conversation is not a fallback destination",
+    );
     assert.equal(file.anchor.originalSourceText, "File preview content");
+    assert.equal(
+      f.select("#bio").scope,
+      null,
+      "modal or profile text cannot be posted into a channel",
+    );
     const source = {
       sourceId: "file:readme",
       text: "File preview content",
@@ -84,13 +92,26 @@ test("outside previews use the active conversation, with source provenance prese
     const registered = f.select("#file");
     assert.equal(registered.anchor.sourceId, "file:readme");
     assert.equal(registered.anchor.channelId, "source-channel");
-    assert.equal(registered.scope.scope.channelId, "a");
+    assert.equal(registered.scope, null);
+    assert.equal(f.select("#human", "#tool").scope, f.channel);
     f.registry.scopes.delete(f.thread);
     assert.equal(
-      f.select("#file").scope,
+      f.select("#tool").scope,
       f.channel,
       "removed destinations cannot be selected",
     );
+  } finally {
+    f.close();
+  }
+});
+
+test("a selection ending before a later composer is not treated as crossing it", () => {
+  const f = fixture();
+  try {
+    const result = f.select("#tool", "#code");
+    assert.ok(result);
+    assert.equal(result.scope, f.thread);
+    assert.equal(f.select("#code", "#draft"), null);
   } finally {
     f.close();
   }

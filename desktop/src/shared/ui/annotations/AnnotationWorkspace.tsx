@@ -84,7 +84,14 @@ export function AnnotationWorkspace({
         setOpen(false);
       }
     });
-    observer.observe(document.body, { childList: true, subtree: true });
+    // The root disconnects only when it or an ancestor leaves its parent, so
+    // watch direct children along that path instead of the whole page.
+    for (
+      let node: Node | null = selection.root.parentNode;
+      node;
+      node = node.parentNode
+    )
+      observer.observe(node, { childList: true });
     return () => observer.disconnect();
   }, [selection]);
 

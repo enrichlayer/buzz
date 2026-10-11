@@ -9,8 +9,6 @@ export type AnnotationScope = {
   id: string;
   label: string;
   channelId?: string | null;
-  /** Default destination when selection is outside a conversation. */
-  priority?: number;
 };
 
 export type AnnotationScopeRegistration = {
@@ -29,7 +27,6 @@ export function createAnnotationRegistry() {
   return {
     scopes: new Set<AnnotationScopeRegistration>(),
     sources: new Map<HTMLElement, AnnotationSourceRegistration>(),
-    activeScope: null as AnnotationScopeRegistration | null,
     changed: (_root: HTMLElement) => {},
   };
 }
@@ -43,24 +40,50 @@ function elementFor(node: Node): HTMLElement | null {
 const EDITABLE =
   'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [data-annotation-editor]';
 
-/** Browser paragraph selection may end at the next sibling or its parent. */
+function nextOutsideSubtree(walker: TreeWalker) {
+  let node = walker.nextSibling();
+  while (!node && walker.parentNode()) node = walker.nextSibling();
+  return node;
+}
+
+/**
+ * Browser paragraph selection may end at the next sibling or its parent.
+ * Visits only nodes the range intersects and stops after its end; also
+ * collects editable elements the range touches.
+ */
 function textBoundedRange(original: Range) {
   const range = original.cloneRange();
+  const editables: Element[] = [];
   const common = original.commonAncestorContainer;
-  if (common.nodeType === Node.TEXT_NODE) return range;
-  const walker = document.createTreeWalker(common, NodeFilter.SHOW_TEXT);
+  if (common.nodeType === Node.TEXT_NODE) return { range, editables };
+  const walker = document.createTreeWalker(
+    common,
+    NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+  );
   let first: Text | null = null;
   let last: Text | null = null;
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    if (!original.intersectsNode(node)) continue;
-    const from = node === original.startContainer ? original.startOffset : 0;
-    const to =
-      node === original.endContainer
-        ? original.endOffset
-        : node.textContent?.length;
-    if (!node.textContent?.slice(from, to).trim()) continue;
-    first ??= node as Text;
-    last = node as Text;
+  let node = walker.firstChild();
+  while (node) {
+    if (!original.intersectsNode(node)) {
+      // Document order: once a node starts after the range, nothing later intersects.
+      if (original.comparePoint(node, 0) > 0) break;
+      node = nextOutsideSubtree(walker);
+      continue;
+    }
+    if (node instanceof Element) {
+      if (node.matches(EDITABLE)) editables.push(node);
+    } else {
+      const from = node === original.startContainer ? original.startOffset : 0;
+      const to =
+        node === original.endContainer
+          ? original.endOffset
+          : node.textContent?.length;
+      if (node.textContent?.slice(from, to).trim()) {
+        first ??= node as Text;
+        last = node as Text;
+      }
+    }
+    node = walker.nextNode();
   }
   if (first && last) {
     range.setStart(
@@ -72,7 +95,7 @@ function textBoundedRange(original: Range) {
       last === original.endContainer ? original.endOffset : last.length,
     );
   }
-  return range;
+  return { range, editables };
 }
 
 /** Resolve the whole selection, including unregistered text and multi-block ranges. */
@@ -86,7 +109,7 @@ export function resolveAnnotationSelection(
     !selection.toString().trim()
   )
     return null;
-  const range = textBoundedRange(selection.getRangeAt(0));
+  const { range, editables } = textBoundedRange(selection.getRangeAt(0));
   const start = elementFor(range.startContainer);
   const end = elementFor(range.endContainer);
   if (
@@ -100,32 +123,21 @@ export function resolveAnnotationSelection(
     return null;
   // A range that crosses a composer must not capture a private, unsent draft.
   const common = elementFor(range.commonAncestorContainer);
-  if (
-    !common ||
-    [...common.querySelectorAll(EDITABLE)].some((node) =>
-      range.intersectsNode(node),
-    )
-  )
+  if (!common || editables.some((node) => range.intersectsNode(node)))
     return null;
 
-  const scopes = [...registry.scopes].filter((entry) => entry.root.isConnected);
+  // Only a conversation that contains the whole selection may receive it. Text
+  // outside every conversation (modals, profiles, previews) can only be copied,
+  // so it can never be posted into a conversation the user did not select in.
   let scope: AnnotationScopeRegistration | null = null;
-  for (const entry of scopes) {
+  for (const entry of registry.scopes) {
     if (
+      entry.root.isConnected &&
       entry.root.contains(start) &&
       entry.root.contains(end) &&
       (!scope || scope.root.contains(entry.root))
     )
       scope = entry;
-  }
-  if (scope) registry.activeScope = scope;
-  else {
-    scope =
-      registry.activeScope && scopes.includes(registry.activeScope)
-        ? registry.activeScope
-        : (scopes.sort(
-            (a, b) => (b.scope.priority ?? 0) - (a.scope.priority ?? 0),
-          )[0] ?? null);
   }
 
   let registered: AnnotationSourceRegistration | null = null;

@@ -58,7 +58,6 @@ function RegisteredScope({
     registry.scopes.add(entry);
     return () => {
       registry.scopes.delete(entry);
-      if (registry.activeScope === entry) registry.activeScope = null;
       registry.changed(root);
     };
   }, [registry, scopeId]);

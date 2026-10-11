@@ -25,7 +25,6 @@ export function ChannelAnnotationScope({
         id: `channel:${channel.id}`,
         channelId: channel.id,
         label: `#${channel.name}`,
-        priority: 10,
       }}
       onSubmit={async (request) => {
         if (
