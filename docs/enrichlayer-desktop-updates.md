@@ -157,10 +157,12 @@ before credentials or downloads can work. The S3 endpoint is
 `https://fc42fab64b7a71c11ced03fee83fe27d.r2.cloudflarestorage.com`.
 Store bucket-scoped account credentials as `access-key-id` and
 `secret-access-key` at `secret/r2/buzz-builds` and `secret/r2/buzz-releases` in
-Verticalint Vault. Configure encrypted repository secrets
-`BUZZ_BUILD_R2_ACCESS_KEY_ID`, `BUZZ_BUILD_R2_SECRET_ACCESS_KEY`,
-`BUZZ_RELEASE_R2_ACCESS_KEY_ID`, and `BUZZ_RELEASE_R2_SECRET_ACCESS_KEY`.
-Do not put credentials in source, logs, artifacts or fork PR execution.
+Verticalint Vault. Configure `BUZZ_BUILD_R2_ACCESS_KEY_ID` and
+`BUZZ_BUILD_R2_SECRET_ACCESS_KEY` in `desktop-candidate` and `desktop-release`.
+Configure `BUZZ_RELEASE_R2_ACCESS_KEY_ID` and
+`BUZZ_RELEASE_R2_SECRET_ACCESS_KEY` only in `desktop-release` and
+`desktop-promote`. Use encrypted Environment secrets, never repository-level
+copies. Do not put credentials in source, logs, artifacts or fork PR execution.
 
 Build catalogs bind every artifact to its SHA-256 and size and are written last.
 Private paths include source SHA, run, attempt and platform. Publication fetches
