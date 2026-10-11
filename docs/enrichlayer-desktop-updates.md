@@ -63,6 +63,13 @@ Enable Actions in the fork and merge this workflow and its dependency changes
 through the normal review process. The automatic workflow only runs from main.
 A draft PR is preparation, not a live release or installed update.
 
+If pushes produce no Actions runs even though the permissions API says enabled,
+try a workflow dispatch and inspect its error. GitHub can disable an active fork
+because of inherited workflow usage. A maintainer must open the repository's
+Actions page and use its re-enable control; enabling an individual workflow
+alone does not clear that repository state. Confirm a new run is accepted,
+then inspect its actual jobs and results before claiming CI has passed.
+
 The app identifier is `com.enrichlayer.buzz`; first installs and profile/OS
 permission migration need explicit testing. Reviewers must exercise a real
 browser-downloaded installer and an older-to-newer update on each supported
