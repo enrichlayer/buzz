@@ -10,8 +10,7 @@ const script = new URL(
   "./build-enrichlayer-release-config.mjs",
   import.meta.url,
 );
-const endpoint =
-  "https://github.com/enrichlayer/buzz/releases/download/buzz-desktop-latest/latest.json";
+const endpoint = "https://buzz-downloads.enrichlayer.com/latest.json";
 function run(overrides, check) {
   const cwd = mkdtempSync(resolve(tmpdir(), "buzz-fork-config-"));
   mkdirSync(resolve(cwd, "src-tauri"));

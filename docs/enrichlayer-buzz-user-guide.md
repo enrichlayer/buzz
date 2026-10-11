@@ -101,3 +101,7 @@ an upstream/development build will not automatically switch to our update feed.
 Initial installation and updates must be exercised on each supported platform
 before this rollout is considered verified. See the
 [maintainer release guide](enrichlayer-desktop-updates.md) for delivery gates.
+
+Installer links on the GitHub release page download from our R2 origin,
+`buzz-downloads.enrichlayer.com`. Automatic updates use this same origin and
+verify our updater signature before installation.

@@ -8,6 +8,10 @@ on:
       source_sha:
         required: true
         type: string
+      publish:
+        description: Publish only after main CI and existing review acceptance
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -19,6 +23,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   verify:
+    if: github.repository == 'enrichlayer/buzz'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -27,7 +32,15 @@ jobs:
           ref: ${{ inputs.source_sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Validate candidate identity
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          python3 -c 'import re,os; assert re.fullmatch(r"[a-f0-9]{40}", os.environ["SOURCE_SHA"]); assert re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", os.environ["VERSION"])'
       - name: Require reviewed main source and immutable tag
+        if: inputs.publish
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ inputs.source_sha }}
@@ -35,117 +48,35 @@ jobs:
         run: |
           python3 scripts/enrichlayer-release-gate.py check "$SOURCE_SHA"
           GITHUB_REF="refs/tags/el-desktop-v$VERSION" scripts/verify-release-ref.sh el-desktop-v "$VERSION"
-  build:
+  arm64:
     needs: verify
-    if: github.repository == 'enrichlayer/buzz'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15
-            platform: darwin-aarch64
-          - runner: macos-15-intel
-            platform: darwin-x86_64
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 120
-    env:
-      BUZZ_UPDATER_ENDPOINT: https://github.com/enrichlayer/buzz/releases/download/buzz-desktop-latest/latest.json
-      BUZZ_UPDATER_PUBLIC_KEY: ${{ secrets.BUZZ_UPDATER_PUBLIC_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-      APPLE_SIGNING_IDENTITY: '-'
-      VERSION: ${{ inputs.version }}
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          ref: ${{ inputs.source_sha }}
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Verify source and signing prerequisites
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
-          GITHUB_REF="refs/tags/el-desktop-v$VERSION" scripts/verify-release-ref.sh el-desktop-v "$VERSION"
-          python3 scripts/enrichlayer-release-gate.py check "$(git rev-parse HEAD)"
-          git merge-base --is-ancestor HEAD origin/main
-          for key in BUZZ_UPDATER_PUBLIC_KEY TAURI_SIGNING_PRIVATE_KEY; do
-            [[ -n "${!key}" ]] || { echo "::error::Missing $key"; exit 1; }
-          done
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-      - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
-      - name: Install dependencies and set release version
-        run: |
-          just desktop-install-ci
-          cd desktop
-          node scripts/set-version-from-tag.mjs "$VERSION"
-          node scripts/build-enrichlayer-release-config.mjs
-          cd src-tauri
-          cargo update --workspace
-      - name: Build sidecars
-        run: |
-          cargo build --release -p buzz-acp -p buzz-agent -p buzz-backend-kubernetes -p buzz-dev-mcp -p git-credential-nostr -p buzz-cli
-          scripts/bundle-sidecars.sh
-      # Mesh rev derived from Cargo.lock (no lockstep edit on dep bump); cache key tracks it.
-      - name: Resolve mesh-llm rev
-        id: mesh_rev
-        run: |
-          set -euo pipefail
-          REV=$(python3 -c 'import tomllib; d=tomllib.load(open("Cargo.lock", "rb")); p=next(p for p in d["package"] if p["name"] == "mesh-llm-sdk"); print(p["source"].rsplit("#", 1)[1])')
-          [[ -n "$REV" ]] || { echo "::error::could not resolve mesh-llm rev from Cargo.lock"; exit 1; }
-          echo "rev=$REV" >> "$GITHUB_OUTPUT"
-          echo "short=${REV:0:7}" >> "$GITHUB_OUTPUT"
-      - name: Build mesh llama native libraries
-        env:
-          MESH_REV_SHORT: ${{ steps.mesh_rev.outputs.short }}
-        run: |
-          set -euo pipefail
-          cargo fetch --manifest-path desktop/src-tauri/Cargo.toml
-          SHORT="$MESH_REV_SHORT"
-          MESH_ROOT=$(find "${CARGO_HOME:-$HOME/.cargo}/git/checkouts" -path "*/$SHORT" -type d -name "$SHORT" | head -1)
-          if [[ -z "$MESH_ROOT" ]]; then
-            echo "::error::mesh-llm checkout for $SHORT not found after cargo fetch"
-            exit 1
-          fi
-          export LLAMA_STAGE_BACKEND=metal
-          export LLAMA_STAGE_BUILD_DIR="$GITHUB_WORKSPACE/.cache/mesh-llama/build-stage-abi-metal"
-          export CMAKE_OSX_DEPLOYMENT_TARGET=10.15
-          "$MESH_ROOT/scripts/prepare-llama.sh" pinned
-          "$MESH_ROOT/scripts/build-llama.sh" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
-      - name: Build ad-hoc signed Mac app
-        working-directory: desktop
-        run: pnpm tauri build --ci --features mesh-llm --config src-tauri/tauri.release.conf.json
-        env:
-          CMAKE_POLICY_VERSION_MINIMUM: '3.5'
-          MACOSX_DEPLOYMENT_TARGET: '10.15'
-          CMAKE_OSX_DEPLOYMENT_TARGET: '10.15'
-          LLAMA_STAGE_BACKEND: metal
-          LLAMA_STAGE_BUILD_DIR: ${{ github.workspace }}/.cache/mesh-llama/build-stage-abi-metal
-          SKIPPY_LLAMA_AUTO_BUILD: '0'
-          TAURI_BUNDLER_DMG_IGNORE_CI: 'true'
-      - name: Verify ad-hoc signature and stage release assets
-        env:
-          PLATFORM: ${{ matrix.platform }}
-        run: |
-          set -euo pipefail
-          codesign --verify --deep --strict desktop/src-tauri/target/release/bundle/macos/Buzz.app
-          mkdir -p staged
-          cp desktop/src-tauri/target/release/bundle/macos/Buzz.app.tar.gz "staged/Buzz_${VERSION}_${PLATFORM}.app.tar.gz"
-          cp desktop/src-tauri/target/release/bundle/macos/Buzz.app.tar.gz.sig "staged/Buzz_${VERSION}_${PLATFORM}.app.tar.gz.sig"
-          cp desktop/src-tauri/target/release/bundle/dmg/*.dmg "staged/Buzz_${VERSION}_${PLATFORM}.dmg"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: ${{ matrix.platform }}
-          path: staged/*
-          if-no-files-found: error
+    uses: ./.github/workflows/_enrichlayer-desktop-build.yml
+    with:
+      runner: macos-15
+      platform: darwin-aarch64
+      version: ${{ inputs.version }}
+      source_sha: ${{ inputs.source_sha }}
+      publish: ${{ inputs.publish }}
+    secrets: inherit
+  intel:
+    needs: verify
+    uses: ./.github/workflows/_enrichlayer-desktop-build.yml
+    with:
+      runner: macos-15-intel
+      platform: darwin-x86_64
+      version: ${{ inputs.version }}
+      source_sha: ${{ inputs.source_sha }}
+      publish: ${{ inputs.publish }}
+    secrets: inherit
   linux:
     needs: verify
+    outputs:
+      artifact-prefix: ${{ steps.upload.outputs.prefix }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
       VERSION: ${{ inputs.version }}
-      BUZZ_UPDATER_ENDPOINT: https://github.com/enrichlayer/buzz/releases/download/buzz-desktop-latest/latest.json
+      BUZZ_UPDATER_ENDPOINT: https://buzz-downloads.enrichlayer.com/latest.json
       BUZZ_UPDATER_PUBLIC_KEY: ${{ secrets.BUZZ_UPDATER_PUBLIC_KEY }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -217,13 +148,21 @@ jobs:
           mkdir staged
           cp "${images[0]}" "staged/Buzz_${VERSION}_linux-x86_64.AppImage"
           cp "${images[0]}.sig" "staged/Buzz_${VERSION}_linux-x86_64.AppImage.sig"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: linux-x86_64
-          path: staged/*
-          if-no-files-found: error
+      - name: Store verified build artifacts in private R2
+        id: upload
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BUZZ_BUILD_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BUZZ_BUILD_R2_SECRET_ACCESS_KEY }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          PLATFORM: linux-x86_64
+        run: |
+          PREFIX="desktop/$SOURCE_SHA/$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT/$PLATFORM"
+          bash scripts/run-buzz-r2.sh upload-build "$PREFIX" staged
+          echo "prefix=$PREFIX" >> "$GITHUB_OUTPUT"
   windows:
     needs: verify
+    outputs:
+      artifact-prefix: ${{ steps.upload.outputs.prefix }}
     runs-on: windows-latest
     timeout-minutes: 120
     defaults:
@@ -232,7 +171,7 @@ jobs:
     env:
       VERSION: ${{ inputs.version }}
       TARGET: x86_64-pc-windows-msvc
-      BUZZ_UPDATER_ENDPOINT: https://github.com/enrichlayer/buzz/releases/download/buzz-desktop-latest/latest.json
+      BUZZ_UPDATER_ENDPOINT: https://buzz-downloads.enrichlayer.com/latest.json
       BUZZ_UPDATER_PUBLIC_KEY: ${{ secrets.BUZZ_UPDATER_PUBLIC_KEY }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -272,15 +211,22 @@ jobs:
           mkdir staged
           cp "${installers[0]}" "staged/Buzz_${VERSION}_windows-x86_64-setup.exe"
           cp "${installers[0]}.sig" "staged/Buzz_${VERSION}_windows-x86_64-setup.exe.sig"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: windows-x86_64
-          path: staged/*
-          if-no-files-found: error
+      - name: Store verified build artifacts in private R2
+        id: upload
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BUZZ_BUILD_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BUZZ_BUILD_R2_SECRET_ACCESS_KEY }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          PLATFORM: windows-x86_64
+        run: |
+          PREFIX="desktop/$SOURCE_SHA/$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT/$PLATFORM"
+          bash scripts/run-buzz-r2.sh upload-build "$PREFIX" staged
+          echo "prefix=$PREFIX" >> "$GITHUB_OUTPUT"
   publish:
-    needs: [build, linux, windows]
+    if: inputs.publish
+    needs: [arm64, intel, linux, windows]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     concurrency:
       group: enrichlayer-desktop-promotion
       cancel-in-progress: false
@@ -299,13 +245,19 @@ jobs:
         with:
           ref: ${{ inputs.source_sha }}
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          pattern: '*-*64'
-          path: staged
-          merge-multiple: true
-      - name: Recheck source, publish complete release, and promote
+      - name: Retrieve the successful build attempt for every platform
+        env:
+          BUILD_PREFIXES: ${{ toJSON(fromJSON(format('["{0}","{1}","{2}","{3}"]', needs.arm64.outputs.artifact-prefix, needs.intel.outputs.artifact-prefix, needs.linux.outputs.artifact-prefix, needs.windows.outputs.artifact-prefix))) }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.BUZZ_BUILD_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BUZZ_BUILD_R2_SECRET_ACCESS_KEY }}
+        run: bash scripts/run-buzz-r2.sh stage-release "$VERSION" staged
+      - name: Recheck source and publish complete immutable R2 release
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BUZZ_RELEASE_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BUZZ_RELEASE_R2_SECRET_ACCESS_KEY }}
         run: |
           python3 scripts/enrichlayer-release-gate.py check "$SOURCE_SHA"
-          python3 scripts/enrichlayer-publish.py "$VERSION" "$SOURCE_SHA" staged
-          python3 scripts/enrichlayer-updater.py promote "$VERSION"
+          GITHUB_SHA="$SOURCE_SHA" bash scripts/run-buzz-r2.sh publish "$VERSION" staged
+          python3 scripts/enrichlayer-publish.py "$VERSION" "$SOURCE_SHA"
+          python3 scripts/enrichlayer-release-gate.py check "$SOURCE_SHA"
+          bash scripts/run-buzz-r2.sh promote "$VERSION"

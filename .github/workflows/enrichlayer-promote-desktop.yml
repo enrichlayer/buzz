@@ -29,7 +29,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ inputs.version }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.BUZZ_RELEASE_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BUZZ_RELEASE_R2_SECRET_ACCESS_KEY }}
         run: |
           SOURCE_SHA=$(gh api "repos/enrichlayer/buzz/commits/el-desktop-v$VERSION" --jq .sha)
           python3 scripts/enrichlayer-release-gate.py check "$SOURCE_SHA"
-          python3 scripts/enrichlayer-updater.py promote "$VERSION"
+          bash scripts/run-buzz-r2.sh promote "$VERSION"

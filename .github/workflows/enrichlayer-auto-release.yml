@@ -60,6 +60,7 @@ jobs:
       statuses: read
     uses: ./.github/workflows/enrichlayer-desktop-release.yml
     with:
+      publish: true
       version: ${{ needs.prepare.outputs.version }}
       source_sha: ${{ needs.prepare.outputs.source_sha }}
     secrets: inherit

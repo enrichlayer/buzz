@@ -287,9 +287,14 @@ describe("visibility-gated hooks", () => {
     focused = true;
     await act(async () => window.dispatchEvent(new window.Event("focus")));
     assert.deepEqual(observed, [1_000, false]);
-    await act(
-      async () => new Promise((resolve) => window.setTimeout(resolve, 10)),
-    );
+    // Activation yields to the browser scheduler; a fixed 10ms sleep races
+    // other test workers. Wait for the effect while preserving both assertions.
+    const deadline = performance.now() + 2_000;
+    while (observed.length < 3 && performance.now() < deadline) {
+      await act(
+        async () => new Promise((resolve) => window.setTimeout(resolve, 10)),
+      );
+    }
     assert.deepEqual(observed, [1_000, false, 1_000]);
 
     await act(async () => root.unmount());

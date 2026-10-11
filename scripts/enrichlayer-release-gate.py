@@ -1,10 +1,15 @@
 """Require exact-source CI and human review before reserving or shipping a release."""
 import argparse
+import importlib.util
 import json
 import os
 import re
 import subprocess
 from pathlib import Path
+
+spec = importlib.util.spec_from_file_location("updater", Path(__file__).with_name("enrichlayer-updater.py"))
+updater = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(updater)
 
 REPOSITORY = "enrichlayer/buzz"
 REQUIRED = {".github/workflows/ci.yml", ".github/workflows/enrichlayer-updater-checks.yml"}
@@ -99,18 +104,14 @@ def check(sha):
 
 
 def release_state(proof, version):
-    # Scheduled retries must not rebuild an already-promoted commit.
-    releases = pages("releases")
-    rolling = next((r for r in releases if r["tag_name"] == "buzz-desktop-latest"), None)
+    # A completed immutable release alone is not a promoted public feed.
+    current = updater.public_document("latest.json", missing_ok=True)
     promoted = False
-    if rolling and not rolling["draft"]:
-        assets = {a["name"] for a in rolling["assets"]}
-        # Journal alone is not success: a failed feed upload leaves it behind.
-        if "latest.json" in assets and f"promotion-{version}.json" in assets:
-            data = subprocess.check_output(
-                ["gh", "release", "download", "buzz-desktop-latest", "--repo", REPOSITORY,
-                 "--pattern", "latest.json", "--output", "-"], text=True, timeout=60)
-            promoted = json.loads(data)["version"] == version
+    if current is not None and current["version"] == version:
+        ready = updater.public_document(f"releases/{version}/release.json")
+        candidate = updater.public_document(f"releases/{version}/updater-manifest.json")
+        updater.validate(candidate, version, set(ready["artifacts"]))
+        promoted = current == candidate and ready["sha"] == proof["source_sha"]
     return dict(proof, version=version, already_promoted=str(promoted).lower())
 
 

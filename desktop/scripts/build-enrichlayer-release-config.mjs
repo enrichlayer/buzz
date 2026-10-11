@@ -2,8 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import "./build-release-config.mjs";
 
-const endpoint =
-  "https://github.com/enrichlayer/buzz/releases/download/buzz-desktop-latest/latest.json";
+const endpoint = "https://buzz-downloads.enrichlayer.com/latest.json";
 if (process.env.BUZZ_UPDATER_ENDPOINT !== endpoint) {
   throw new Error(
     "Enrich Layer builds must use the enrichlayer/buzz updater feed",

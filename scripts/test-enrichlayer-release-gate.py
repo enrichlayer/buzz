@@ -26,6 +26,8 @@ class GateTest(unittest.TestCase):
         self.main = SHA
         self.external = []
         self.statuses = []
+        self.public = patch.object(gate.updater, "public_document", return_value=None).start()
+        self.addCleanup(patch.stopall)
 
     def api(self, endpoint, **fields):
         if endpoint == "commits/main":
@@ -136,13 +138,25 @@ class GateTest(unittest.TestCase):
             self.assertEqual(gate.reserve(SHA)["version"], "1.10.1")
         self.assertEqual(len(self.posts), 1)
 
-    def test_already_promoted_skips_rebuild_but_journal_alone_does_not(self):
-        rolling = {"tag_name": "buzz-desktop-latest", "draft": False,
-                   "assets": [{"name": "promotion-1.2.3.json"}, {"name": "latest.json"}]}
-        with patch.object(gate, "pages", return_value=[rolling]), patch.object(gate.subprocess, "check_output", return_value='{"version":"1.2.3"}'):
-            self.assertEqual(gate.release_state({}, "1.2.3")["already_promoted"], "true")
-            rolling["assets"].pop()
-            self.assertEqual(gate.release_state({}, "1.2.3")["already_promoted"], "false")
+    def test_already_promoted_requires_matching_public_feed_and_source(self):
+        candidate = {"version": "1.2.3", "platforms": {}}
+        assets = set()
+        for platform in gate.updater.PLATFORMS:
+            name = gate.updater.asset_name("1.2.3", platform)
+            assets.update((name, name + ".sig"))
+            candidate["platforms"][platform] = {"signature": "signed", "url": f"{gate.updater.PUBLIC}/releases/1.2.3/{name}"}
+        ready = {"sha": SHA, "artifacts": dict.fromkeys(assets)}
+        self.public.side_effect = [candidate, ready, candidate]
+        self.assertEqual(gate.release_state({"source_sha": SHA}, "1.2.3")["already_promoted"], "true")
+        self.public.side_effect = [candidate, dict(ready, sha=HEAD), candidate]
+        self.assertEqual(gate.release_state({"source_sha": SHA}, "1.2.3")["already_promoted"], "false")
+        self.public.side_effect = [None]
+        self.assertEqual(gate.release_state({"source_sha": SHA}, "1.2.3")["already_promoted"], "false")
+
+    def test_public_feed_errors_are_not_treated_as_first_release(self):
+        self.public.side_effect = RuntimeError("R2 unavailable")
+        with self.assertRaisesRegex(RuntimeError, "R2 unavailable"):
+            gate.release_state({"source_sha": SHA}, "1.2.3")
 
     def test_external_check_failure_and_pending_status_block(self):
         self.external = [{"app": {"slug": "dco"}, "name": "DCO", "status": "completed", "conclusion": "failure"}]
