@@ -25,7 +25,10 @@ export function AppBuildVersion() {
 
   if (!data) {
     return isError ? (
-      <p className="px-2 pb-1 text-xs text-sidebar-foreground/60">
+      <p
+        className="px-2 pb-1 text-xs text-sidebar-foreground/60 group-data-[collapsible=icon]:hidden"
+        data-buzz-sidebar-secondary
+      >
         Build unavailable
       </p>
     ) : null;
@@ -37,6 +40,7 @@ export function AppBuildVersion() {
   return (
     <div
       className="px-2 pb-1 text-xs text-sidebar-foreground/60 group-data-[collapsible=icon]:hidden"
+      data-buzz-sidebar-secondary
       data-testid="settings-version"
     >
       <p>{buildVersionLabel(data)}</p>

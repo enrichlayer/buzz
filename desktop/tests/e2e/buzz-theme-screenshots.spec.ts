@@ -329,10 +329,11 @@ async function expectBuzzSettingsPalette(page: Page, mode: "light" | "dark") {
 
   await expectBuzzGradientPaint(page, mode);
 
-  const version = page.getByTestId("settings-version");
-  if ((await version.count()) > 0) {
-    await expect(version).toHaveCSS("color", mutedColor);
-  }
+  // The theme tints secondary footer text to the muted heading colour,
+  // overriding the component's own text-sidebar-foreground/60.
+  const version = sidebar.getByTestId("settings-version");
+  await expect(version).toBeVisible();
+  await expect(version).toHaveCSS("color", mutedColor);
 }
 
 async function expectAppliedBuzzTheme(

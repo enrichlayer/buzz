@@ -15345,6 +15345,15 @@ export function maybeInstallE2eTauriMocks() {
       // shows up as noise in unrelated specs.
       case "plugin:app|version":
         return MOCK_APP_VERSION;
+      // Sidebar and Settings footers render the native build identity.
+      case "get_app_build_info":
+        return {
+          version: MOCK_APP_VERSION,
+          buildNumber: "1790000000000",
+          revision: "0".repeat(40),
+          sourceState: "clean",
+          repository: "https://github.com/enrichlayer/buzz",
+        };
       case "merge_save_subscription_kinds": {
         // Mirrors `merge_owner_p_kinds`: union `kind` into the owner_p row's
         // kinds, creating the row if it doesn't exist yet.

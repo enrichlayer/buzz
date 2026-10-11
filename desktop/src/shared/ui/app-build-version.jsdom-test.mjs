@@ -79,6 +79,10 @@ test("unavailable native metadata is explicit and does not invent a version", as
       await new Promise((resolve) => setTimeout(resolve, 30));
     });
     assert.equal(host.textContent, "Build unavailable");
+    assert.match(
+      host.querySelector("p").className,
+      /group-data-\[collapsible=icon\]:hidden/,
+    );
     assert.equal(host.querySelector("button"), null);
   } finally {
     await act(async () => root.unmount());
