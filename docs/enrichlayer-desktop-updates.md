@@ -20,15 +20,36 @@ The S3 endpoint is
 `https://fc42fab64b7a71c11ced03fee83fe27d.r2.cloudflarestorage.com`.
 Create bucket-scoped **account** credentials after the infrastructure CI apply;
 store `access-key-id` and `secret-access-key` at `secret/r2/buzz-builds` and
-`secret/r2/buzz-releases` in Verticalint Vault. Configure encrypted repository
-secrets `BUZZ_BUILD_R2_ACCESS_KEY_ID`, `BUZZ_BUILD_R2_SECRET_ACCESS_KEY`,
-`BUZZ_RELEASE_R2_ACCESS_KEY_ID`, `BUZZ_RELEASE_R2_SECRET_ACCESS_KEY`. Keep these
-credentials out of logs, artifacts, source and fork pull-request execution.
+`secret/r2/buzz-releases` in Verticalint Vault. Keep these credentials out of
+logs, artifacts, source and fork pull-request execution.
 
 The dedicated Tauri updater key already lives at `secret/buzz/desktop-updater`
 (`private-key`, `public-key`, `repository`). Reuse it; do not regenerate it.
-Actions uses `TAURI_SIGNING_PRIVATE_KEY` and `BUZZ_UPDATER_PUBLIC_KEY`. The
-initial key has an empty `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+Its public half is committed as `desktop/enrichlayer-updater.pub`. The build
+refuses a `BUZZ_UPDATER_PUBLIC_KEY` secret that differs from that file, and
+publish and promote verify every updater archive's minisign signature against
+it (`scripts/enrichlayer-minisign.py`), so replacing a secret cannot change the
+signer clients trust. Rotating the key means a reviewed change to that file.
+The initial key has an empty `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+
+### GitHub Environments
+
+The release workflows reference two Environments that a maintainer must create
+before the first release (a job naming a missing Environment creates an
+unprotected one). Move the listed secrets from repository secrets into the
+Environment, then delete the repository-level copies so a workflow on any other
+branch cannot read them.
+
+| Environment | Used by | Deployment branches and tags | Secrets |
+| --- | --- | --- | --- |
+| `desktop-release` | release `build` (both Macs) and `publish` jobs | tag `el-desktop-v*` (and branch `main`) | `BUZZ_UPDATER_PUBLIC_KEY`, `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, `APPLE_*`, `BUZZ_RELEASE_R2_ACCESS_KEY_ID`, `BUZZ_RELEASE_R2_SECRET_ACCESS_KEY` |
+| `desktop-promote` | **Promote Enrich Layer Desktop Update** | branch `main` | `BUZZ_RELEASE_R2_ACCESS_KEY_ID`, `BUZZ_RELEASE_R2_SECRET_ACCESS_KEY` |
+
+`BUZZ_BUILD_R2_ACCESS_KEY_ID` and `BUZZ_BUILD_R2_SECRET_ACCESS_KEY` remain
+repository secrets, shared with **Enrich Layer Remote macOS Validation**; they reach only
+the private `buzz-builds` bucket. Inside the build job, the Tauri signing key and
+Apple credentials are passed only to the `pnpm tauri build` step; earlier steps
+see presence flags, never values.
 
 Apple Developer enrollment is not yet available. The signed release workflow
 requires `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`,
@@ -68,7 +89,7 @@ python3 scripts/buzz-r2.py fetch-build linux/SOURCE_SHA/RUN_ID/attempt-N verifie
 **Enrich Layer Remote macOS Validation** runs on arm64 and Intel macOS runners,
 builds/tests native desktop code, packages a private unsigned `.app`, and verifies
 a private R2 artifact round trip. This validation app uses the default feature
-set, a separate `co.enrichlayer.buzz.validation` identity, and no updater feed.
+set, a separate `com.enrichlayer.buzz.validation` identity, and no updater feed.
 The signed release workflow retains the Mesh feature build.
 Before this new workflow is present on the default branch, dispatch the existing
 `macos-intel-canary.yml` workflow with `--ref` set to the candidate branch. In our

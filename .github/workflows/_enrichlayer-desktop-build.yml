@@ -21,32 +21,44 @@ jobs:
     outputs:
       artifact-prefix: ${{ steps.upload.outputs.prefix }}
     timeout-minutes: 120
+    # Signing, Apple and release secrets live in this Environment, limited to
+    # main and el-desktop-v* tags; see docs/enrichlayer-desktop-updates.md.
+    environment: desktop-release
     env:
       BUZZ_UPDATER_ENDPOINT: https://buzz-downloads.enrichlayer.com/latest.json
       BUZZ_UPDATER_PUBLIC_KEY: ${{ secrets.BUZZ_UPDATER_PUBLIC_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      # The identity name selects the certificate; it is not a credential.
       APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0
           persist-credentials: false
       - name: Verify source and signing prerequisites
+        env:
+          # Presence flags only: credentials stay scoped to the build step.
+          HAS_TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+          HAS_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE != '' }}
+          HAS_APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
+          HAS_APPLE_ID: ${{ secrets.APPLE_ID != '' }}
+          HAS_APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD != '' }}
+          HAS_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID != '' }}
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#el-desktop-v}"
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
           scripts/verify-release-ref.sh el-desktop-v "$VERSION"
           git merge-base --is-ancestor HEAD origin/main
-          for key in BUZZ_UPDATER_PUBLIC_KEY TAURI_SIGNING_PRIVATE_KEY APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+          for key in BUZZ_UPDATER_PUBLIC_KEY APPLE_SIGNING_IDENTITY; do
             [[ -n "${!key}" ]] || { echo "::error::Missing $key"; exit 1; }
           done
+          for key in TAURI_SIGNING_PRIVATE_KEY APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            flag="HAS_$key"
+            [[ "${!flag}" == true ]] || { echo "::error::Missing $key"; exit 1; }
+          done
+          # The committed key pins the updater identity against secret replacement.
+          [[ "$(tr -d '[:space:]' <<<"$BUZZ_UPDATER_PUBLIC_KEY")" == "$(tr -d '[:space:]' < desktop/enrichlayer-updater.pub)" ]] || {
+            echo "::error::BUZZ_UPDATER_PUBLIC_KEY does not match desktop/enrichlayer-updater.pub"; exit 1; }
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
       - name: Install dependencies and set release version
@@ -112,6 +124,14 @@ jobs:
           LLAMA_STAGE_BUILD_DIR: ${{ github.workspace }}/.cache/mesh-llama/build-stage-abi-metal
           SKIPPY_LLAMA_AUTO_BUILD: '0'
           TAURI_BUNDLER_DMG_IGNORE_CI: 'true'
+          # Credentials are visible only to the Tauri bundler step.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       - name: Verify signatures and stage release assets
         env:
           PLATFORM: ${{ inputs.platform }}

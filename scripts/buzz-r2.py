@@ -21,6 +21,9 @@ MAX_ASSET = 4 * 1024**3
 spec = importlib.util.spec_from_file_location("updater", Path(__file__).with_name("enrichlayer-updater.py"))
 updater = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(updater)
+spec = importlib.util.spec_from_file_location("minisign", Path(__file__).with_name("enrichlayer-minisign.py"))
+minisign = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(minisign)
 
 
 def encode(value):
@@ -173,6 +176,12 @@ def publish(store, version, directory, sha):
     # Stable manifest bytes make retries after any partial upload idempotent.
     candidate = updater.manifest(version, directory)
     candidate.pop("pub_date", None)
+    # Never publish an archive the pinned updater key did not sign.
+    key = minisign.pinned_public_key()
+    for platform in updater.PLATFORMS:
+        name = f"Buzz_{version}_{platform}.app.tar.gz"
+        with (directory / name).open("rb") as stream:
+            minisign.verify_stream(key, candidate["platforms"][platform]["signature"], stream)
     data = encode(candidate)
     catalog = upload(store, prefix, directory)
     for name, expected in catalog.items():
@@ -202,6 +211,15 @@ def promote(store, version):
     for name, expected in release["artifacts"].items():
         store.verify(f"{prefix}/{name}", expected)
         public_verify(f"{prefix}/{name}", expected)
+    # Hashes only prove the bytes are unchanged since publish; the pinned key
+    # proves they came from our signer even if release storage was tampered with.
+    key = minisign.pinned_public_key()
+    for platform in updater.PLATFORMS:
+        response = store.get(f"{prefix}/Buzz_{version}_{platform}.app.tar.gz")
+        if response is None:
+            raise ValueError("Missing release archive")
+        with response["Body"] as stream:
+            minisign.verify_stream(key, candidate["platforms"][platform]["signature"], stream)
     previous, etag = store.document("latest.json")
     if previous is not None:
         prior = json.loads(previous)

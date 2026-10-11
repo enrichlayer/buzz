@@ -1,7 +1,5 @@
 name: Enrich Layer Remote macOS Validation
 on:
-  push:
-    branches: ['codex/DEV-12467-buzz-upstream-updater']
   workflow_dispatch:
   workflow_call:
 permissions:
@@ -37,6 +35,7 @@ jobs:
           node --test desktop/scripts/build-enrichlayer-release-config.test.mjs
           python3 scripts/test-enrichlayer-updater.py
           python3 scripts/test-buzz-r2.py
+          python3 scripts/test-enrichlayer-minisign.py
       - name: Build and test native desktop
         run: |
           set -euo pipefail
@@ -54,7 +53,7 @@ jobs:
         run: |
           set -euo pipefail
           cat > desktop/src-tauri/tauri.validation.conf.json <<'JSON'
-          {"identifier":"co.enrichlayer.buzz.validation","bundle":{"createUpdaterArtifacts":false},"plugins":{"updater":{"endpoints":[]}}}
+          {"identifier":"com.enrichlayer.buzz.validation","bundle":{"createUpdaterArtifacts":false},"plugins":{"updater":{"endpoints":[]}}}
           JSON
           (cd desktop && pnpm tauri build --no-sign --bundles app --config src-tauri/tauri.validation.conf.json) 2>&1 | tee staged/native-packaging.log
           tar -czf staged/Buzz-validation.app.tar.gz -C desktop/src-tauri/target/release/bundle/macos Buzz.app
