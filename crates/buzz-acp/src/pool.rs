@@ -2582,6 +2582,8 @@ pub async fn run_prompt_task(
     // Explicit owner shell requests are handled before ACP session creation or
     // any model prompt. The result is a signed thread message, available through
     // the ordinary conversation-context fetch on the next model turn.
+    let mut held_signal: Option<ControlSignal> = None;
+    let mut control_signal_consumed = false;
     if let Some(b) = batch.as_mut() {
         let requests: Vec<_> = b
             .events
@@ -2601,13 +2603,25 @@ pub async fn run_prompt_task(
                     "cwd": ctx.cwd,
                 }),
             );
-            let mut was_cancelled = false;
+            // Only Cancel/Rotate stop a running command. Steer, Interrupt and
+            // SwitchModel are held and applied once the commands finish, so
+            // their requeue and model switch are not lost. A dropped sender
+            // means nobody can control this turn any more, not a stop.
+            let mut stopped_by: Option<ControlSignal> = None;
             let cancel = async {
-                if let Some(rx) = control_rx.as_mut() {
-                    let _ = rx.await;
-                    was_cancelled = true;
-                } else {
-                    std::future::pending::<()>().await;
+                let Some(rx) = control_rx.as_mut() else {
+                    return std::future::pending::<()>().await;
+                };
+                let signal = rx.await.ok();
+                control_signal_consumed = true;
+                match signal {
+                    Some(signal @ (ControlSignal::Cancel | ControlSignal::Rotate)) => {
+                        stopped_by = Some(signal);
+                    }
+                    other => {
+                        held_signal = other;
+                        std::future::pending::<()>().await;
+                    }
                 }
             };
             let result = crate::shell_commands::run(
@@ -2619,6 +2633,10 @@ pub async fn run_prompt_task(
                 cancel,
             )
             .await;
+            if control_signal_consumed {
+                // A resolved oneshot must not be polled again.
+                control_rx = None;
+            }
             let text = match result {
                 Ok(result) => {
                     agent.acp.observe("human_command_completed", serde_json::json!({
@@ -2658,7 +2676,7 @@ pub async fn run_prompt_task(
                         tracing::error!(
                             "shell result publication failed; retained local receipt: {error}"
                         );
-                        // The durable claim prevents execution twice on retry.
+                        // The on-disk claim prevents execution twice on retry.
                         b.events.push(request);
                     }
                 }
@@ -2667,7 +2685,10 @@ pub async fn run_prompt_task(
                     b.events.push(request);
                 }
             }
-            if was_cancelled {
+            if let Some(signal) = stopped_by {
+                if signal == ControlSignal::Rotate {
+                    agent.state.invalidate(&source);
+                }
                 send_prompt_result(
                     &result_tx,
                     &turn_id,
@@ -2678,6 +2699,18 @@ pub async fn run_prompt_task(
                 );
                 return;
             }
+        }
+        if let Some(ControlSignal::SwitchModel {
+            model_id,
+            request_id,
+        }) = &held_signal
+        {
+            // Same landing as the prompt arm: the next session applies it.
+            agent.desired_model = Some(model_id.clone());
+            agent.model_overridden = true;
+            agent.desired_model_request_id = request_id.clone();
+            agent.desired_model_pending_ack = true;
+            agent.state.invalidate(&source);
         }
         // Never pass a failed-to-publish command to the model. Retry its receipt
         // through the same explicit path; it cannot execute again.
@@ -2694,6 +2727,20 @@ pub async fn run_prompt_task(
                     "Shell result could not be published".into(),
                 ),
                 batch,
+            );
+            return;
+        }
+        if let Some(signal) = held_signal {
+            // The turn never reached the model: requeue what remains with the
+            // held signal's framing, exactly as a cancelled prompt would.
+            let retry_batch = requeue_cancelled_batch(&ctx, signal, batch);
+            send_prompt_result(
+                &result_tx,
+                &turn_id,
+                agent,
+                source,
+                PromptOutcome::Cancelled,
+                retry_batch,
             );
             return;
         }
@@ -5852,7 +5899,7 @@ mod tests {
 
     /// Conversation scope for a channel — the scope these pool tests exercise
     /// (equivalent to the pre-thread-scoping channel key).
-    fn conv(channel_id: Uuid) -> SessionScope {
+    pub(super) fn conv(channel_id: Uuid) -> SessionScope {
         SessionScope::Conversation { channel_id }
     }
 
@@ -10592,7 +10639,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
         make_prompt_context_impl(&agent_keys, None)
     }
 
-    fn make_prompt_context_with_owner(
+    pub(super) fn make_prompt_context_with_owner(
         agent_keys: &nostr::Keys,
         owner_pubkey: nostr::PublicKey,
     ) -> PromptContext {
@@ -12601,3 +12648,7 @@ done"#
 #[cfg(all(test, unix))]
 #[path = "pool/pi_prompt_tests.rs"]
 mod pi_prompt_tests;
+
+#[cfg(all(test, unix))]
+#[path = "pool/shell_prompt_tests.rs"]
+mod shell_prompt_tests;
