@@ -502,7 +502,7 @@ test("appearance groups theme and preferences into labeled rows", async ({
     }),
   ).toBeVisible();
   await expect(
-    themeCard.getByRole("group", { name: "Color mode" }),
+    themeCard.getByRole("radiogroup", { name: "Color mode" }),
   ).toBeVisible();
   await expect(themeCard.getByTestId("glass-background-toggle")).toBeVisible();
   await expect(
@@ -512,7 +512,7 @@ test("appearance groups theme and preferences into labeled rows", async ({
     preferencesCard.getByTestId("prominent-active-tab-toggle"),
   ).toHaveCount(0);
   await expect(
-    preferencesCard.getByRole("group", { name: "Thread layout" }),
+    preferencesCard.getByRole("radiogroup", { name: "Thread layout" }),
   ).toBeVisible();
   const themeStyleTrigger = themeCard.getByTestId("theme-style-trigger");
   const themeStyleOptions = themeCard.getByTestId("theme-style-options");
@@ -571,7 +571,7 @@ test("appearance groups theme and preferences into labeled rows", async ({
     .first()
     .boundingBox();
   const colorModeControlBox = await themeCard
-    .getByRole("group", { name: "Color mode" })
+    .getByRole("radiogroup", { name: "Color mode" })
     .boundingBox();
   const glassLabelBox = await themeCard
     .getByText("Glass background", { exact: true })
@@ -746,17 +746,19 @@ test("app font size and conversation density apply independently", async ({
     ]);
 
   await expect(
-    page.getByRole("group", { name: "Conversation density" }),
+    page.getByRole("radiogroup", { name: "Conversation density" }),
   ).toBeVisible();
-  await expect(page.getByRole("group", { name: "Font size" })).toBeVisible();
+  await expect(
+    page.getByRole("radiogroup", { name: "Font size" }),
+  ).toBeVisible();
   await expect(densityControl).toHaveAccessibleName("Conversation density");
   await expect(fontSizeControl).toHaveAccessibleName("Font size");
   await expect(comfortable).toHaveText("Comfy");
   await expect(defaultSize).toHaveText("Default");
   await expect(preview).toContainText("Preview");
   await expect(preview).not.toContainText("Message #design");
-  await expect(comfortable).toHaveAttribute("aria-pressed", "true");
-  await expect(defaultSize).toHaveAttribute("aria-pressed", "true");
+  await expect(comfortable).toHaveAttribute("aria-checked", "true");
+  await expect(defaultSize).toHaveAttribute("aria-checked", "true");
   await expect(densityDescription).toHaveText(
     "Spacing in conversations and Markdown content across Buzz",
   );
@@ -878,7 +880,7 @@ test("app font size and conversation density apply independently", async ({
   await expect(densityIndicator).toHaveAttribute("data-transition-ran", "true");
   await expect(root).toHaveAttribute("data-conversation-density", "compact");
   await expect(root).toHaveAttribute("data-font-size", "default");
-  await expect(compact).toHaveAttribute("aria-pressed", "true");
+  await expect(compact).toHaveAttribute("aria-checked", "true");
   await expect
     .poll(() =>
       page.evaluate(
@@ -910,7 +912,7 @@ test("app font size and conversation density apply independently", async ({
   await larger.click();
   await expect(root).toHaveAttribute("data-conversation-density", "compact");
   await expect(root).toHaveAttribute("data-font-size", "larger");
-  await expect(larger).toHaveAttribute("aria-pressed", "true");
+  await expect(larger).toHaveAttribute("aria-checked", "true");
   await expect
     .poll(() =>
       page.evaluate(
@@ -958,7 +960,7 @@ test("app font size and conversation density apply independently", async ({
   await spacious.click();
   await expect(root).toHaveAttribute("data-conversation-density", "spacious");
   await expect(root).toHaveAttribute("data-font-size", "larger");
-  await expect(spacious).toHaveAttribute("aria-pressed", "true");
+  await expect(spacious).toHaveAttribute("aria-checked", "true");
   // Spacious loosens spacing only; Larger type carries over.
   await expect.poll(readScale).toEqual({
     authorLineHeight: 17.14,
@@ -986,7 +988,7 @@ test("app font size and conversation density apply independently", async ({
   await smaller.click();
   await expect(root).toHaveAttribute("data-conversation-density", "spacious");
   await expect(root).toHaveAttribute("data-font-size", "smaller");
-  await expect(smaller).toHaveAttribute("aria-pressed", "true");
+  await expect(smaller).toHaveAttribute("aria-checked", "true");
   // Smaller scales only the type tokens (13/14); spacious spacing is unchanged.
   await expect.poll(readScale).toEqual({
     authorLineHeight: 14.86,
@@ -1029,7 +1031,7 @@ test("app font size and conversation density apply independently", async ({
     "data-conversation-density",
     "comfortable",
   );
-  await expect(comfortable).toHaveAttribute("aria-pressed", "true");
+  await expect(comfortable).toHaveAttribute("aria-checked", "true");
 
   const controlBox = await densityControl.boundingBox();
   const compactBox = await compact.boundingBox();
@@ -1077,7 +1079,7 @@ test("app font size and conversation density apply independently", async ({
     paddingBlock: "12px",
   });
   await page.mouse.up();
-  await expect(spacious).toHaveAttribute("aria-pressed", "true");
+  await expect(spacious).toHaveAttribute("aria-checked", "true");
   await expect
     .poll(() =>
       page.evaluate(
@@ -1135,7 +1137,7 @@ test("app font size and conversation density apply independently", async ({
   // than leaving presentation and persisted selection out of sync.
   await page.evaluate(() => window.dispatchEvent(new Event("blur")));
   await expect(root).toHaveAttribute("data-font-size", "default");
-  await expect(defaultSize).toHaveAttribute("aria-pressed", "true");
+  await expect(defaultSize).toHaveAttribute("aria-checked", "true");
   await expect
     .poll(() =>
       page.evaluate(
@@ -1147,7 +1149,7 @@ test("app font size and conversation density apply independently", async ({
 
   // Cancellation resets the gesture completely; the next selection persists.
   await larger.click();
-  await expect(larger).toHaveAttribute("aria-pressed", "true");
+  await expect(larger).toHaveAttribute("aria-checked", "true");
   await expect
     .poll(() =>
       page.evaluate(

@@ -211,6 +211,7 @@ export function CreateAgentRespondToField({
       <AdaptiveSegmentedControl
         id="agent-respond-to"
         legend="Who can send instructions"
+        testId="agent-respond-to-control"
         disabled={disabled}
         options={RESPOND_TO_OPTIONS}
         value={mode}

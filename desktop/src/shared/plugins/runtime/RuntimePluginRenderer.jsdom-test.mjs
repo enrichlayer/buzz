@@ -244,10 +244,10 @@ test("segmented selects preserve initial and submitted values without composing 
     ),
   );
   try {
-    const group = view.container.querySelector("fieldset");
+    const group = view.container.querySelector('[role="radiogroup"]');
     assert.ok(group);
     assert.equal(
-      group.querySelector('[aria-pressed="true"]').textContent,
+      group.querySelector('[aria-checked="true"]').textContent,
       "Needs changes",
     );
     await act(async () => fireEvent.click(group.querySelector("button")));

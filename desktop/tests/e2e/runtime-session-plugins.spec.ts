@@ -98,16 +98,19 @@ test("install, render, update, disable, and remove a plugin without rebuilding",
   await expect(accordion).toContainText("const auth = true");
 
   const before = await sentMessageCount(page);
-  const decision = card.getByRole("group", { name: "Decision", exact: true });
+  const decision = card.getByRole("radiogroup", {
+    name: "Decision",
+    exact: true,
+  });
   await expect(decision).toBeVisible();
-  await decision.getByRole("button", { name: "Approve", exact: true }).focus();
+  await decision.getByRole("radio", { name: "Approve", exact: true }).focus();
   await page.keyboard.press("ArrowRight");
   await expect(
-    decision.getByRole("button", { name: "Needs changes" }),
+    decision.getByRole("radio", { name: "Needs changes" }),
   ).toBeFocused();
   await expect(
-    decision.getByRole("button", { name: "Needs changes" }),
-  ).toHaveAttribute("aria-pressed", "true");
+    decision.getByRole("radio", { name: "Needs changes" }),
+  ).toHaveAttribute("aria-checked", "true");
   expect(await sentMessageCount(page)).toBe(before);
   await card
     .getByLabel("Feedback", { exact: true })
@@ -194,9 +197,9 @@ test("segmented plugin choices retain values across narrow and enlarged-text lay
   const card = thread.getByRole("region", {
     name: "Review card plugin content",
   });
-  const group = card.getByRole("group", { name: "Decision", exact: true });
+  const group = card.getByRole("radiogroup", { name: "Decision", exact: true });
   await expect(group).toBeVisible();
-  await group.getByRole("button", { name: "Needs changes" }).click();
+  await group.getByRole("radio", { name: "Needs changes" }).click();
   const before = await sentMessageCount(page);
   // Constrain the real card within the thread, representing a narrow plugin host.
   await card.evaluate((element) => {
@@ -216,8 +219,8 @@ test("segmented plugin choices retain values across narrow and enlarged-text lay
   });
   await expect(group).toBeVisible();
   await expect(
-    group.getByRole("button", { name: "Needs changes" }),
-  ).toHaveAttribute("aria-pressed", "true");
+    group.getByRole("radio", { name: "Needs changes" }),
+  ).toHaveAttribute("aria-checked", "true");
   await page.evaluate(() => {
     document.documentElement.style.fontSize = "200%";
   });
