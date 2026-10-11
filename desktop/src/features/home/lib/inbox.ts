@@ -1,3 +1,4 @@
+import { stripPromptSuggestionFooter } from "@/features/messages/lib/promptSuggestions";
 import {
   resolveUserLabel,
   type UserProfileLookup,
@@ -178,7 +179,7 @@ function feedHeadline(item: FeedItem, groupItems: readonly FeedItem[] = []) {
 }
 
 function feedPreview(item: FeedItem) {
-  const content = item.content.trim();
+  const content = stripPromptSuggestionFooter(item.content).trim();
   if (content.length > 0) {
     return content;
   }

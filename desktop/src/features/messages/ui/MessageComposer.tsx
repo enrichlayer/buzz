@@ -1,3 +1,4 @@
+import { useFeatureEnabled } from "@/shared/features";
 import { usePromptSuggestionDismissal } from "./usePromptSuggestionDismissal";
 import { PromptSuggestions } from "./PromptSuggestions";
 import * as React from "react";
@@ -128,6 +129,9 @@ function MessageComposerImpl({
   const identityQuery = useIdentityQuery();
   const effectiveDraftKey = draftKey ?? channelId;
   const ownerPubkey = identityQuery.data?.pubkey ?? null;
+  // Preview feature (preview-features.json, default off). Footers are
+  // stripped from message text by the formatter either way.
+  const promptSuggestionsEnabled = useFeatureEnabled("promptSuggestions");
   const suggestionDismissal = usePromptSuggestionDismissal(
     ownerPubkey,
     suggestedPrompts?.messageId,
@@ -839,7 +843,8 @@ function MessageComposerImpl({
           className="absolute inset-x-0 bottom-0 h-5 bg-transparent"
         />
         <div className="relative flex w-full flex-col gap-0">
-          {suggestedPrompts &&
+          {promptSuggestionsEnabled &&
+          suggestedPrompts &&
           !suggestionDismissal.hidden &&
           ownerPubkey &&
           !composerDisabled &&

@@ -1,3 +1,4 @@
+import { stripPromptSuggestionFooter } from "@/features/messages/lib/promptSuggestions";
 import type * as React from "react";
 import {
   ArrowRight,
@@ -177,7 +178,7 @@ function describeSearchHit(hit: SearchHit) {
 }
 
 function truncateContent(content: string) {
-  const trimmed = content.trim();
+  const trimmed = stripPromptSuggestionFooter(content).trim();
   if (trimmed.length === 0) {
     return "No message body.";
   }

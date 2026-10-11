@@ -1,3 +1,4 @@
+import { stripPromptSuggestionFooter } from "@/features/messages/lib/promptSuggestions";
 export type SearchMatchPart = {
   isMatch: boolean;
   key: string;
@@ -171,7 +172,7 @@ export function buildSearchResultPreview(
   query: string,
   maxLength = 96,
 ): string {
-  const text = content.trim();
+  const text = stripPromptSuggestionFooter(content).trim();
   if (!text) {
     return "No message body.";
   }

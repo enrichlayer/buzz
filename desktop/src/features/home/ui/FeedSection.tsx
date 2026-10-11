@@ -1,3 +1,4 @@
+import { stripPromptSuggestionFooter } from "@/features/messages/lib/promptSuggestions";
 import { Check, type LucideIcon } from "lucide-react";
 
 import {
@@ -94,7 +95,7 @@ function feedHeadline(item: FeedItem) {
 }
 
 function feedContent(item: FeedItem) {
-  const content = item.content.trim();
+  const content = stripPromptSuggestionFooter(item.content).trim();
   if (content.length > 0) {
     return content;
   }

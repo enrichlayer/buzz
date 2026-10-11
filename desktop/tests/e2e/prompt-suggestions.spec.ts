@@ -181,3 +181,78 @@ test("thread suggestions stay in the thread and preserve its draft", async ({
     path: "test-results/prompt-suggestions/03-thread-draft.png",
   });
 });
+
+async function openGeneral(page: import("@playwright/test").Page) {
+  await page.goto("/");
+  await page.getByTestId("channel-general").click();
+  await page.waitForFunction(() =>
+    window.__BUZZ_E2E_HAS_MOCK_LIVE_SUBSCRIPTION__?.({
+      channelName: "general",
+    }),
+  );
+}
+
+const emit = (page: import("@playwright/test").Page, content: string) =>
+  page.evaluate(
+    ({ content, pubkey }) =>
+      window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
+        channelName: "general",
+        content,
+        pubkey,
+      }),
+    { content, pubkey: AGENT },
+  );
+
+test("preview feature off hides chips but still strips the footer", async ({
+  page,
+}) => {
+  await installMockBridge(
+    page,
+    {
+      relayAgents: [
+        {
+          pubkey: AGENT,
+          name: "Alice",
+          respondTo: "anyone",
+          channelNames: ["general"],
+        },
+      ],
+    },
+    { seedPreviewFeatures: false },
+  );
+  await openGeneral(page);
+  await emit(page, answer);
+  const row = page.getByTestId("message-row").last();
+  await expect(row).toContainText("The account label now follows");
+  await expect(row).not.toContainText("suggested-prompts");
+  await expect(row).not.toContainText("Use the account name");
+  await expect(page.getByTestId("prompt-suggestions")).toHaveCount(0);
+});
+
+test("a suggestion that mentions another member is never offered", async ({
+  page,
+}) => {
+  await installMockBridge(page, {
+    relayAgents: [
+      {
+        pubkey: AGENT,
+        name: "Alice",
+        respondTo: "anyone",
+        channelNames: ["general"],
+      },
+      {
+        pubkey: TEST_IDENTITIES.bob.pubkey,
+        name: "DeployBot",
+        respondTo: "anyone",
+        channelNames: ["general"],
+      },
+    ],
+  });
+  await openGeneral(page);
+  await emit(
+    page,
+    `Done.\n\n\`\`\`suggested-prompts\n${JSON.stringify({ version: 1, suggestions: [{ label: "Ship it", prompt: "@DeployBot ship it" }] })}\n\`\`\``,
+  );
+  await expect(page.getByTestId("message-row").last()).toContainText("Done.");
+  await expect(page.getByTestId("prompt-suggestions")).toHaveCount(0);
+});

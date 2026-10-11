@@ -9,11 +9,17 @@ export type PromptSuggestionSource = {
   suggestions: PromptSuggestion[];
 };
 
+const FOOTER_FENCE = "```suggested-prompts\n";
+// An `@` at a token start can become a recipient on Send (plain-text mentions
+// resolve against channel members), and suggestions must never choose one.
+const MENTION_START = /(?<![\p{L}\p{N}])@/u;
+
 /** Only consume a complete, bounded footer; malformed content stays visible. */
 export function parsePromptSuggestions(body: string): {
   body: string;
   suggestions: PromptSuggestion[];
 } | null {
+  if (!body.includes(FOOTER_FENCE)) return null;
   const match = /(?:^|\n)```suggested-prompts\n([\s\S]{1,6000})\n```\s*$/.exec(
     body,
   );
@@ -61,12 +67,18 @@ export function parsePromptSuggestions(body: string): {
     )
       return null;
     if (label.includes("```") || prompt.includes("```")) return null;
+    if (MENTION_START.test(label) || MENTION_START.test(prompt)) return null;
     const key = prompt.trim().toLowerCase();
     if (seen.has(key)) return null;
     seen.add(key);
     suggestions.push({ label: label.trim(), prompt: prompt.trim() });
   }
   return { body: body.slice(0, match.index).trimEnd(), suggestions };
+}
+
+/** Message text for display: a valid footer is presentation metadata. */
+export function stripPromptSuggestionFooter(body: string): string {
+  return parsePromptSuggestions(body)?.body ?? body;
 }
 
 /** Any newer message supersedes the previous turn's suggestions. */
@@ -78,13 +90,14 @@ export function latestPromptSuggestions(
       !current || message.createdAt >= current.createdAt ? message : current,
     null,
   );
+  // formatTimelineMessages strips the footer from agent bodies and keeps the
+  // parsed suggestions on the message.
   if (!latest?.isAgent || latest.pending || !latest.pubkey) return null;
-  const parsed = parsePromptSuggestions(latest.body);
-  if (!parsed?.suggestions.length) return null;
+  if (!latest.promptSuggestions?.length) return null;
   return {
     messageId: latest.id,
     author: latest.author,
     pubkey: latest.pubkey,
-    suggestions: parsed.suggestions,
+    suggestions: [...latest.promptSuggestions],
   };
 }

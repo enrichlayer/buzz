@@ -1,4 +1,3 @@
-import { parsePromptSuggestions } from "../lib/promptSuggestions";
 import * as React from "react";
 import { AlertTriangle } from "lucide-react";
 import {
@@ -412,11 +411,7 @@ export const MessageRow = React.memo(
             message,
             isKnownAgentPubkey,
           )}
-          content={
-            message.isAgent && !message.pending
-              ? (parsePromptSuggestions(message.body)?.body ?? message.body)
-              : message.body
-          }
+          content={message.body}
           messageId={message.id}
           linkPreviewsSuppressed={linkPreviewsSuppressed}
           linkPreviewTags={message.tags}

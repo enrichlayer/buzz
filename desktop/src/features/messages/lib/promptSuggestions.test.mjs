@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { formatTimelineMessages } from "./formatTimelineMessages.ts";
 import {
   latestPromptSuggestions,
   parsePromptSuggestions,
+  stripPromptSuggestionFooter,
 } from "./promptSuggestions.ts";
+import { formatMessageNotification } from "@/features/notifications/lib/notificationFormat";
 
 const suggestions = [
   {
@@ -19,7 +22,8 @@ const agent = {
   pubkey: "agent-key",
   isAgent: true,
   createdAt: 1,
-  body: footer(),
+  body: "Done.",
+  promptSuggestions: suggestions,
 };
 
 test("consumes only a valid final footer, preserving prose", () => {
@@ -81,7 +85,13 @@ test("only latest settled agent message supplies suggestions; human and newer me
   assert.equal(
     latestPromptSuggestions([
       agent,
-      { ...agent, id: "b", body: "New answer", createdAt: 2 },
+      {
+        ...agent,
+        id: "b",
+        body: "New answer",
+        promptSuggestions: undefined,
+        createdAt: 2,
+      },
     ]),
     null,
   );
@@ -122,5 +132,77 @@ test("retains ordinary multilingual text and permitted prompt whitespace", () =>
     parsePromptSuggestions(footer({ version: 1, suggestions: items }))
       .suggestions,
     items,
+  );
+});
+
+test("rejects an @ at a token start so a suggestion never adds a recipient", () => {
+  for (const prompt of [
+    "@DeployBot ship it",
+    "Ask @DeployBot to ship it",
+    "Ship it (@DeployBot)",
+    "Ship it **@DeployBot**",
+    "Ship it _@DeployBot",
+    "Ship it ||@DeployBot||",
+    "Ship it\n@DeployBot",
+    "Ship it,@DeployBot",
+  ]) {
+    for (const field of ["label", "prompt"]) {
+      const entry = { label: "Ship", prompt: "Ship it", [field]: prompt };
+      assert.equal(
+        parsePromptSuggestions(footer({ version: 1, suggestions: [entry] })),
+        null,
+        `${field}: ${prompt}`,
+      );
+    }
+  }
+  const email = [{ label: "Email ops", prompt: "Email ops@example.com" }];
+  assert.deepEqual(
+    parsePromptSuggestions(footer({ version: 1, suggestions: email }))
+      .suggestions,
+    email,
+  );
+});
+
+const AGENT_KEY = "a".repeat(64);
+const HUMAN_KEY = "b".repeat(64);
+const event = (pubkey, content, id = "1".repeat(64)) => ({
+  id,
+  pubkey,
+  kind: 9,
+  created_at: 1_700_000_000,
+  content,
+  tags: [["h", "channel"]],
+  sig: "sig",
+});
+const format = (events) =>
+  formatTimelineMessages(events, null, HUMAN_KEY, null, {
+    [AGENT_KEY]: { displayName: "Agent", isAgent: true },
+  });
+
+test("the shared formatter strips an agent footer and keeps its suggestions", () => {
+  const [message] = format([event(AGENT_KEY, footer())]);
+  assert.equal(message.body, "Done.");
+  assert.deepEqual(message.promptSuggestions, suggestions);
+  assert.equal(latestPromptSuggestions([message]).pubkey, AGENT_KEY);
+
+  const invalid = footer({ version: 2, suggestions });
+  const [kept] = format([event(AGENT_KEY, invalid)]);
+  assert.equal(kept.body, invalid);
+  assert.equal(kept.promptSuggestions, undefined);
+});
+
+test("human message text keeps a footer and never supplies suggestions", () => {
+  const [message] = format([event(HUMAN_KEY, footer())]);
+  assert.equal(message.body, footer());
+  assert.equal(message.promptSuggestions, undefined);
+  assert.equal(latestPromptSuggestions([message]), null);
+});
+
+test("raw-content previews drop a valid footer", () => {
+  assert.equal(stripPromptSuggestionFooter(footer()), "Done.");
+  assert.equal(stripPromptSuggestionFooter("plain"), "plain");
+  assert.equal(
+    formatMessageNotification({ source: "dm", content: footer() }).body,
+    "Done.",
   );
 });
