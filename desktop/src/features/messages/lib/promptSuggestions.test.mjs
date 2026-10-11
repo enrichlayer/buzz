@@ -98,6 +98,8 @@ test("rejects Unicode format controls in labels and editable prompts", () => {
     "\u2068",
     "\u2069",
     "\uFEFF",
+    "\u2028",
+    "\u2029",
   ]) {
     for (const field of ["label", "prompt"]) {
       assert.equal(
