@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +29,8 @@ class BuildVersionTest(unittest.TestCase):
             shutil.copyfile(ROOT / 'desktop/src-tauri/build_version.rs', crate / 'build_version.rs')
             (crate / 'build.rs').write_text('mod build_version; fn main() { build_version::emit(); }')
             (crate / 'src/main.rs').write_text('fn main() { println!("{} {} {}", env!("BUZZ_BUILD_NUMBER"), env!("BUZZ_BUILD_REVISION"), env!("BUZZ_BUILD_SOURCE_STATE")); }')
+            (crate / 'tauri.conf.json').write_text('{\n  "version": "1.0.0"\n}\n')
+            (root / 'desktop/package.json').write_text('{\n  "name": "buzz",\n  "version": "1.0.0"\n}\n')
             frontend = root / 'desktop/src/app.ts'
             frontend.write_text('first')
             def run(*args, cwd=root):
@@ -46,6 +49,23 @@ class BuildVersionTest(unittest.TestCase):
             # Initial cargo invocation creates a lockfile; commit it before checking clean status.
             run('git', 'add', '.')
             run('git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'lockfile')
+            clean = build()
+            self.assertEqual(clean[2], 'clean')
+            # Edits outside the desktop inputs neither rerun the generator nor mark source modified.
+            (root / 'README.md').write_text('unrelated monorepo edit')
+            self.assertEqual(build(), clean)
+            later = time.time() + 5
+            os.utime(crate / 'src/main.rs', (later, later))
+            self.assertEqual(build(), clean, 'a rerun with unchanged inputs keeps its build number')
+            # Release stamping rewrites only version fields; it is not modified source.
+            run('node', str(ROOT / 'desktop/scripts/set-version-from-tag.mjs'), '2.0.0-rc.1', cwd=root / 'desktop')
+            run('cargo', 'update', '--workspace', '--quiet', cwd=crate)
+            stamped = build()
+            self.assertEqual(stamped[1:], clean[1:])
+            (root / 'desktop/package.json').write_text((root / 'desktop/package.json').read_text().replace('"buzz"', '"fork"'))
+            self.assertEqual(build()[2], 'modified')
+            run('git', 'checkout', '--', 'desktop')
+            os.remove(root / 'README.md')
             clean = build()
             self.assertEqual(clean[2], 'clean')
             frontend.write_text('changed frontend')

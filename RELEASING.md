@@ -384,13 +384,20 @@ The native build embeds these values; changing the checkout after launching
 Buzz does not change the running app's label. Feedback diagnostics include the
 same identity.
 
-Cargo reruns the metadata generator when tracked inputs, frontend sources, or
-Git revision state change. Each run advances a millisecond-based build number
-(persisted in Cargo's output directory to advance even if the clock moves back).
-Release semver remains controlled by the existing release manifest workflow;
-local builds no longer need a manual semver edit to be distinguishable.
-Uncommitted source is marked `modified`. Source archives without Git metadata
-show `unknown revision` rather than claiming a repository commit.
+Cargo reruns the metadata generator when the desktop app's inputs (frontend and
+Tauri sources, their configs, and lockfiles; the list is `WATCHED_INPUTS` in
+`desktop/src-tauri/build_version.rs`) or the Git revision state change. Edits
+elsewhere in the monorepo do not rerun it. A rerun advances the
+millisecond-based build number only when the revision, source state, or a digest
+of those inputs differs from the previous run; the number and that record are
+persisted in Cargo's output directory, so the number also advances if the clock
+moves back. Release semver remains controlled by the existing release manifest
+workflow; local builds no longer need a manual semver edit to be
+distinguishable. Uncommitted changes to the watched inputs are marked
+`modified`, except a diff that only rewrites the `version` fields that
+`set-version-from-tag.mjs` and `cargo update --workspace` stamp during a
+release. Source archives without Git metadata show `unknown revision` rather
+than claiming a repository commit.
 
 Run `python3 scripts/test-desktop-build-version.py` with the repository toolchain
 to exercise real Cargo invalidation for frontend edits, commits, added files,
