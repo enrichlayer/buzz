@@ -1,3 +1,5 @@
+import { usePromptSuggestionDismissal } from "./usePromptSuggestionDismissal";
+import { PromptSuggestions } from "./PromptSuggestions";
 import * as React from "react";
 import { EditorContent } from "@tiptap/react";
 import {
@@ -68,6 +70,7 @@ import { useAddressedAgentMentionRestore } from "./useAddressedAgentMentionResto
 import { scheduleSettleGatedAutoSubmit } from "./messageComposerAutoSubmit";
 import type { MessageComposerProps } from "./MessageComposer.types";
 function MessageComposerImpl({
+  suggestedPrompts = null,
   audienceContext = null,
   channelId = null,
   channelName,
@@ -125,6 +128,10 @@ function MessageComposerImpl({
   const identityQuery = useIdentityQuery();
   const effectiveDraftKey = draftKey ?? channelId;
   const ownerPubkey = identityQuery.data?.pubkey ?? null;
+  const suggestionDismissal = usePromptSuggestionDismissal(
+    ownerPubkey,
+    suggestedPrompts?.messageId,
+  );
   const audienceScope =
     audienceContext && channelId && ownerPubkey
       ? getPersistentAgentAudienceScope({
@@ -832,6 +839,41 @@ function MessageComposerImpl({
           className="absolute inset-x-0 bottom-0 h-5 bg-transparent"
         />
         <div className="relative flex w-full flex-col gap-0">
+          {suggestedPrompts &&
+          !suggestionDismissal.hidden &&
+          ownerPubkey &&
+          !composerDisabled &&
+          !editTarget &&
+          !autoSubmitDraftKey ? (
+            <PromptSuggestions
+              key={`${channelId}:${draftKey}:${suggestedPrompts.messageId}`}
+              source={suggestedPrompts}
+              onDismiss={suggestionDismissal.dismiss}
+              onInsert={(suggestion) => {
+                if (
+                  !richText.editor ||
+                  composerDisabled ||
+                  editTarget ||
+                  autoSubmitDraftKey
+                )
+                  return false;
+                const label = mentions.registerMentionPubkey(
+                  suggestedPrompts.author,
+                  suggestedPrompts.pubkey,
+                  { isAgent: true },
+                );
+                if (!label) return false;
+                const current = richText.getPlainTextAndCursor().text;
+                richText.replacePlainTextRange(
+                  current.length,
+                  current.length,
+                  `${current.trim() ? "\n\n" : ""}@${label} ${suggestion.prompt}`,
+                );
+                richText.focusEnd();
+                return true;
+              }}
+            />
+          ) : null}
           <ComposerReplyEditBanner
             isEditing={editTarget != null}
             isEditCancelDisabled={isDeferredEditPending}

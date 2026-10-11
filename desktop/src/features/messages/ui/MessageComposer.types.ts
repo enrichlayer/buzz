@@ -26,6 +26,9 @@ export type MessageComposerEditTarget = {
 };
 
 export type MessageComposerProps = {
+  suggestedPrompts?:
+    | import("../lib/promptSuggestions").PromptSuggestionSource
+    | null;
   audienceContext?: {
     rootTags?: readonly string[][];
     type: "thread";
