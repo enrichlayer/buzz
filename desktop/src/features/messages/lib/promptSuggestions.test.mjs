@@ -86,3 +86,39 @@ test("only latest settled agent message supplies suggestions; human and newer me
     null,
   );
 });
+
+test("rejects Unicode format controls in labels and editable prompts", () => {
+  for (const control of [
+    "\u200B",
+    "\u200E",
+    "\u202A",
+    "\u202E",
+    "\u2066",
+    "\u2067",
+    "\u2068",
+    "\u2069",
+    "\uFEFF",
+  ]) {
+    for (const field of ["label", "prompt"]) {
+      assert.equal(
+        parsePromptSuggestions(
+          footer({
+            version: 1,
+            suggestions: [
+              { ...suggestions[0], [field]: `before${control}after` },
+            ],
+          }),
+        ),
+        null,
+      );
+    }
+  }
+});
+test("retains ordinary multilingual text and permitted prompt whitespace", () => {
+  const items = [{ label: "名前 الاسم", prompt: "名前\n\tالاسم" }];
+  assert.deepEqual(
+    parsePromptSuggestions(footer({ version: 1, suggestions: items }))
+      .suggestions,
+    items,
+  );
+});

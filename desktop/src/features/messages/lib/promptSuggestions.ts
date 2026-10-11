@@ -46,6 +46,8 @@ export function parsePromptSuggestions(body: string): {
     )
       return null;
     if (
+      /\p{Cf}/u.test(label) ||
+      /\p{Cf}/u.test(prompt) ||
       [...label].some(
         (char) =>
           char.charCodeAt(0) < 32 ||
