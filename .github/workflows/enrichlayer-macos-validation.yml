@@ -1,7 +1,5 @@
 name: Enrich Layer Remote macOS Validation
 on:
-  push:
-    branches: ['codex/DEV-12467-buzz-upstream-updater']
   workflow_dispatch:
   workflow_call:
 permissions:
@@ -12,6 +10,7 @@ concurrency:
 jobs:
   native:
     if: github.repository == 'enrichlayer/buzz'
+    environment: desktop-candidate
     strategy:
       fail-fast: false
       matrix:
