@@ -52,6 +52,14 @@ for the user's **Restart to update** action before installing/relaunching.
 
 ## One-time repository setup
 
+Inherited container workflows publish into this repository's GHCR namespace:
+`ghcr.io/enrichlayer/buzz`, `buzz-sprig` and `buzz-push-gateway`. The repository
+variables `GHCR_IMAGE`, `GHCR_SPRIG_IMAGE` and `GHCR_GATEWAY_IMAGE` can override
+those destinations. Do not point them at Block's namespace. Sprig creates its
+`sprig-latest` prerelease on first publication; an unavailable release-list API
+remains a failure. These workflows still build and validate their artifacts,
+and their failures continue to stop desktop rollout.
+
 Reuse the updater key already backed up at `secret/buzz/desktop-updater` in
 Verticalint Vault. Do not regenerate it during ordinary releases. Set Actions
 secrets `BUZZ_UPDATER_PUBLIC_KEY`, `TAURI_SIGNING_PRIVATE_KEY` and
