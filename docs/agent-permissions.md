@@ -44,10 +44,13 @@ into approval.
 
 ## Harness configuration
 
-Cards appear only when the harness actually emits a permission request. Existing
+Cards appear only when the harness actually emits a permission request, the
+agent runs in `default` permission mode and it has a configured owner. Existing
 agents keep their configured policy; the runner's historical default is
-`BUZZ_ACP_PERMISSION_MODE=bypass-permissions`. Set the agent's environment value
-to `default` and restart it to use the harness's normal permission behavior.
+`BUZZ_ACP_PERMISSION_MODE=bypass-permissions`. In any other mode, or without an
+owner, the runner answers requests as it always has, without a card. Set the
+agent's environment value to `default` and restart it to use the harness's
+normal permission behavior with owner cards.
 The harness can still permit safe tools according to its own settings. Modes
 such as `dont-ask` can deny tools without emitting a request. Unattended/local
 tasks outside channel conversations retain their existing permission handling.
@@ -65,11 +68,14 @@ For a command you want to run directly and share with the model, see
 
 The runner pins the original signed artifact, channel, artifact identifier,
 request/session identifiers, tool payload and owner. It accepts only a valid
-owner-signed update whose `prev` references that original artifact and whose
-request content is unchanged. Answers from other members, altered commands,
-stale answers and free-text answers do not authorize execution. A malformed
-request, missing owner or second concurrent card is cancelled instead of being
-implicitly approved.
+owner-signed update that descends from that original artifact through the
+`prev` chain and leaves the request content unchanged. Any channel member can
+append a revision, so the runner and desktop walk the chain from the current
+revision back to the original and use the first owner decision; other members'
+revisions, before or after it, neither hide nor replace it. Answers from other
+members, altered commands, stale answers and free-text answers do not authorize
+execution. A malformed request or second concurrent card is cancelled instead
+of being implicitly approved.
 
 Tests cover owner decisions over real ACP stdio with a test relay, cancellation,
 tampering, UI state/keyboard access, and literal local-path validation. Browser

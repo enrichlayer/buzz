@@ -2432,16 +2432,21 @@ fn question_asker(
         .events
         .last()
         .and_then(|last| nostr::EventId::from_hex(&last.reply_thread()).ok());
-    Some(
-        crate::agent_questions::QuestionAsker::new(
-            Arc::new(ctx.rest_client.clone()),
-            ctx.agent_keys.clone(),
-            batch.scope.channel_id(),
-            thread_root,
-            ctx.session_title.clone(),
-        )
-        .with_permission_context(ctx.agent_owner_pubkey, ctx.cwd.clone()),
-    )
+    let asker = crate::agent_questions::QuestionAsker::new(
+        Arc::new(ctx.rest_client.clone()),
+        ctx.agent_keys.clone(),
+        batch.scope.channel_id(),
+        thread_root,
+        ctx.session_title.clone(),
+    );
+    // Permission cards specialize the harness's normal (`default`) permission
+    // flow. Other modes keep their configured policy: no owner is attached,
+    // so the read loop answers requests as it always has.
+    Some(if ctx.permission_mode.is_default() {
+        asker.with_permission_context(ctx.agent_owner_pubkey, ctx.cwd.clone())
+    } else {
+        asker
+    })
 }
 
 /// Core async function spawned for each prompt.
