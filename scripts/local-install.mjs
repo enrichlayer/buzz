@@ -55,7 +55,7 @@ try {
     );
   if (command === "help")
     console.log(
-      "Usage: node scripts/local-install.mjs [check|start|install|plugins]\ncheck: compare source with coding demo channel; no checkout changes\nstart: require a clean checkout, install locked dependencies and build/run desktop + CLI\nplugins: print bundled manifest locations for Settings > Plugins",
+      "Usage: node scripts/local-install.mjs [check|start|install|plugins]\ncheck: compare source with coding demo channel; no checkout changes\nstart: require a clean checkout, install locked dependencies and build/run desktop + CLI\ninstall: on macOS, build and install the standalone Buzz Local Coding app in ~/Applications\nplugins: print bundled manifest locations for Settings > Plugins",
     );
   if (command === "check") check();
   if (command === "plugins") {

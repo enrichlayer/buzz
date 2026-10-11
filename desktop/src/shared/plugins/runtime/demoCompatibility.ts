@@ -32,7 +32,9 @@ export function demoPluginStatus(
 ): string | null {
   const requirement = DEMO_PLUGINS.find((p) => p.fence === fence);
   if (!requirement) return null;
-  const entry = plugins.find((p) => p.manifest.fenceLanguage === fence);
+  // Match the renderer lookup in store.ts: the first enabled plugin wins.
+  const matching = plugins.filter((p) => p.manifest.fenceLanguage === fence);
+  const entry = matching.find((p) => p.enabled) ?? matching[0];
   if (!entry) return "Missing";
   if (!entry.enabled) return "Disabled";
   if (!(requirement.ids as readonly string[]).includes(entry.manifest.id))

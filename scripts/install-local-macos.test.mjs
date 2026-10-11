@@ -41,13 +41,15 @@ test("installer preserves old app and restores it if final placement fails", () 
         path.join(root, "home/Applications/Buzz Local Coding.app/old"),
         "old",
       );
+      mkdirSync(path.join(root, "home/Applications/.buzz-local-backup.older"));
       const scripts = {
         uname: "echo Darwin",
         git: "exit 0",
         rustc: 'echo "host: aarch64-apple-darwin"',
         cargo:
           'mkdir -p "$CARGO_TARGET_DIR/debug"; for x in buzz-acp buzz-agent buzz-backend-kubernetes buzz-dev-mcp git-credential-nostr buzz; do touch "$CARGO_TARGET_DIR/debug/$x"; done',
-        pnpm: 'if [ "$1" = tauri ]; then mkdir -p "$CARGO_TARGET_DIR/debug/bundle/macos/Buzz Local Coding.app"; echo new > "$CARGO_TARGET_DIR/debug/bundle/macos/Buzz Local Coding.app/new"; fi',
+        pnpm: 'if [ "$1" = tauri ]; then a="$CARGO_TARGET_DIR/debug/bundle/macos/Buzz Local Coding.app"; mkdir -p "$a/Contents/MacOS"; echo new > "$a/new"; touch "$a/Contents/MacOS/buzz-desktop" "$a/Contents/MacOS/buzz-acp"; fi',
+        pgrep: '[ "$APP_RUNNING" = 1 ]',
         codesign: 'printf "%s\\n" "$*" >> "$HOME/signing.log"',
         ditto: '/bin/cp -R "$1" "$2"',
         mv: 'if [ "$FAIL_INSTALL" = 1 ] && echo "$1" | /usr/bin/grep -q "/.buzz-local-install."; then exit 1; fi; /bin/mv "$@"',
@@ -76,13 +78,34 @@ test("installer preserves old app and restores it if final placement fails", () 
       assert.equal(result.status, failure ? 1 : 0, result.stderr);
       const app = path.join(root, "home/Applications/Buzz Local Coding.app");
       assert.ok(existsSync(path.join(app, failure ? "old" : "new")));
-      assert.match(
-        readFileSync(path.join(root, "home/signing.log"), "utf8"),
-        /--entitlements/,
+      const signing = readFileSync(path.join(root, "home/signing.log"), "utf8")
+        .trim()
+        .split("\n");
+      const entitled = signing.filter((line) =>
+        line.includes("--entitlements"),
       );
+      assert.equal(entitled.length, 1, "only the app bundle gets entitlements");
+      assert.match(entitled[0], /--options runtime .*Buzz Local Coding\.app$/);
+      assert.ok(
+        signing.some((line) => /MacOS\/buzz-acp$/.test(line)),
+        "helpers are signed individually",
+      );
+      assert.ok(
+        signing.indexOf(entitled[0]) >
+          signing.findIndex((line) => /MacOS\/buzz-acp$/.test(line)),
+        "helpers are signed before the app",
+      );
+      assert.ok(signing.every((line) => !line.includes("--deep --sign")));
       if (!failure) {
-        const backup = readdirSync(path.join(root, "home/Applications")).find(
-          (n) => n.startsWith(".buzz-local-backup."),
+        const backups = readdirSync(
+          path.join(root, "home/Applications"),
+        ).filter((n) => n.startsWith(".buzz-local-backup."));
+        assert.equal(backups.length, 1, "only the newest backup is kept");
+        const [backup] = backups;
+        assert.notEqual(backup, ".buzz-local-backup.older");
+        assert.match(
+          result.stdout,
+          /Latest previous app backup: .*\.buzz-local-backup\./,
         );
         assert.ok(
           existsSync(
@@ -98,5 +121,43 @@ test("installer preserves old app and restores it if final placement fails", () 
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  }
+});
+
+test("installer refuses to replace a running Local Coding app", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "buzz-install-running-"));
+  try {
+    mkdirSync(path.join(root, "scripts"));
+    mkdirSync(path.join(root, "bin"));
+    copyFileSync(
+      new URL("./install-local-macos.sh", import.meta.url),
+      path.join(root, "scripts/install-local-macos.sh"),
+    );
+    for (const [name, body] of Object.entries({
+      uname: "echo Darwin",
+      git: "exit 0",
+      pgrep: '[ "$2" = "Buzz Local Coding.app/Contents/MacOS" ]',
+      pnpm: 'touch "$HOME/built"',
+    }))
+      writeFileSync(path.join(root, "bin", name), `#!/bin/sh\n${body}\n`, {
+        mode: 0o755,
+      });
+    const result = spawnSync(
+      "bash",
+      [path.join(root, "scripts/install-local-macos.sh")],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: root,
+          PATH: `${path.join(root, "bin")}:${process.env.PATH}`,
+        },
+      },
+    );
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Buzz Local Coding is running\. Quit it/);
+    assert.equal(existsSync(path.join(root, "built")), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });

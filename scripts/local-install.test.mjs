@@ -39,6 +39,7 @@ test("setup refuses modified sources and check distinguishes unavailable/current
     assert.equal(refused.status, 1);
     assert.match(refused.stderr, /Refusing modified/);
     assert.equal(run("unknown").status, 1);
+    assert.match(run("help").stdout, /^install: /m);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

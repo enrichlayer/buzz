@@ -44,3 +44,21 @@ test("bundled plugin manifests parse and meet demo contract", () => {
     );
   }
 });
+
+test("an enabled duplicate for the same fence is reported over a disabled one", () => {
+  const manifest = {
+    id: "example.review-card",
+    version: "1.0.0",
+    fenceLanguage: "buzz-review-card",
+  };
+  const disabled = { manifest, enabled: false };
+  const enabled = { manifest: { ...manifest }, enabled: true };
+  assert.equal(
+    demoPluginStatus("buzz-review-card", [disabled, enabled]),
+    "Ready",
+  );
+  assert.equal(
+    demoPluginStatus("buzz-review-card", [disabled, { ...disabled }]),
+    "Disabled",
+  );
+});

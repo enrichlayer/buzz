@@ -28,11 +28,15 @@ node scripts/local-install.mjs install   # macOS: standalone app in ~/Applicatio
 ```
 
 The macOS installer builds a stable, isolated **Buzz Local Coding.app**, ad-hoc
-signs it, and installs it in `~/Applications`. It preserves an existing copy in
-a uniquely named backup directory before replacing it. It does not overwrite
-regular Buzz or Buzz Dev, migrate their identity, or configure signed automatic
-updates. Quit the previous Local Coding instance before replacing/reopening it.
-The installed app can run without the development terminal.
+signs it, and installs it in `~/Applications`. Bundled helper binaries are
+signed without entitlements; only the app executable receives the camera,
+microphone and `disable-library-validation` entitlements, under the hardened
+runtime. Before replacing an existing copy, the installer moves it to a hidden
+`~/Applications/.buzz-local-backup.*` directory, keeps only the newest such
+backup and prints its location. It does not overwrite regular Buzz or Buzz Dev,
+migrate their identity, or configure signed automatic updates. The installer
+refuses to run while Buzz Local Coding is running; quit it first. The installed
+app can run without the development terminal.
 
 The development `start` command runs from its own checkout regardless of your shell directory. It
 refuses a modified checkout, installs the frozen dependency lockfile, and runs
@@ -97,7 +101,7 @@ frontend hot reload alone is not a new installed binary.
 DEV-12467 / PR #6 owns the independent Enrich Layer signed updater. Its first
 manual installation, Apple signing, feed promotion and real install/update
 acceptance are still pending; these local commands do not complete those steps.
-The native identity API reuses DEV-12462’s existing implementation, with its original checkout preserved. Older native binaries deliberately show identity unavailable. No source freshness check grants merge or release
+The native identity API carries a copy of DEV-12462’s implementation (`build_version.rs`, `app_build.rs`), pending reconciliation with PR #11. Older native binaries deliberately show identity unavailable. No source freshness check grants merge or release
 approval.
 
 ## Demo acceptance
