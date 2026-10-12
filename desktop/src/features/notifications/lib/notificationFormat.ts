@@ -80,12 +80,13 @@ export function formatMessageNotification(opts: {
   senderName?: string | null;
   channelName?: string | null;
   content: string;
+  authorIsAgent?: boolean;
 }): { title: string; body: string } {
   const { source, content } = opts;
   const senderName = opts.senderName?.trim() || null;
   const channelName = opts.channelName?.trim() || null;
   const body = truncateNotificationBody(
-    stripPromptSuggestionFooter(content),
+    stripPromptSuggestionFooter(content, opts.authorIsAgent === true),
     MESSAGE_BODY_FALLBACKS[source],
   );
 

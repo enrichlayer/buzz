@@ -4,8 +4,8 @@ Scope: DEV-12634 (shared Tools skill and Pi adapter), DEV-12635 (Buzz). These ar
 
 ## Observed evidence
 
-- Buzz: three parser tests and two component interaction tests passed. They exercise bounded and malformed payloads, terminal controls, duplicate prompts, human/agent identity, supersession, preserved focus, selection, dismissal and Escape.
-- Buzz: three Playwright scenarios passed against the actual channel/thread composers using the mock relay: draft/focus preservation, selection without sending, exact source-agent recipient only after a separate Send, newer-message invalidation, dismissal across navigation, and thread draft insertion. Screenshots were visually inspected in `desktop/test-results/prompt-suggestions/`.
+- Buzz: ten parser/formatter and preview tests and two component interaction tests passed. They exercise bounded and malformed payloads, terminal controls, duplicate prompts, human/agent identity, supersession, preserved focus, selection, dismissal and Escape.
+- Buzz: seven Playwright scenarios passed against the actual channel/thread composers using the mock relay: draft/focus preservation, selection without sending, exact source-agent recipient only after a separate Send, newer-message invalidation, dismissal across navigation, and thread draft insertion. Screenshots were visually inspected in `desktop/test-results/prompt-suggestions/`.
 - Buzz: full desktop TypeScript check, scoped Biome check across 13 changed files, file-size check, and Vite E2E build passed. The prototype prompt-generation command ran successfully.
 - Pi: package TypeScript check and 18 production-callback tests passed in the owned Factory workspace.
 - Pi: a real terminal smoke test launched the actual Pi TUI with isolated settings and an offline deterministic provider. Typing produced `My draft`; Alt+1 produced `My draft\n\nCan the label use the account name?`. The user-message count stayed at 1 and provider-request count at 2. This verifies the terminal interaction, not live-model suggestion quality.
@@ -25,6 +25,10 @@ Scope: DEV-12634 (shared Tools skill and Pi adapter), DEV-12635 (Buzz). These ar
 
 ## Limits and manual acceptance
 
-The browser uses a mocked relay; the Pi smoke uses a deterministic offline provider. A real agent/model conversation, native Buzz application acceptance, full repository CI and human testing have not been claimed. No production install, merge or deployment was performed. The owning prototype issues retain this acceptance work.
+The browser uses a mocked relay; the Pi smoke uses a deterministic offline provider. Regular Buzz and Buzz Dev were installed and exercised against the Suggestions Trial Oct11 conversation. Clicking a suggestion preserved the draft and did not send; the human confirmed “It works” on October 12. The shared skill and Pi adapter merged in Tools !7223. Buzz PR #15 remains unmerged; required CI, current-head review and updated visual evidence remain pending. The later preview-author guard and long-label wrapping changes still need their affected acceptance checks. These observations do not establish live-model suggestion quality.
 
 To try Buzz generation and the UI, follow [the prototype guide](prompt-suggestions-prototype.md). In Pi, load the prototype extension, run `/suggestions on`, complete a turn, type freely, then use Alt+1 to draft a suggestion and review it before explicitly sending. With a terminal configured to intercept Alt/Option, use `/suggestions 1` from an empty input instead. Disable with `/suggestions off`.
+
+## Review repair
+
+Preview consumers now hide valid suggestion metadata only when the signing author resolves to a known agent. Human and unresolved authors retain their text, including format examples; notification cache misses remain visible. Regression checks cover inbox, search and notification consumers. Suggestion chips wrap bounded long labels within the composer.

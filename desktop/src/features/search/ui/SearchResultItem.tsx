@@ -177,8 +177,8 @@ function describeSearchHit(hit: SearchHit) {
   }
 }
 
-function truncateContent(content: string) {
-  const trimmed = stripPromptSuggestionFooter(content).trim();
+function truncateContent(content: string, authorIsAgent: boolean) {
+  const trimmed = stripPromptSuggestionFooter(content, authorIsAgent).trim();
   if (trimmed.length === 0) {
     return "No message body.";
   }
@@ -263,7 +263,7 @@ export function MessageResultBody({
         </p>
       ) : null}
       <p className="mt-2 text-sm leading-6 text-foreground">
-        {truncateContent(hit.content)}
+        {truncateContent(hit.content, authorIsAgent)}
       </p>
     </div>
   );

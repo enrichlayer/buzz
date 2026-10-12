@@ -6,6 +6,9 @@ import {
   parsePromptSuggestions,
   stripPromptSuggestionFooter,
 } from "./promptSuggestions.ts";
+import { buildSearchResultPreview } from "@/features/search/lib/searchMatch";
+import { formatFeedNotification } from "@/features/notifications/lib/feed";
+import { buildInboxItems } from "@/features/home/lib/inbox";
 import { formatMessageNotification } from "@/features/notifications/lib/notificationFormat";
 
 const suggestions = [
@@ -199,10 +202,66 @@ test("human message text keeps a footer and never supplies suggestions", () => {
 });
 
 test("raw-content previews drop a valid footer", () => {
-  assert.equal(stripPromptSuggestionFooter(footer()), "Done.");
-  assert.equal(stripPromptSuggestionFooter("plain"), "plain");
+  assert.equal(stripPromptSuggestionFooter(footer(), true), "Done.");
+  assert.equal(stripPromptSuggestionFooter("plain", true), "plain");
   assert.equal(
-    formatMessageNotification({ source: "dm", content: footer() }).body,
+    formatMessageNotification({
+      source: "dm",
+      content: footer(),
+      authorIsAgent: true,
+    }).body,
     "Done.",
   );
+});
+
+test("preview consumers preserve human and unknown authors, hiding only agent metadata", () => {
+  const content = footer({ version: 1, suggestions: [] });
+  const item = {
+    id: "preview",
+    pubkey: "author",
+    kind: 9,
+    content,
+    createdAt: 1,
+    channelId: "channel",
+    channelName: "Trial",
+    tags: [["h", "channel"]],
+    category: "mention",
+  };
+  for (const isAgent of [true, false, undefined]) {
+    const expected = isAgent === true ? "Done." : content;
+    assert.equal(
+      stripPromptSuggestionFooter(content, isAgent === true),
+      expected,
+    );
+    assert.equal(
+      buildSearchResultPreview(content, "", 1000, isAgent),
+      expected,
+    );
+    assert.equal(
+      formatMessageNotification({
+        source: "dm",
+        content,
+        authorIsAgent: isAgent,
+      }).body,
+      expected,
+    );
+    assert.equal(
+      formatFeedNotification(item, "Author", isAgent).body,
+      expected,
+    );
+    const [inbox] = buildInboxItems({
+      channels: [],
+      profiles: isAgent === undefined ? undefined : { author: { isAgent } },
+      feed: {
+        feed: {
+          mentions: [item],
+          needsAction: [],
+          activity: [],
+          agentActivity: [],
+        },
+        meta: {},
+      },
+    });
+    assert.equal(inbox.preview, expected);
+  }
 });

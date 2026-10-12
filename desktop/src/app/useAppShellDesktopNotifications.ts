@@ -1,4 +1,9 @@
 import * as React from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  usersBatchEntryKey,
+  type UsersBatchEntry,
+} from "@/features/profile/hooks";
 
 import {
   activateDesktopNotificationTarget,
@@ -57,6 +62,7 @@ export function useAppShellDesktopNotifications({
   });
 
   const resolveSenderName = useNotificationSenderName();
+  const queryClient = useQueryClient();
 
   const handleChannelNotification = React.useEffectEvent(
     (_channelId: string, event: RelayEvent) => {
@@ -83,6 +89,10 @@ export function useAppShellDesktopNotifications({
         senderName: resolveSenderName(event.pubkey),
         channelName,
         content: event.content,
+        authorIsAgent:
+          queryClient.getQueryData<UsersBatchEntry>(
+            usersBatchEntryKey(event.pubkey.toLowerCase()),
+          )?.summary?.isAgent === true,
       });
 
       void sendDesktopNotification({
@@ -126,6 +136,10 @@ export function useAppShellDesktopNotifications({
         senderName: resolveSenderName(event.pubkey),
         channelName,
         content: event.content,
+        authorIsAgent:
+          queryClient.getQueryData<UsersBatchEntry>(
+            usersBatchEntryKey(event.pubkey.toLowerCase()),
+          )?.summary?.isAgent === true,
       });
 
       void sendDesktopNotification({

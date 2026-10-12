@@ -76,9 +76,12 @@ export function parsePromptSuggestions(body: string): {
   return { body: body.slice(0, match.index).trimEnd(), suggestions };
 }
 
-/** Message text for display: a valid footer is presentation metadata. */
-export function stripPromptSuggestionFooter(body: string): string {
-  return parsePromptSuggestions(body)?.body ?? body;
+/** Only a known signing agent may supply hidden presentation metadata. */
+export function stripPromptSuggestionFooter(
+  body: string,
+  authorIsAgent: boolean,
+): string {
+  return authorIsAgent ? (parsePromptSuggestions(body)?.body ?? body) : body;
 }
 
 /** Any newer message supersedes the previous turn's suggestions. */

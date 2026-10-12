@@ -111,7 +111,11 @@ export function useFeedDesktopNotifications(
 
   const deliverFeedNotification = React.useEffectEvent(
     async (item: FeedItem, senderName?: string) => {
-      const { title, body } = formatFeedNotification(item, senderName);
+      const { title, body } = formatFeedNotification(
+        item,
+        senderName,
+        profiles?.[item.pubkey.toLowerCase()]?.isAgent === true,
+      );
       const didSend = await sendDesktopNotification({
         body,
         target: buildFeedItemNotificationTarget(item),

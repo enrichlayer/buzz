@@ -35,12 +35,17 @@ function feedNotificationSource(item: FeedItem) {
   return "needs_action" as const;
 }
 
-export function formatFeedNotification(item: FeedItem, senderName?: string) {
+export function formatFeedNotification(
+  item: FeedItem,
+  senderName?: string,
+  authorIsAgent = false,
+) {
   return formatMessageNotification({
     source: feedNotificationSource(item),
     senderName,
     channelName: item.channelType !== "dm" ? item.channelName : null,
     content: item.content,
+    authorIsAgent,
   });
 }
 

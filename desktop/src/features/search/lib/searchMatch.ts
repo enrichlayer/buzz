@@ -171,8 +171,9 @@ export function buildSearchResultPreview(
   content: string,
   query: string,
   maxLength = 96,
+  authorIsAgent = false,
 ): string {
-  const text = stripPromptSuggestionFooter(content).trim();
+  const text = stripPromptSuggestionFooter(content, authorIsAgent).trim();
   if (!text) {
     return "No message body.";
   }

@@ -11,6 +11,7 @@ for (const surface of ["channel", "thread"] as const) {
   test(`directory-only offline agent keeps clickable suggestions in ${surface}`, async ({
     page,
   }) => {
+    const longLabel = "S".repeat(64);
     await installMockBridge(page, {
       managedAgents: [],
       relayAgents: [
@@ -58,7 +59,11 @@ for (const surface of ["channel", "thread"] as const) {
           pubkey,
           parentEventId,
         }),
-      { content: answer, pubkey: AGENT, parentEventId },
+      {
+        content: answer.replace("Use the account name", longLabel),
+        pubkey: AGENT,
+        parentEventId,
+      },
     );
     const rows =
       surface === "thread"
@@ -74,7 +79,15 @@ for (const surface of ["channel", "thread"] as const) {
     await expect(chips).toBeVisible();
     await expect(editor).toBeFocused();
     await expect(editor).toHaveText("Preserve this draft");
-    await chips.getByRole("button", { name: "Use the account name" }).click();
+    const chip = chips.getByRole("button", { name: longLabel });
+    const chipBounds = await chip.boundingBox();
+    const composerBounds = await chips.boundingBox();
+    expect(chipBounds).not.toBeNull();
+    expect(composerBounds).not.toBeNull();
+    if (chipBounds && composerBounds) {
+      expect(chipBounds.width).toBeLessThanOrEqual(composerBounds.width);
+    }
+    await chip.click();
     await expect(editor).toContainText("Preserve this draft");
     await expect(editor).toContainText(prompt);
     expect(
@@ -274,8 +287,9 @@ test("thread suggestions stay in the thread and preserve its draft", async ({
     .boundingBox();
   expect(ownerBox).not.toBeNull();
   expect(timeBox).not.toBeNull();
-  expect(timeBox!.x).toBeGreaterThan(ownerBox!.x + ownerBox!.width);
-  expect(Math.abs(timeBox!.y - ownerBox!.y)).toBeLessThan(8);
+  if (!ownerBox || !timeBox) throw new Error("Thread metadata has no bounds");
+  expect(timeBox.x).toBeGreaterThan(ownerBox.x + ownerBox.width);
+  expect(Math.abs(timeBox.y - ownerBox.y)).toBeLessThan(8);
   await waitForAnimations(page);
   await page.screenshot({
     path: "test-results/prompt-suggestions/03-thread-draft.png",
