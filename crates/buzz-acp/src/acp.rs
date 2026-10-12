@@ -1844,9 +1844,14 @@ impl AcpClient {
                                         self.write_ndjson(&permission_response_cancelled(id))
                                             .await?;
                                     }
-                                } else if self.question_asker.is_none() {
-                                    // Preserve unattended/local-task policy; channel turns
-                                    // always route offered permissions through their owner.
+                                } else if self
+                                    .question_asker
+                                    .as_ref()
+                                    .is_none_or(|asker| asker.permission_owner.is_none())
+                                {
+                                    // Only an owned channel turn in `default` permission mode
+                                    // asks its owner; every other turn keeps the configured
+                                    // policy (docs/agent-permissions.md).
                                     self.handle_permission_request(&msg).await?;
                                 } else if let Some(rx) = self.ask_permission(&msg).await? {
                                     question_rx = Some(rx);

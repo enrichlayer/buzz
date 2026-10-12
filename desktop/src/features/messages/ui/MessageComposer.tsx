@@ -1,5 +1,5 @@
 import * as React from "react";
-import { shellCommand } from "@/features/messages/lib/shellCommand";
+import { composerShellCommand } from "@/features/messages/lib/shellCommand";
 import { EditorContent } from "@tiptap/react";
 import {
   useChannelLinks,
@@ -937,11 +937,10 @@ function MessageComposerImpl({
             ) : null}
             {composerLinkPreviews}
             {editTarget == null &&
-              shellCommand(
+              composerShellCommand(
                 contentRef.current,
-                mentions
-                  .getDraftMentionRefs(contentRef.current)
-                  .map((ref) => ref.displayName),
+                mentions.getDraftMentionRefs(contentRef.current),
+                persistentAudience.pubkeys,
               ) != null && (
                 <div
                   role="status"
