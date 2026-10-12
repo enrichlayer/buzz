@@ -212,6 +212,22 @@ class R2Test(unittest.TestCase):
         store.put('releases/1.2.3/file', b'data')
         self.assertEqual(store.client.put_object.call_args.kwargs['IfNoneMatch'], '*')
 
+    def test_public_verification_identifies_release_client(self):
+        patch.stopall()
+        data = b'public artifact'
+        response = io.BytesIO(data)
+        response.geturl = lambda: r2.PUBLIC + '/test'
+
+        def serve(request, *, timeout):
+            self.assertEqual(request.full_url, r2.PUBLIC + '/test')
+            self.assertEqual(request.get_header('User-agent'), 'EnrichLayer-Buzz-Release/1.0')
+            self.assertEqual(request.get_header('Cache-control'), 'no-cache')
+            self.assertEqual(timeout, 120)
+            return response
+
+        with patch.object(r2.urllib.request, 'urlopen', side_effect=serve):
+            r2.public_verify('test', {'sha256': hashlib.sha256(data).hexdigest(), 'size': len(data)})
+
     def test_corrupt_public_response_fails(self):
         # Exercise the real HTTP verification seam, including redirect refusal.
         patch.stopall()

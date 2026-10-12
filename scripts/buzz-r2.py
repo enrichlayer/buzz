@@ -110,7 +110,10 @@ class Store:
 
 
 def public_verify(key, expected):
-    request = urllib.request.Request(f"{PUBLIC}/{key}", headers={"Cache-Control": "no-cache"})
+    request = urllib.request.Request(f"{PUBLIC}/{key}", headers={
+        "Cache-Control": "no-cache",
+        "User-Agent": "EnrichLayer-Buzz-Release/1.0",
+    })
     with urllib.request.urlopen(request, timeout=120) as response:
         if response.geturl() != f"{PUBLIC}/{key}":
             raise ValueError("Unexpected artifact redirect")
