@@ -77,6 +77,8 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   // _creatingCompleter is never completed and dispose() deadlocks waiting
   // on it.  This flag exercises the F2r(d) production fix.
   final bool forceCreateError;
+  final createAttempted = Completer<void>();
+  final disposeAttempted = Completer<void>();
   int disposeCallCount = 0;
   int nextPlayerId = 0;
   final Map<int, StreamController<VideoEvent>> _streams = {};
@@ -92,6 +94,7 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
 
   @override
   Future<int?> createWithOptions(VideoCreationOptions options) async {
+    if (!createAttempted.isCompleted) createAttempted.complete();
     if (forceCreateError) {
       throw PlatformException(
         code: 'VideoError',
@@ -136,6 +139,7 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   @override
   Future<void> dispose(int playerId) async {
     disposeCallCount++;
+    if (!disposeAttempted.isCompleted) disposeAttempted.complete();
     // Record the dispose call and close the event stream.
     //
     // Note: an error injected here does NOT reach initialize()'s pending
@@ -604,8 +608,7 @@ void main() {
   testWidgets(
     'F2r(c): controller created but never initialized is disposed on unmount',
     (tester) async {
-      final fakePlayer = _FakeVideoPlayerPlatform(neverInitialize: true);
-      VideoPlayerPlatform.instance = fakePlayer;
+      late _FakeVideoPlayerPlatform fakePlayer;
 
       final fakeClient = _FinalizingFakeClient(
         responseBuilder: () =>
@@ -614,6 +617,8 @@ void main() {
       addTearDown(fakeClient.close);
 
       await tester.runAsync(() async {
+        fakePlayer = _FakeVideoPlayerPlatform(neverInitialize: true);
+        VideoPlayerPlatform.instance = fakePlayer;
         await tester.pumpWidget(
           WidgetHelpers.testable(
             disableAnimations: true,
@@ -626,10 +631,11 @@ void main() {
             ),
           ),
         );
-        // Allow enough time for the download to complete and for
-        // VideoPlayerController.file() to be constructed, but NOT long
-        // enough for initialize() to complete (it never will).
-        await Future<void>.delayed(const Duration(milliseconds: 300));
+        // Wait for actual creation; file I/O can exceed a fixed delay under
+        // concurrent builds. The fake never completes initialization.
+        await fakePlayer.createAttempted.future.timeout(
+          const Duration(seconds: 5),
+        );
 
         // Now unmount — this triggers the effect cleanup with the pending
         // controller still in pendingController.value (never reached play()).
@@ -645,7 +651,9 @@ void main() {
             child: const SizedBox.shrink(),
           ),
         );
-        await Future<void>.delayed(const Duration(milliseconds: 100));
+        await fakePlayer.disposeAttempted.future.timeout(
+          const Duration(seconds: 5),
+        );
       });
       await tester.pump();
 
@@ -675,11 +683,10 @@ void main() {
   // Fix: `unawaited(localController.dispose().catchError(...))` in the catch
   // rethrows immediately so the outer catch sets error.value and shows the UI.
   //
-  // Red-with-old-code: the old `await localController.dispose()` never returns
-  // (dispose() waits on the uncompleted _creatingCompleter); the 300 ms window
-  // ends with error.value still unset and the error UI absent — the assertion
-  // fails.  With `unawaited(dispose())` the outer catch runs immediately and
-  // sets error.value; the 300 ms window is enough for the fix to take effect.
+  // Wait for the native creation boundary, not a fixed real-time delay: the
+  // preceding temporary-file write can take longer under concurrent builds.
+  // With the old `await localController.dispose()`, creation is attempted but
+  // disposal deadlocks; the error UI assertion still fails after pumping.
   //
   // Note: create itself fails here, so _creatingCompleter is never completed
   // and the unawaited dispose() stalls at the same wait — this fix bypasses
@@ -688,9 +695,6 @@ void main() {
   testWidgets(
     'F2r(d): createWithOptions() failure shows error UI (not infinite spinner)',
     (tester) async {
-      final fakePlayer = _FakeVideoPlayerPlatform(forceCreateError: true);
-      VideoPlayerPlatform.instance = fakePlayer;
-
       final fakeClient = _FinalizingFakeClient(
         responseBuilder: () =>
             http.StreamedResponse(Stream.value(<int>[0, 1, 2, 3]), 200),
@@ -698,6 +702,9 @@ void main() {
       addTearDown(fakeClient.close);
 
       await tester.runAsync(() async {
+        // Construct and await the completion in the real scheduler zone.
+        final fakePlayer = _FakeVideoPlayerPlatform(forceCreateError: true);
+        VideoPlayerPlatform.instance = fakePlayer;
         await tester.pumpWidget(
           WidgetHelpers.testable(
             disableAnimations: true,
@@ -710,23 +717,19 @@ void main() {
             ),
           ),
         );
-        // Allow the download to complete, createWithOptions() to throw, and
-        // the outer catch to set error.value.  With the old `await dispose()`
-        // the outer catch is blocked — `error.value` is never set and
-        // `find.text('Failed to load video')` fails.
-        await Future<void>.delayed(const Duration(milliseconds: 300));
-      });
-      await tester.pumpAndSettle();
+        await fakePlayer.createAttempted.future.timeout(
+          const Duration(seconds: 5),
+        );
+        await tester.pumpAndSettle();
 
-      // The error UI must be visible: unawaited dispose + rethrow lets the
-      // outer catch set error.value and show _MediaLoadFailure.
-      // With the old `await dispose()` the viewer stalls and this fails.
-      expect(
-        find.text('Failed to load video'),
-        findsOneWidget,
-        reason:
-            'createWithOptions() failure must show error UI, not infinite spinner',
-      );
+        // Creation alone does not pass: the production catch must set the UI.
+        expect(
+          find.text('Failed to load video'),
+          findsOneWidget,
+          reason:
+              'createWithOptions() failure must show error UI, not infinite spinner',
+        );
+      });
     },
   );
 
