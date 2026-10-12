@@ -275,6 +275,22 @@ test("selected assistant code sends immutable feedback to the exact agent thread
     original.getByText(ASSISTANT_SOURCE_ID, { exact: true }),
   ).toBeVisible();
   await expect(thread.getByText(FEEDBACK, { exact: true })).toBeVisible();
+  const feedbackCard = original.locator("..");
+  await feedbackCard
+    .getByRole("button", { name: "View source", exact: true })
+    .focus();
+  await page.keyboard.press("Enter");
+  await expect(feedbackCard.getByRole("status")).toHaveText(
+    "Source opened and selection highlighted.",
+  );
+  expect(
+    await page.evaluate(() => {
+      const highlight = CSS.highlights.get("annotation-source-selection");
+      return highlight
+        ? Array.from(highlight).map((range) => range.toString())
+        : [];
+    }),
+  ).toEqual(["const routed = threadId;"]);
 
   const publishedReply = thread.locator(
     `[data-message-id="${PUBLISHED_AGENT_REPLY}"]`,
@@ -562,4 +578,73 @@ test("human channel messages and tool output can both be annotated", async ({
   expect(toolComment.parentEventId).toBe(ROOT_A);
   expect(toolComment.mentionPubkeys).toEqual([AGENT_PUBKEY]);
   expect(toolComment.content).toContain("annotation-command");
+});
+
+test("View source opens an unloaded nested message and highlights its exact selection", async ({
+  page,
+}) => {
+  await installMockBridge(page);
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await seedThreadsAndObserver(page);
+  await page.getByTestId("channel-general").click();
+  const sourceText = "Published agent conclusion.";
+  let hash = 0xcbf29ce484222325n;
+  for (const byte of new TextEncoder().encode(sourceText)) {
+    hash = BigInt.asUintN(64, (hash ^ BigInt(byte)) * 0x100000001b3n);
+  }
+  const content = [
+    "Selection · selected text",
+    "",
+    "> Published agent conclusion.",
+    "",
+    "Inspect this source",
+    "",
+    "```buzz-annotation",
+    JSON.stringify({
+      sourceId: PUBLISHED_AGENT_REPLY,
+      sourceRevision: `fnv1a64:${hash.toString(16).padStart(16, "0")}`,
+      selectedText: sourceText,
+      channelId: CHANNEL_ID,
+    }),
+    "```",
+  ].join("\n");
+  await page.evaluate(
+    (content) =>
+      window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
+        channelName: "general",
+        content,
+        id: "4".repeat(64),
+      }),
+    content,
+  );
+  const annotation = page.locator(`[data-message-id="${"4".repeat(64)}"]`);
+  await waitForAnimations(page);
+  await annotation.screenshot({
+    path: "test-results/annotation-feedback-before-navigation.png",
+  });
+  await annotation
+    .getByRole("button", { name: "View source", exact: true })
+    .click();
+  const thread = page.getByTestId("message-thread-panel");
+  await expect(thread).toBeVisible();
+  await expect(
+    thread.locator(`[data-annotation-source-id="${PUBLISHED_AGENT_REPLY}"]`),
+  ).toContainText(sourceText);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const highlight = CSS.highlights.get("annotation-source-selection");
+        return highlight
+          ? Array.from(highlight).map((range) => range.toString())
+          : [];
+      }),
+    )
+    .toEqual([sourceText]);
+  await expect(
+    thread.locator(`[data-annotation-source-id="${PUBLISHED_AGENT_REPLY}"]`),
+  ).toBeFocused();
+  await waitForAnimations(page);
+  await thread
+    .locator(`[data-annotation-source-id="${PUBLISHED_AGENT_REPLY}"]`)
+    .screenshot({ path: "test-results/annotation-source-highlight.png" });
 });

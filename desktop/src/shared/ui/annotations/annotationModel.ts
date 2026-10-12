@@ -24,6 +24,12 @@ export type AnnotationAnchor = AnnotationDestination & {
   sourceRevision: string;
   originalSourceText: string;
   selectedText: string;
+  /** Offset in rendered source text, disambiguating repeated selections. */
+  textOffset?: number;
+  /** Digest of rendered text; offsets are trusted only for this layout. */
+  renderedRevision?: string;
+  /** DOM Range text when browser selection adds paragraph separators. */
+  selectedDomText?: string;
   codeRange?: AnnotationCodeRange;
 };
 
@@ -85,6 +91,9 @@ export function annotationMetadata(anchor: AnnotationAnchor) {
     sourceId: anchor.sourceId,
     sourceRevision: anchor.sourceRevision,
     selectedText: anchor.selectedText,
+    textOffset: anchor.textOffset,
+    renderedRevision: anchor.renderedRevision,
+    selectedDomText: anchor.selectedDomText,
     codeRange: anchor.codeRange,
     channelId: anchor.channelId,
     sessionId: anchor.sessionId,

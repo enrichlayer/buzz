@@ -612,7 +612,6 @@ fn update_time_override_preserves_pin_for_persona_less_agent() {
 mod effort_clear;
 mod forced_discovery;
 mod managed_path_resolution;
-
 #[cfg(unix)]
 #[test]
 fn probe_codex_acp_version_parses_full_semver_output() {

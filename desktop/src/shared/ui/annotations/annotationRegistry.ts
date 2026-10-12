@@ -25,6 +25,7 @@ export type AnnotationSourceRegistration = {
 /** One registry per mounted community; never shared between workspaces. */
 export function createAnnotationRegistry() {
   return {
+    navigationGeneration: 0,
     scopes: new Set<AnnotationScopeRegistration>(),
     sources: new Map<HTMLElement, AnnotationSourceRegistration>(),
     changed: (_root: HTMLElement) => {},
