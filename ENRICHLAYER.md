@@ -131,8 +131,8 @@ The existing bridge is owned by
 The compatible Control Panel parser is deployed. The public-safe activity
 journal in [FE-1681 / MR !2005](https://gitlab.com/vertical-int/enrich-layer/el-lander/-/merge_requests/2005)
 is also deployed and records all four lifecycle phases as of 11 October 2026.
-Tools MR !6704 remains the draft delivery path; journal records alone do not
-establish delivery to Buzz. Buzz PR #4 supplies the verified CLI transport that
+Tools MR !6704 owns the consumer and transport; journal records alone do not
+establish deployment or delivery to Buzz. Buzz PR #4 supplies the verified CLI transport that
 must be installed in the production publisher before enabling it.
 
 The legacy Linear mirror only shows issue status changes. It is not evidence
