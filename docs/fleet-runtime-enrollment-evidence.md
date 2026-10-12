@@ -194,3 +194,16 @@ The current Factory source contract accepts only Claude/Codex for Herdr attach,
 while its task-loop Pi lane launches the Pi binary directly. The Herdr-based Pi
 runtime requested by the user still needs a verified launch path; the raw Pi
 RPC tests do not satisfy that provenance requirement.
+
+### Acceptance cohort clarification, 2026-10-13
+
+The user approved Claude or Codex for the Herdr-based Factory acceptance run
+until Pi is enabled. The current native Factory task loop already supports
+both providers. DEV-12832 is extending automatic enrollment and the existing
+authenticated remote-tool gateway to that path. Implementation and gateway
+regressions are in progress; no live remote reply is claimed.
+
+Transport prerequisite PR #4 repair `af6c715` passed 6,886 desktop unit tests,
+147 DOM tests and all 25 affected browser cases. Its normal push is running
+native hooks; current-head hosted CI remains pending. Enrollment repository
+CI is also running and is not yet passed.

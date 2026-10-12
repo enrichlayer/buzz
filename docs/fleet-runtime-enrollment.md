@@ -55,8 +55,10 @@ The three-runtime acceptance is **pending**. Required evidence:
 
 1. Local native session appears in telemetry and enrolls through its lifecycle.
 2. Herdr's actual remote session enrolls on attach/resume.
-3. Factory's Herdr-based Pi worker enrolls from its native task loop with its
-   canonical run ID; an interactive remote shell is not a substitute.
+3. Factory's native task-loop worker enrolls with its canonical dispatch ID.
+   The user approved Claude or Codex until Herdr-based Pi is enabled. Record
+   the actual provider and Herdr/runtime provenance; an interactive shell is
+   not a substitute for the native task loop.
 4. All three receive signed Buzz peer messages, perform the shared bounded
    task, and reply without human copy-and-paste.
 5. Event IDs correlate to runtime receipt and action evidence. A relay ACK or
