@@ -307,11 +307,6 @@ test("actions-review-race: a late second Review never replaces the submitted int
   // Mutation: drop the in-flight guard at the top of handleReview → RED
   // (the second Review re-freezes with a new requestId and Retry sends it).
   const relays = [];
-  setIpcHandler(
-    "get_relay_ws_url",
-    () =>
-      new Promise((resolve) => relays.push(() => resolve(TEST_RELAY_WS_URL))),
-  );
   const ids = [];
   const replies = [
     () => mutationReject("network down", null),
@@ -322,15 +317,16 @@ test("actions-review-race: a late second Review never replaces the submitted int
     ids.push(intent.requestId);
     return replies[ids.length - 1]();
   });
-  const mounted = mountActions();
-  await settle();
-  // The tab reads the active relay once on mount to prefill the host.
-  await act(async () => {
-    for (const resolve of relays.splice(0)) resolve();
-  });
-  const { container: c, unmount } = await mounted;
+  const { container: c, unmount } = await mountActions();
   try {
     await fillTimeout(c);
+    // Only defer the Review reads. Deferring mount overlapped two act scopes
+    // and could leave React's test queue unsettled for every following case.
+    setIpcHandler(
+      "get_relay_ws_url",
+      () =>
+        new Promise((resolve) => relays.push(() => resolve(TEST_RELAY_WS_URL))),
+    );
     await act(async () => {
       fireEvent.click(q(c, "direct-review-btn"));
       fireEvent.click(q(c, "direct-review-btn"));

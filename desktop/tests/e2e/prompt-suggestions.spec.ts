@@ -40,9 +40,8 @@ for (const surface of ["channel", "thread"] as const) {
         }),
       );
       parentEventId = root?.id;
-      await page
-        .getByTestId(`reply-message-${parentEventId}`)
-        .click({ force: true });
+      await page.locator(`[data-message-id="${parentEventId}"]`).hover();
+      await page.getByTestId(`reply-message-${parentEventId}`).click();
     }
     const panel = page.getByTestId("message-thread-panel");
     const editor =
@@ -185,15 +184,19 @@ test("new messages supersede suggestions; dismissal never sends", async ({
       channelName: "general",
     }),
   );
+  // Nostr timestamps have second precision; explicit ordering avoids letting
+  // random event IDs decide which of these rapid posts is the latest turn.
+  let createdAt = Math.floor(Date.now() / 1000);
   const post = async (content: string, pubkey = AGENT) =>
     page.evaluate(
-      ({ content, pubkey }) =>
+      ({ content, pubkey, createdAt }) =>
         window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
           channelName: "general",
           content,
           pubkey,
+          createdAt,
         }),
-      { content, pubkey },
+      { content, pubkey, createdAt: createdAt++ },
     );
   await post(answer);
   await expect(page.getByTestId("prompt-suggestions")).toBeVisible();
@@ -235,7 +238,8 @@ test("thread suggestions stay in the thread and preserve its draft", async ({
     }),
   );
   if (!root?.id) throw new Error("Missing mock thread root");
-  await page.getByTestId(`reply-message-${root.id}`).click({ force: true });
+  await page.locator(`[data-message-id="${root.id}"]`).hover();
+  await page.getByTestId(`reply-message-${root.id}`).click();
   const panel = page.getByTestId("message-thread-panel");
   const editor = panel.getByTestId("message-input");
   await editor.fill("Thread draft");
@@ -258,6 +262,20 @@ test("thread suggestions stay in the thread and preserve its draft", async ({
   await expect(editor).toContainText("Thread draft");
   await expect(editor).toContainText(prompt);
   await expect(chips).toHaveCount(0);
+  const owner = panel.getByTestId("message-agent-owner").last();
+  const ownerLabel = owner.getByText("owner unavailable", { exact: true });
+  expect(
+    await ownerLabel.evaluate((el) => el.scrollWidth <= el.clientWidth),
+  ).toBe(true);
+  const ownerBox = await owner.boundingBox();
+  const timeBox = await owner
+    .locator("..")
+    .getByTestId("message-timestamp")
+    .boundingBox();
+  expect(ownerBox).not.toBeNull();
+  expect(timeBox).not.toBeNull();
+  expect(timeBox!.x).toBeGreaterThan(ownerBox!.x + ownerBox!.width);
+  expect(Math.abs(timeBox!.y - ownerBox!.y)).toBeLessThan(8);
   await waitForAnimations(page);
   await page.screenshot({
     path: "test-results/prompt-suggestions/03-thread-draft.png",
