@@ -358,7 +358,7 @@ test("permission card is read-only for other channel members", async ({
 test("manual handoff attributes the actual command and rejects oversized output", async ({
   page,
 }) => {
-  await postPrompt(page, permissionPrompt());
+  const { root } = await postPrompt(page, permissionPrompt());
   const card = page.getByTestId("permission-card");
   await card.getByRole("button", { name: "Deny", exact: true }).click();
   await expect(card).toContainText("Denial sent");
@@ -377,7 +377,13 @@ test("manual handoff attributes the actual command and rejects oversized output"
   await expect(
     card.getByRole("button", { name: "Result shared" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: /View thread with 1 reply/ }).click();
+  // Close the tall terminal form so the virtualized summary below it mounts.
+  await card.getByText("Handle this in a terminal", { exact: true }).click();
+  await page
+    .locator(
+      `[data-testid="message-thread-summary"][data-thread-head-id="${root.id}"]`,
+    )
+    .click();
   await expect(
     page.getByText(
       "I changed the command from the original permission request.",

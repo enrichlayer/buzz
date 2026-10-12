@@ -15111,7 +15111,7 @@ export function maybeInstallE2eTauriMocks() {
         // Returns the ArchiveBatchResult shape the UI expects.
         return { persisted: 0, dropped: 0 };
       case "read_unindexed_observer_rows":
-        // The mock archive persists no events, so it has no rows to backfill.
+      case "read_archived_observer_events_for_channel":
         return [];
       // Archive sync runs natively; the bridge has no relay-backed backend to
       // drive, so these are accepted no-ops. Without them every AppShell mount
