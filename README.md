@@ -1,6 +1,7 @@
 <h1 align="center">Buzz 🐝</h1>
 
-Using our custom desktop app? See the [Enrich Layer installation and update guide](docs/enrichlayer-buzz-user-guide.md).
+**Enrich Layer team:** see [team setup and upstream sync](ENRICHLAYER.md),
+or [install and update our custom desktop app](docs/enrichlayer-buzz-user-guide.md).
 
 <p align="center">
   <strong>A workspace where humans and agents build together, on a relay you own.</strong>
