@@ -1,11 +1,15 @@
 //! Explicit human shell commands. Never infer executable intent from chat text.
 use nostr::{Event, Keys, PublicKey};
 use serde::{Deserialize, Serialize};
-use std::{io::Write, path::Path, process::Stdio, time::Duration};
+#[cfg(unix)]
+use std::process::Stdio;
+use std::{io::Write, path::Path, time::Duration};
+#[cfg(unix)]
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 /// Signed event metadata marking deliberate human shell execution.
 pub const TAG: &str = "buzz.shell";
+#[cfg(unix)]
 const OUTPUT_LIMIT: usize = 4_000;
 
 /// Recognize explicit execution metadata without inferring intent from prose.
@@ -111,6 +115,7 @@ impl ShellResult {
     }
 }
 
+#[cfg(unix)]
 async fn capture(mut reader: impl AsyncRead + Unpin) -> (String, bool) {
     let mut output = Vec::new();
     let mut truncated = false;
@@ -383,6 +388,7 @@ mod tests {
         .unwrap_err()
         .contains("expired"));
     }
+    #[cfg(unix)]
     #[tokio::test]
     async fn a_command_that_cannot_start_leaves_a_not_run_receipt() {
         let owner = Keys::generate();
@@ -404,6 +410,7 @@ mod tests {
             assert!(result.output.contains("Could not start Bash"));
         }
     }
+    #[cfg(unix)]
     #[tokio::test]
     async fn shell_captures_failure_and_limits_output() {
         let result = execute(
@@ -428,6 +435,7 @@ mod tests {
         assert!(result.truncated);
         assert!(result.output.len() <= OUTPUT_LIMIT);
     }
+    #[cfg(unix)]
     #[tokio::test]
     async fn shell_cancellation_stops_descendants() {
         let dir = tempfile::tempdir().unwrap();

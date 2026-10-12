@@ -1844,10 +1844,10 @@ impl AcpClient {
                                         self.write_ndjson(&permission_response_cancelled(id))
                                             .await?;
                                     }
-                                } else if !self
+                                } else if self
                                     .question_asker
                                     .as_ref()
-                                    .is_some_and(|asker| asker.permission_owner.is_some())
+                                    .is_none_or(|asker| asker.permission_owner.is_none())
                                 {
                                     // Only an owned channel turn in `default` permission mode
                                     // asks its owner; every other turn keeps the configured
