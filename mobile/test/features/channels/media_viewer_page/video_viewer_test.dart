@@ -78,6 +78,7 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   // on it.  This flag exercises the F2r(d) production fix.
   final bool forceCreateError;
   final createAttempted = Completer<void>();
+  final disposeAttempted = Completer<void>();
   int disposeCallCount = 0;
   int nextPlayerId = 0;
   final Map<int, StreamController<VideoEvent>> _streams = {};
@@ -138,6 +139,7 @@ class _FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   @override
   Future<void> dispose(int playerId) async {
     disposeCallCount++;
+    if (!disposeAttempted.isCompleted) disposeAttempted.complete();
     // Record the dispose call and close the event stream.
     //
     // Note: an error injected here does NOT reach initialize()'s pending
@@ -606,8 +608,7 @@ void main() {
   testWidgets(
     'F2r(c): controller created but never initialized is disposed on unmount',
     (tester) async {
-      final fakePlayer = _FakeVideoPlayerPlatform(neverInitialize: true);
-      VideoPlayerPlatform.instance = fakePlayer;
+      late _FakeVideoPlayerPlatform fakePlayer;
 
       final fakeClient = _FinalizingFakeClient(
         responseBuilder: () =>
@@ -616,6 +617,8 @@ void main() {
       addTearDown(fakeClient.close);
 
       await tester.runAsync(() async {
+        fakePlayer = _FakeVideoPlayerPlatform(neverInitialize: true);
+        VideoPlayerPlatform.instance = fakePlayer;
         await tester.pumpWidget(
           WidgetHelpers.testable(
             disableAnimations: true,
@@ -628,10 +631,11 @@ void main() {
             ),
           ),
         );
-        // Allow enough time for the download to complete and for
-        // VideoPlayerController.file() to be constructed, but NOT long
-        // enough for initialize() to complete (it never will).
-        await Future<void>.delayed(const Duration(milliseconds: 300));
+        // Wait for actual creation; file I/O can exceed a fixed delay under
+        // concurrent builds. The fake never completes initialization.
+        await fakePlayer.createAttempted.future.timeout(
+          const Duration(seconds: 5),
+        );
 
         // Now unmount — this triggers the effect cleanup with the pending
         // controller still in pendingController.value (never reached play()).
@@ -647,7 +651,9 @@ void main() {
             child: const SizedBox.shrink(),
           ),
         );
-        await Future<void>.delayed(const Duration(milliseconds: 100));
+        await fakePlayer.disposeAttempted.future.timeout(
+          const Duration(seconds: 5),
+        );
       });
       await tester.pump();
 
