@@ -304,6 +304,24 @@ impl RespondToArg {
 
 #[derive(Subcommand)]
 pub enum AgentsCmd {
+    /// Enroll an external runtime using a durable, owner-authorized agent identity
+    Enroll {
+        /// Private directory holding credentials and the signed enrollment journal
+        #[arg(long)]
+        state_dir: std::path::PathBuf,
+        /// Existing channel where the owner may add agents
+        #[arg(long)]
+        channel: String,
+        /// Stable runtime identity supplied by its launcher (not a display name)
+        #[arg(long)]
+        runtime_id: String,
+        /// Runtime cohort: local, herdr, or factory
+        #[arg(long, value_parser = ["local", "herdr", "factory"])]
+        cohort: String,
+        /// Public agent display name
+        #[arg(long)]
+        display_name: String,
+    },
     /// Open a prefilled create-agent form in the owner's Buzz Desktop
     DraftCreate {
         /// Current channel UUID; the new agent is added here after save
@@ -2462,6 +2480,7 @@ mod tests {
                 "archived",
                 "draft-create",
                 "draft-update",
+                "enroll",
                 "unarchive"
             ]
         );
@@ -2606,7 +2625,7 @@ mod tests {
     #[test]
     fn subcommand_counts_are_stable() {
         let expected: Vec<(&str, usize)> = vec![
-            ("agents", 5),
+            ("agents", 6),
             ("canvas", 4),
             ("channels", 16),
             ("dms", 4),
