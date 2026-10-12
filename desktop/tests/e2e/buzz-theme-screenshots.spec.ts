@@ -96,6 +96,15 @@ async function expectBuzzSidebarPalette(page: Page, mode: "light" | "dark") {
   );
   expect(pinnedSpacerColor).toBe("rgba(0, 0, 0, 0)");
   await expect(sidebarScroller.getByTestId("open-agents-view")).toBeVisible();
+  // Opening a channel scrolls its row into view. Once the footer carries the
+  // build identity, 720px no longer fits every seeded channel, so measure the
+  // pinned-header spacing from the top of the list rather than mid-scroll.
+  await sidebarScroller.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await expect
+    .poll(() => sidebarScroller.evaluate((element) => element.scrollTop))
+    .toBe(0);
   const searchBox = await search.boundingBox();
   const pinnedHeaderBox = await pinnedHeader.boundingBox();
   const primaryMenuBox = await primaryMenu.boundingBox();
