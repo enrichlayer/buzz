@@ -161,7 +161,14 @@ test("inserts template variables with keyboard control and restores the caret", 
   await expect(listbox).toBeVisible();
   await expect(listbox.getByRole("option")).toHaveCount(5);
   await waitForAnimations(page);
-  expect(await page.locator("body").screenshot()).toMatchSnapshot(
+  // The snapshot pins the autocomplete dialog. The sidebar build identity
+  // (covered by its own tests) shows through the blurred backdrop edges, so
+  // leave it out rather than tie this baseline to the mocked build label.
+  expect(
+    await page.locator("body").screenshot({
+      style: '[data-testid="settings-version"] { display: none !important; }',
+    }),
+  ).toMatchSnapshot(
     "workflow-template-variable-autocomplete.png",
   );
 
