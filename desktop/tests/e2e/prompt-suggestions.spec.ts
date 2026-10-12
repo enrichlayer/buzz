@@ -7,6 +7,88 @@ const prompt =
   "Can the label use the account's name instead of repeating the email?";
 const answer = `Done. The account label now follows login changes.\n\n\`\`\`suggested-prompts\n${JSON.stringify({ version: 1, suggestions: [{ label: "Use the account name", prompt }] })}\n\`\`\``;
 
+for (const surface of ["channel", "thread"] as const) {
+  test(`directory-only offline agent keeps clickable suggestions in ${surface}`, async ({
+    page,
+  }) => {
+    await installMockBridge(page, {
+      managedAgents: [],
+      relayAgents: [
+        {
+          pubkey: AGENT,
+          name: "Alice",
+          status: "offline",
+          respondTo: "anyone",
+          channelNames: [],
+        },
+      ],
+      searchProfiles: [{ pubkey: AGENT, displayName: "Alice", isAgent: false }],
+    });
+    await page.goto("/");
+    await page.getByTestId("channel-general").click();
+    await page.waitForFunction(() =>
+      window.__BUZZ_E2E_HAS_MOCK_LIVE_SUBSCRIPTION__?.({
+        channelName: "general",
+      }),
+    );
+    let parentEventId: string | undefined;
+    if (surface === "thread") {
+      const root = await page.evaluate(() =>
+        window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
+          channelName: "general",
+          content: "Suggestions regression thread",
+        }),
+      );
+      parentEventId = root?.id;
+      await page
+        .getByTestId(`reply-message-${parentEventId}`)
+        .click({ force: true });
+    }
+    const panel = page.getByTestId("message-thread-panel");
+    const editor =
+      surface === "thread"
+        ? panel.getByTestId("message-input")
+        : page.getByTestId("message-input");
+    await editor.fill("Preserve this draft");
+    await editor.focus();
+    await page.evaluate(
+      ({ content, pubkey, parentEventId }) =>
+        window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__?.({
+          channelName: "general",
+          content,
+          pubkey,
+          parentEventId,
+        }),
+      { content: answer, pubkey: AGENT, parentEventId },
+    );
+    const rows =
+      surface === "thread"
+        ? panel.getByTestId("message-row")
+        : page.getByTestId("message-row");
+    const row = rows.filter({ hasText: "Done. The account label" }).last();
+    await expect(row).toBeVisible();
+    await expect(row).not.toContainText('"version":1');
+    const chips =
+      surface === "thread"
+        ? panel.getByTestId("prompt-suggestions")
+        : page.getByTestId("prompt-suggestions");
+    await expect(chips).toBeVisible();
+    await expect(editor).toBeFocused();
+    await expect(editor).toHaveText("Preserve this draft");
+    await chips.getByRole("button", { name: "Use the account name" }).click();
+    await expect(editor).toContainText("Preserve this draft");
+    await expect(editor).toContainText(prompt);
+    expect(
+      await page.evaluate(
+        () =>
+          (window.__BUZZ_E2E_SIGNED_EVENTS__ ?? []).filter((event) =>
+            event.content.includes("Preserve this draft"),
+          ).length,
+      ),
+    ).toBe(0);
+  });
+}
+
 test("suggestions leave typing focused, append an addressed draft, and never submit", async ({
   page,
 }) => {

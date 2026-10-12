@@ -19,3 +19,9 @@ The skill instructs agents to emit suggestions only after completing human-reque
 From `desktop`, activate Hermit, run `pnpm build:e2e`, then `pnpm exec playwright test --config=playwright.suggestions.config.ts`. The isolated preview uses port 4192. The fixture uses the real composer with a mocked relay, and saves screenshots under `test-results/prompt-suggestions/`.
 
 Manually check a real test-agent turn too: type before its answer, confirm chips do not move focus, click a chip, inspect its agent mention and editable draft, then explicitly Send. Dismiss another set and navigate away/back. No production agent installation or deployment is part of this prototype.
+
+## Installed-client compatibility
+
+The rendering feature belongs to each installed desktop build, not to the shared chat or agent. Buzz and Buzz Dev can display the same relay message while running different code. A build without this feature renders the `suggested-prompts` footer as a JSON code block; switching chats cannot add support. Verify the exact app and revision in Settings before testing. Install a build containing this feature in every desktop client used for the trial, then enable **Settings → Experiments → Prompt suggestions** in each profile.
+
+In a supporting build, turning the preview off hides the buttons but still removes valid agent suggestion metadata from message text. An old build showing JSON is therefore different from a supporting build with the preview disabled. Keep generation opt-in until the intended clients support this format. Web and mobile remain unsupported.
