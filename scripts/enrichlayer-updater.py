@@ -25,7 +25,9 @@ PUBLIC = "https://buzz-downloads.enrichlayer.com"
 def public_document(key, *, missing_ok=False):
     """Read bounded release metadata; only an explicit 404 means absent."""
     url = f"{PUBLIC}/{key}"
-    request = urllib.request.Request(url, headers={"Cache-Control": "no-cache"})
+    request = urllib.request.Request(url, headers={
+        "Cache-Control": "no-cache", "User-Agent": "EnrichLayer-Buzz-Release/1.0",
+    })
     try:
         with urllib.request.urlopen(request, timeout=60) as response:
             if response.geturl() != url:

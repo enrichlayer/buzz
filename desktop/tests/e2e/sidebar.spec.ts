@@ -868,6 +868,26 @@ test("shows manual-required update card and never auto-downloads on non-AppImage
   await expect(updateCard).toBeVisible();
   await expect(updateCard).toContainText("AppImage");
 
+  await page.getByTestId("sidebar-update-download-github").click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const calls =
+          (
+            window as Window & {
+              __BUZZ_E2E_COMMAND_PAYLOADS__?: Array<{
+                command: string;
+                payload: { url?: string };
+              }>;
+            }
+          ).__BUZZ_E2E_COMMAND_PAYLOADS__ ?? [];
+        return calls
+          .filter((call) => call.command === "plugin:opener|open_url")
+          .at(-1)?.payload.url;
+      }),
+    )
+    .toBe("https://github.com/enrichlayer/buzz/releases/latest");
+
   // In-app download and install must NEVER have been called.
   const commands = await page.evaluate(
     () =>

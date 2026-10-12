@@ -1,8 +1,10 @@
 import copy
 import importlib.util
+import io
 import pathlib
 import tempfile
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location("updater", pathlib.Path(__file__).with_name("enrichlayer-updater.py"))
 updater = importlib.util.module_from_spec(spec)
@@ -10,6 +12,19 @@ spec.loader.exec_module(updater)
 
 
 class UpdaterTest(unittest.TestCase):
+    def test_public_metadata_identifies_release_client(self):
+        response = io.BytesIO(b'{"version":"1.2.3"}')
+        response.geturl = lambda: updater.PUBLIC + '/latest.json'
+
+        def serve(request, *, timeout):
+            self.assertEqual(request.get_header('User-agent'), 'EnrichLayer-Buzz-Release/1.0')
+            self.assertEqual(request.get_header('Cache-control'), 'no-cache')
+            self.assertEqual(timeout, 60)
+            return response
+
+        with patch.object(updater.urllib.request, 'urlopen', side_effect=serve):
+            self.assertEqual(updater.public_document('latest.json'), {'version': '1.2.3'})
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)

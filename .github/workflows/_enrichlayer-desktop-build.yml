@@ -79,7 +79,11 @@ jobs:
           # Hermit puts bin/ first again in just/node/cargo subprocesses.
           # Repoint only this runner checkout's launcher to the same-version JS
           # package; changing GITHUB_PATH alone still invokes the missing binary.
-          ln -sfn "$PNPM_BIN/pnpm" bin/pnpm
+          # The action emits a relative-path shell shim, so invoke its original
+          # location through a wrapper instead of moving or symlinking that shim.
+          rm bin/pnpm
+          printf '#!/bin/sh\nexec "%s/pnpm" "$@"\n' "$PNPM_BIN" > bin/pnpm
+          chmod +x bin/pnpm
           EXPECTED=$(node -p 'require("./package.json").packageManager.replace(/^pnpm@/, "").split("+")[0]')
           test "$(just --command pnpm --version)" = "$EXPECTED"
       - name: Install dependencies and set release version
