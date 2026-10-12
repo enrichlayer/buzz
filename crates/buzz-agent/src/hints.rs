@@ -90,16 +90,22 @@ fn parse_skill_frontmatter(content: &str) -> Option<(String, String)> {
     let close_pos = rest.find("\n---")?;
     let yaml_block = &rest[..close_pos];
 
-    let map: HashMap<String, serde_yaml::Value> = serde_yaml::from_str(yaml_block).ok()?;
+    let map: HashMap<String, serde_value::Value> = serde_saphyr::from_str_with_options(yaml_block, serde_saphyr::options! { strict_booleans: true, merge_keys: serde_saphyr::options::MergeKeyPolicy::AsOrdinary }).ok()?;
     let name = map
         .get("name")
-        .and_then(|v| v.as_str())
+        .and_then(|v| match v {
+            serde_value::Value::String(s) => Some(s.as_str()),
+            _ => None,
+        })
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_string)?;
     let description = map
         .get("description")
-        .and_then(|v| v.as_str())
+        .and_then(|v| match v {
+            serde_value::Value::String(s) => Some(s.as_str()),
+            _ => None,
+        })
         .map(str::trim)
         .unwrap_or("")
         .to_string();
@@ -266,6 +272,31 @@ pub(crate) fn strip_frontmatter(content: &str) -> &str {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn skill_frontmatter_preserves_yaml_aliases_and_block_text() {
+        let content = "---\nname: &skill review\ndescription: |\n  Review the patch.\n  Keep its context.\nmetadata:\n  alias: *skill\n  values: [1, true, null]\n  7: numeric-key\n---\nInstructions\n";
+        assert_eq!(
+            parse_skill_frontmatter(content),
+            Some((
+                "review".into(),
+                "Review the patch.\nKeep its context.".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn skill_frontmatter_does_not_coerce_non_string_fields() {
+        assert_eq!(parse_skill_frontmatter("---\nname: 42\n---\n"), None);
+        assert_eq!(
+            parse_skill_frontmatter("---\nname: review\ndescription: [one, two]\n---\n"),
+            Some(("review".into(), String::new()))
+        );
+        assert_eq!(
+            parse_skill_frontmatter("---\nname: 'unterminated\n---\n"),
+            None
+        );
+    }
 
     #[test]
     fn find_git_root_normal_repo() {
