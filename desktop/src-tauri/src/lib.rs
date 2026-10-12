@@ -594,6 +594,7 @@ pub fn run() {
             publish_project_pull_request_merged_status,
             merge_project_pull_request,
             open_project_terminal,
+            open_agent_permission_terminal,
             open_project_merge_recovery_terminal,
             search_users,
             get_presence,

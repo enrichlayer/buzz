@@ -216,6 +216,17 @@ echo 'Body with `backticks` and $vars stays literal.' \
 buzz messages get --channel "$CHANNEL_ID" | jq .
 buzz messages get --channel "$CHANNEL_ID" --limit 5 | jq .
 
+# Durable transport: verification is exhaustive up to the explicit bound.
+buzz messages get-verified --channel "$CHANNEL_ID" --max-events 10000 | jq .
+
+# Sign without writing, persist the complete event, then publish those exact fields.
+echo 'Durable message body.' \
+  | buzz messages sign --channel "$CHANNEL_ID" --content - > /tmp/buzz-signed-event.json
+SIGNED_ID=$(jq -r '.id' /tmp/buzz-signed-event.json)
+buzz messages publish-event --channel "$CHANNEL_ID" \
+  --event-file /tmp/buzz-signed-event.json | jq --arg id "$SIGNED_ID" \
+  'select(.accepted == true and .event_id == $id)'
+
 # messages thread from the root, a reply, and a canonical link
 buzz messages thread --channel "$CHANNEL_ID" --event "$EVENT_ID" | jq .
 buzz messages thread --channel "$CHANNEL_ID" --event "$REPLY_ID" | jq .

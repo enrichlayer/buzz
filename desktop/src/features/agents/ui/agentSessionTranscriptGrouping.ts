@@ -15,7 +15,12 @@ export type TranscriptTurnSegment =
 
 export type TranscriptDisplayBlock =
   | { kind: "single"; item: TranscriptItem }
-  | { kind: "turn"; turnId: string; segments: TranscriptTurnSegment[] }
+  | {
+      kind: "turn";
+      sessionRunId: string;
+      turnId: string;
+      segments: TranscriptTurnSegment[];
+    }
   | {
       /**
        * Session boundary divider injected between consecutive session runs.
@@ -688,6 +693,9 @@ function buildBlocksForRun(
     if (segments.length > 0) {
       blocks.push({
         kind: "turn",
+        // The first item remains stable when an unresolved first turn later
+        // receives its session id, and differs for non-contiguous session runs.
+        sessionRunId: items[0]?.id ?? "unknown",
         turnId: entry.turnId,
         segments,
       });
@@ -760,7 +768,11 @@ export function getDisplayBlockKey(block: TranscriptDisplayBlock): string {
     // older sessions are prepended, causing unnecessary boundary remounts).
     return `session-boundary:${block.sessionId}:${block.firstItemId}`;
   }
-  return `turn:${block.turnId}`;
+  // A harness restart may retain the triggering turn id while resolving a new
+  // ACP session. Include the stable run identity so archived and live blocks
+  // never share a React key (duplicate keys can leave removed detail rows
+  // mounted after switching to Summary mode).
+  return `turn:${block.sessionRunId}:${block.turnId}`;
 }
 
 /**

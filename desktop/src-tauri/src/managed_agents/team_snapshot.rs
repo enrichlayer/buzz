@@ -255,6 +255,7 @@ mod tests {
     fn agent_record(name: &str) -> ManagedAgentRecord {
         ManagedAgentRecord {
             session_policy: Default::default(),
+            output_mode: Default::default(),
             description: None,
             pubkey: format!("{name}-pubkey"),
             name: name.to_string(),

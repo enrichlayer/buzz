@@ -332,6 +332,7 @@ export function usePersonaActions() {
                 persona.respondTo === "anyone" ? "anyone" : "owner-only",
               parallelism: persona.parallelism ?? undefined,
               sessionPolicy: persona.sessionPolicy ?? "channel",
+              outputMode: persona.outputMode ?? "full",
             },
             // Provenance on the copy: without it the copy's fresh local id is
             // the only identifier, and the catalog offers "Add" again.

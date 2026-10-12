@@ -1,4 +1,5 @@
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
+import { SourceAnnotation } from "@/shared/ui/annotations";
 import { Markdown } from "@/shared/ui/markdown";
 import { useAgentSessionTranscriptVariant } from "../agentSessionTranscriptContext";
 import { formatTranscriptTimestampTitle } from "../agentSessionUtils";
@@ -54,19 +55,27 @@ function MessageItem({
       data-testid="transcript-assistant-message"
     >
       <div className="group relative flex w-full min-w-0 flex-col items-start gap-1">
-        <div
+        <SourceAnnotation
           className={
             isCompactPreview
               ? "w-full min-w-0 text-xs leading-4"
               : "w-full min-w-0 text-sm"
           }
-          title={formatTranscriptTimestampTitle(item.timestamp)}
+          source={{
+            channelId: item.channelId,
+            sessionId: item.sessionId,
+            sourceId: item.messageId || item.id,
+            text: item.text,
+            turnId: item.turnId,
+          }}
         >
-          <Markdown
-            className={isCompactPreview ? "text-xs leading-4" : "leading-5"}
-            content={text || " "}
-          />
-        </div>
+          <div title={formatTranscriptTimestampTitle(item.timestamp)}>
+            <Markdown
+              className={isCompactPreview ? "text-xs leading-4" : "leading-5"}
+              content={text || " "}
+            />
+          </div>
+        </SourceAnnotation>
       </div>
     </div>
   );

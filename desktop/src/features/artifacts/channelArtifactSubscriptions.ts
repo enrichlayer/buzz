@@ -3,7 +3,11 @@ import * as React from "react";
 import { relayClient } from "@/shared/api/relayClient";
 import { isRegisteredArtifactType } from "@/shared/plugins/artifactTypes/policies";
 
-import type { ArtifactRevision } from "./artifactEnvelope";
+import {
+  type ArtifactRevision,
+  KIND_ARTIFACT,
+  parseArtifactRevision,
+} from "./artifactEnvelope";
 import { createChannelArtifactRegistry } from "./channelArtifactRegistry";
 import type { ChannelArtifactStore } from "./channelArtifactStore";
 
@@ -23,6 +27,26 @@ const registry = createChannelArtifactRegistry({
 });
 
 export const refreshArtifactHead = registry.refreshHead;
+
+/** Accepted revisions of one artifact, newest first, for `prev` chain checks. */
+export async function fetchArtifactRevisions(
+  channelId: string,
+  d: string,
+  limit: number,
+): Promise<ArtifactRevision[]> {
+  const events = await relayClient.fetchEvents({
+    kinds: [KIND_ARTIFACT],
+    "#h": [channelId],
+    "#d": [d],
+    limit,
+  });
+  return events
+    .map(parseArtifactRevision)
+    .filter(
+      (revision): revision is ArtifactRevision =>
+        revision?.h === channelId && revision.d === d,
+    );
+}
 export const ingestArtifactEvent = registry.ingest;
 
 /** Community switch: drop every channel store and its live subscription. */
