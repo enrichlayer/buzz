@@ -206,10 +206,12 @@ test("segmented plugin choices retain values across narrow and enlarged-text lay
     element.style.width = "180px";
     element.style.maxWidth = "100%";
   });
+  // The radio group shares the "Decision" label until the resize observer
+  // swaps in the dropdown; toHaveValue does not retry a non-input match.
+  await expect(group).toHaveCount(0);
   await expect(card.getByLabel("Decision", { exact: true })).toHaveValue(
     "Needs changes",
   );
-  await expect(group).toHaveCount(0);
   await waitForAnimations(page);
   await card.screenshot({
     path: "test-results/segmented-choices/plugin-narrow.png",

@@ -89,10 +89,14 @@ function RuntimeForm({
     null,
   );
 
+  // Reset only when the initial content changes: a re-render that hands back
+  // an equal manifest or payload must not discard the user's choices.
+  const initialValuesKey = JSON.stringify(initialValues);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: initialValuesKey is the content identity of initialValues
   React.useEffect(() => {
     setValues(initialValues);
     setValidationError(null);
-  }, [initialValues]);
+  }, [initialValuesKey]);
 
   const submit = () => {
     const missing = block.fields.find((field) => {
