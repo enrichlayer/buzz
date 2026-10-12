@@ -4,6 +4,7 @@ on:
     paths:
       - '.github/workflows/enrichlayer-*.yml'
       - 'desktop/scripts/build-*release-config*'
+      - 'desktop/enrichlayer-updater.pub'
       - 'scripts/*enrichlayer-*.py'
       - 'scripts/*buzz-r2*'
       - 'scripts/*publish-sprig-rolling.py'
@@ -26,6 +27,7 @@ jobs:
       - run: python3 scripts/test-enrichlayer-release-gate.py
       - run: python3 scripts/test-enrichlayer-publish.py
       - run: python3 scripts/test-buzz-r2.py
+      - run: python3 scripts/test-enrichlayer-minisign.py
       - run: python3 scripts/test-publish-sprig-rolling.py
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
       - run: actionlint .github/workflows/enrichlayer-*.yml .github/workflows/_enrichlayer-*.yml

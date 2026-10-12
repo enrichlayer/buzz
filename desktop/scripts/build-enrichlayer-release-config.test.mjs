@@ -11,6 +11,10 @@ const script = new URL(
   import.meta.url,
 );
 const endpoint = "https://buzz-downloads.enrichlayer.com/latest.json";
+const pinnedKey = readFileSync(
+  new URL("../enrichlayer-updater.pub", import.meta.url),
+  "utf8",
+).trim();
 function run(overrides, check) {
   const cwd = mkdtempSync(resolve(tmpdir(), "buzz-fork-config-"));
   mkdirSync(resolve(cwd, "src-tauri"));
@@ -20,7 +24,7 @@ function run(overrides, check) {
       encoding: "utf8",
       env: {
         ...process.env,
-        BUZZ_UPDATER_PUBLIC_KEY: "test-public-key",
+        BUZZ_UPDATER_PUBLIC_KEY: pinnedKey,
         BUZZ_UPDATER_ENDPOINT: endpoint,
         APPLE_SIGNING_IDENTITY: "Developer ID Application: Test (TEST)",
         ...overrides,
@@ -39,6 +43,7 @@ test("fork release uses its own feed, identity, and signed updater artifacts", (
     );
     assert.equal(config.identifier, "com.enrichlayer.buzz");
     assert.deepEqual(config.plugins.updater.endpoints, [endpoint]);
+    assert.equal(config.plugins.updater.pubkey, pinnedKey);
     assert.equal(config.bundle.createUpdaterArtifacts, true);
     assert.equal(
       config.bundle.macOS.signingIdentity,
@@ -54,6 +59,9 @@ for (const [name, overrides] of Object.entries({
   },
   "missing public key": { BUZZ_UPDATER_PUBLIC_KEY: "" },
   "unknown identity": { APPLE_SIGNING_IDENTITY: "untrusted" },
+  "public key differing from the pinned key": {
+    BUZZ_UPDATER_PUBLIC_KEY: "dGVzdC1wdWJsaWMta2V5",
+  },
 }))
   test(`rejects ${name}`, () =>
     run(overrides, (result) => assert.notEqual(result.status, 0)));
@@ -67,7 +75,7 @@ for (const identity of ["-", ""]) {
       );
       assert.equal(config.bundle.macOS.signingIdentity, "-");
       assert.equal(config.bundle.createUpdaterArtifacts, true);
-      assert.equal(config.plugins.updater.pubkey, "test-public-key");
+      assert.equal(config.plugins.updater.pubkey, pinnedKey);
     });
   });
 }

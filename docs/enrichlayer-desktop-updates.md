@@ -68,6 +68,12 @@ Verticalint Vault. Do not regenerate it during ordinary releases. No Apple
 credentials are required. `signingIdentity: "-"` enables ad-hoc signing;
 never disable updater signature verification to work around OS prompts.
 
+The public key is committed as `desktop/enrichlayer-updater.pub`. Every platform's
+release configuration refuses a different `BUZZ_UPDATER_PUBLIC_KEY`. Publish and
+promote verify each Mac archive, Windows installer and Linux AppImage's minisign
+signature against this pinned key using `scripts/enrichlayer-minisign.py`.
+Changing the trusted signer requires a reviewed change to the pinned file.
+
 The workflows reference three GitHub Environments, which a maintainer must create
 before the first release (a job that names a missing Environment creates an
 unprotected one):

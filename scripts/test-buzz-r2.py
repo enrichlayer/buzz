@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import importlib.util
 import io
@@ -10,6 +11,9 @@ from unittest.mock import patch
 spec = importlib.util.spec_from_file_location('r2', Path(__file__).with_name('buzz-r2.py'))
 r2 = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(r2)
+spec = importlib.util.spec_from_file_location('fixture', Path(__file__).with_name('test-enrichlayer-minisign.py'))
+fixture = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(fixture)
 
 
 class MemoryStore(r2.Store):
@@ -46,11 +50,12 @@ class R2Test(unittest.TestCase):
         self.directory = Path(self.tmp.name)
         for platform in r2.updater.PLATFORMS:
             name = r2.updater.asset_name('1.2.3', platform)
-            (self.directory / name).write_bytes(b'archive')
-            (self.directory / (name + '.sig')).write_text('signed')
+            (self.directory / name).write_bytes(fixture.DATA)
+            (self.directory / (name + '.sig')).write_text(fixture.PREHASHED_SIG)
         for arch in ("aarch64", "x86_64"):
             (self.directory / f"Buzz_1.2.3_darwin-{arch}.dmg").write_bytes(b"installer")
         self.addCleanup(patch.stopall)
+        self.key = patch.object(r2.minisign, 'pinned_public_key', return_value=fixture.PUBLIC_KEY).start()
         patch.object(r2.updater, 'gh', return_value='a'*40).start()
         self.public = patch.object(r2, 'public_verify').start()
 
@@ -82,8 +87,27 @@ class R2Test(unittest.TestCase):
     def test_immutable_artifact_cannot_be_replaced(self):
         self.publish()
         next(self.directory.glob('*.gz')).write_bytes(b'changed')
-        with self.assertRaisesRegex(ValueError, 'checksum mismatch'):
+        with patch.object(r2.minisign, 'verify_stream'), self.assertRaisesRegex(ValueError, 'checksum mismatch'):
             self.publish()
+
+    def test_publish_refuses_archive_not_signed_by_pinned_key(self):
+        for platform in r2.updater.PLATFORMS:
+            with self.subTest(platform=platform):
+                archive = self.directory / r2.updater.asset_name('1.2.3', platform)
+                archive.write_bytes(b'unsigned build')
+                with self.assertRaisesRegex(ValueError, 'verification failed'):
+                    self.publish()
+                self.assertEqual(self.store.objects, {})
+                archive.write_bytes(fixture.DATA)
+
+    def test_promote_reverifies_archives_against_pinned_key(self):
+        self.publish()
+        other = fixture.wrap(['untrusted comment: other key', base64.b64encode(
+            b'Ed' + bytes(range(1, 9)) + bytes.fromhex(fixture.RFC[0][0])).decode()])
+        self.key.return_value = other
+        with self.assertRaisesRegex(ValueError, 'verification failed'):
+            r2.promote(self.store, '1.2.3')
+        self.assertIsNone(self.store.get('latest.json'))
 
     def test_failed_public_read_never_marks_release_ready(self):
         self.public.side_effect = RuntimeError('public unavailable')
