@@ -1,11 +1,15 @@
 //! Explicit human shell commands. Never infer executable intent from chat text.
 use nostr::{Event, Keys, PublicKey};
 use serde::{Deserialize, Serialize};
-use std::{io::Write, path::Path, process::Stdio, time::Duration};
+#[cfg(unix)]
+use std::process::Stdio;
+use std::{io::Write, path::Path, time::Duration};
+#[cfg(unix)]
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 /// Signed event metadata marking deliberate human shell execution.
 pub const TAG: &str = "buzz.shell";
+#[cfg(unix)]
 const OUTPUT_LIMIT: usize = 4_000;
 
 /// Recognize explicit execution metadata without inferring intent from prose.
@@ -62,7 +66,8 @@ pub fn command(
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-/// Durable execution receipt used for replay protection and thread context.
+/// On-disk execution receipt used for replay protection and thread context.
+/// It protects against replay only while the runner's `$HOME` persists.
 pub struct ShellResult {
     pub command: String,
     pub cwd: String,
@@ -73,6 +78,17 @@ pub struct ShellResult {
 }
 
 impl ShellResult {
+    fn not_run(command: &str, cwd: &str, output: String) -> Self {
+        Self {
+            command: command.into(),
+            cwd: cwd.into(),
+            output,
+            exit_code: None,
+            status: "not run".into(),
+            truncated: false,
+        }
+    }
+
     /// Render literal command and output using collision-safe Markdown fences.
     pub fn message(&self) -> String {
         // Longer than any backtick run in command/output; output remains data.
@@ -99,6 +115,7 @@ impl ShellResult {
     }
 }
 
+#[cfg(unix)]
 async fn capture(mut reader: impl AsyncRead + Unpin) -> (String, bool) {
     let mut output = Vec::new();
     let mut truncated = false;
@@ -153,9 +170,18 @@ async fn execute(
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .process_group(0);
-    let mut child = process
-        .spawn()
-        .map_err(|e| format!("Could not start Bash: {e}"))?;
+    let mut child = match process.spawn() {
+        Ok(child) => child,
+        // Nothing ran: a definite receipt, so a retry does not report an
+        // uncertain outcome.
+        Err(e) => {
+            return Ok(ShellResult::not_run(
+                command,
+                cwd,
+                format!("Could not start Bash: {e}"),
+            ))
+        }
+    };
     let group = ProcessGroup(child.id().ok_or("Bash has no process ID")?);
     let stdout = capture(child.stdout.take().ok_or("Bash stdout missing")?);
     let stderr = capture(child.stderr.take().ok_or("Bash stderr missing")?);
@@ -184,12 +210,16 @@ async fn execute(
 
 #[cfg(not(unix))]
 async fn execute(
-    _command: &str,
-    _cwd: &str,
+    command: &str,
+    cwd: &str,
     _timeout: Duration,
     _cancelled: impl std::future::Future<Output = ()>,
 ) -> Result<ShellResult, String> {
-    Err("Direct Bash commands are available on Unix agent hosts only.".into())
+    Ok(ShellResult::not_run(
+        command,
+        cwd,
+        "Direct Bash commands are available on Unix agent hosts only.".into(),
+    ))
 }
 
 /// Claim before execution. A restart never re-executes an uncertain command.
@@ -244,9 +274,11 @@ async fn run_claimed(
         }
         Err(e) => return Err(e.to_string()),
     };
-    file.write_all(b"started")
-        .and_then(|_| file.sync_all())
-        .map_err(|e| e.to_string())?;
+    if let Err(e) = file.write_all(b"started").and_then(|_| file.sync_all()) {
+        // The claim never became durable and nothing ran: release it.
+        let _ = std::fs::remove_file(&path);
+        return Err(e.to_string());
+    }
     let result = execute(command, cwd, Duration::from_secs(120), cancelled).await?;
     let mut receipt = tempfile::NamedTempFile::new_in(dir).map_err(|e| e.to_string())?;
     serde_json::to_writer(&mut receipt, &result).map_err(|e| e.to_string())?;
@@ -356,6 +388,29 @@ mod tests {
         .unwrap_err()
         .contains("expired"));
     }
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_command_that_cannot_start_leaves_a_not_run_receipt() {
+        let owner = Keys::generate();
+        let agent = Keys::generate();
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("missing-cwd");
+        let event = request(&owner, agent.public_key(), uuid::Uuid::new_v4(), "pwd");
+        for _ in 0..2 {
+            let result = run_claimed(
+                &event,
+                "pwd",
+                missing.to_str().unwrap(),
+                &dir.path().join("receipts"),
+                std::future::pending(),
+            )
+            .await
+            .expect("a definite receipt, not an uncertain claim");
+            assert_eq!(result.status, "not run");
+            assert!(result.output.contains("Could not start Bash"));
+        }
+    }
+    #[cfg(unix)]
     #[tokio::test]
     async fn shell_captures_failure_and_limits_output() {
         let result = execute(
@@ -380,6 +435,7 @@ mod tests {
         assert!(result.truncated);
         assert!(result.output.len() <= OUTPUT_LIMIT);
     }
+    #[cfg(unix)]
     #[tokio::test]
     async fn shell_cancellation_stops_descendants() {
         let dir = tempfile::tempdir().unwrap();

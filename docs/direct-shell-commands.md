@@ -1,8 +1,10 @@
 # Human Bash commands in agent threads
 
-Address one agent and begin the message with `!`, for example `!pwd` or
+Address exactly one agent and begin the message with `!`, for example `!pwd` or
 `!cd /path/to/project && git status --short`. A verified agent address chip may
-precede the command. The composer shows Bash mode before sending.
+precede the command. The composer shows Bash mode before sending. A message that
+starts with `!` but addresses people, several agents or nobody is sent as an
+ordinary message.
 
 The runner executes `/bin/bash -c` directly on the **agent host**, in the
 runner's working directory. This does not ask the model to choose or run a tool.
@@ -16,7 +18,9 @@ ordinary thread context includes the actual result. The direct command does not
 automatically spend a model turn. Output is shared with everyone who can read
 the thread, so do not print credentials or other secrets.
 
-Stop cancels the command and its process group. A 120-second deadline also
+Stop cancels the command and its process group. Steering, interrupting or
+switching the model while a command runs does not stop it: the change applies
+once the command finishes. A 120-second deadline also
 stops descendants that keep output pipes open. Capture is bounded to 4,000 bytes
 per stream; truncation is disclosed. Cancellation and timeout receipts currently
 report the stop reason rather than partial output. Commands are limited to
@@ -26,11 +30,14 @@ existing session-control meanings.
 Execution requires explicit `buzz.shell` version-1 metadata, a valid signature
 from the configured owner, one exact agent recipient, and the exact channel.
 Unmarked historical chat is never executable. New requests older than ten
-minutes are rejected. A durable claim is written before spawning; replay returns
-the stored receipt instead of executing again. If the runner died after claiming
-but before recording a result, Buzz reports an uncertain outcome and does not
-rerun it. Receipts live under `~/.buzz/shell-receipts/<agent>/<event>.json` on the
-agent host. Commands queue behind the current turn and cannot become native
+minutes are rejected. A claim is written to disk before spawning; replay returns
+the stored receipt instead of executing again. A command that could not start
+records a "not run" receipt. If the runner died after claiming but before
+recording a result, Buzz reports an uncertain outcome and does not rerun it.
+Receipts live under `~/.buzz/shell-receipts/<agent>/<event>.json` on the agent
+host, so replay protection lasts only as long as the runner's home directory
+persists: a fresh container or a deleted directory forgets them, and a request
+still inside its ten-minute window could then run again. Commands queue behind the current turn and cannot become native
 model steering input.
 
 The initial implementation requires the updated desktop and runner. Declarative

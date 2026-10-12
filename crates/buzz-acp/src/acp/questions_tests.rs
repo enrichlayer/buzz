@@ -362,20 +362,25 @@ async fn permission_stop_withdraws_card_and_cancels_the_adapter() {
 }
 
 #[tokio::test]
-async fn permission_without_an_owner_is_cancelled_without_a_card() {
+async fn permission_without_an_owner_keeps_the_configured_policy_without_a_card() {
+    // No owner: an unowned agent or a non-default permission mode
+    // (`pool::question_asker` attaches no owner outside `default`).
     let relay = FakeRelay::new(0, None);
     let mut agent = Agent::spawn("permission").await;
     agent
         .client
-        .install_question_asker(Some(asker(relay, None)));
+        .install_question_asker(Some(asker(relay.clone(), None)));
     assert_eq!(
         agent.prompt(Duration::from_secs(2)).await.unwrap(),
         StopReason::EndTurn
     );
     assert_eq!(
-        agent.replies()[0]["result"]["outcome"]["outcome"],
-        "cancelled"
+        agent.replies(),
+        vec![
+            json!({"jsonrpc":"2.0", "id":"ask-1", "result":{"outcome":{"outcome":"selected", "optionId":"adapter-yes"}}})
+        ]
     );
+    assert!(relay.submitted().is_empty(), "no card without an owner");
 }
 
 #[test]
@@ -395,4 +400,63 @@ fn permission_v2_preserves_tool_payload_and_rejects_ambiguous_allow_options() {
         .unwrap()
         .push(json!({"kind":"allow_once","optionId":"second"}));
     assert!(super::super::permissions::permission_prompt(&request, &asker).is_err());
+}
+
+#[tokio::test]
+async fn an_owner_answer_after_a_member_revision_still_decides_the_permission() {
+    let owner = nostr::Keys::generate();
+    let relay = FakeRelay::new(usize::MAX, None);
+    let asker =
+        asker(relay.clone(), None).with_permission_context(Some(owner.public_key()), "/tmp".into());
+    let request = json!({"id":"p-1", "params":{"sessionId":"s-1",
+        "toolCall": {"toolCallId":"tool-1", "title":"Run", "rawInput":{"command":"pwd", "cwd":"/tmp"}},
+        "options":[{"optionId":"yes", "name":"Allow", "kind":"allow_once"}, {"optionId":"no", "name":"Deny", "kind":"reject_once"}]}});
+    let prompt = super::super::permissions::permission_prompt(&request, &asker).expect("card");
+    let handle = asker.ask(&prompt);
+    let card = relay.wait_for(2).await.pop().expect("card");
+    let d = tag(&card, "d").expect("d").to_string();
+    let revise = |keys: &nostr::Keys, prev: &nostr::Event, state: &str| {
+        let mut content: serde_json::Map<String, Value> =
+            serde_json::from_str(&card.content).expect("content");
+        content.insert("state".into(), state.into());
+        if state == "answered" {
+            content.insert("answer".into(), json!({"permission":["Allow once"]}));
+            content.insert("answeredBy".into(), keys.public_key().to_hex().into());
+        }
+        nostr::EventBuilder::new(
+            nostr::Kind::Custom(45010),
+            Value::Object(content).to_string(),
+        )
+        .tags(
+            buzz_sdk::agent_prompt::build_prompt_update_tags(
+                &d,
+                crate::agent_questions::tests::CHANNEL,
+                "t",
+                None,
+                &prev.id.to_hex(),
+            )
+            .unwrap(),
+        )
+        .sign_with_keys(keys)
+        .unwrap()
+    };
+    let squat = revise(&nostr::Keys::generate(), &card, "open");
+    crate::agent_questions::QuestionRelay::submit(relay.as_ref(), &squat)
+        .await
+        .unwrap();
+    let decision = revise(&owner, &squat, "answered");
+    crate::agent_questions::QuestionRelay::submit(relay.as_ref(), &decision)
+        .await
+        .unwrap();
+    let outcome = tokio::time::timeout(Duration::from_secs(5), handle.outcome_rx)
+        .await
+        .expect("decided in time")
+        .expect("outcome");
+    assert_eq!(
+        outcome,
+        crate::agent_questions::QuestionOutcome::Answered(std::collections::BTreeMap::from([(
+            "permission".to_string(),
+            vec!["Allow once".to_string()]
+        )]))
+    );
 }

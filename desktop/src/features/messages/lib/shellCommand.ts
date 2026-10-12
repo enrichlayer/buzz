@@ -19,6 +19,44 @@ export function shellCommand(
   return value.slice(1).trim();
 }
 
+/** A direct command needs exactly one addressed agent; anything else is chat. */
+export function directCommandAgent(
+  recipients: readonly string[],
+  agentPubkeys: readonly string[],
+): string | null {
+  const unique = [...new Set(recipients)];
+  return unique.length === 1 && agentPubkeys.includes(unique[0])
+    ? unique[0]
+    : null;
+}
+
+/** Composer preview of the send path's rule: one addressed agent, leading !. */
+export function composerShellCommand(
+  text: string,
+  mentionRefs: readonly {
+    displayName: string;
+    pubkey: string;
+    isAgent: boolean;
+  }[],
+  addressedAgentPubkeys: readonly string[],
+): string | null {
+  const key = (pubkey: string) => pubkey.trim().toLowerCase();
+  const recipients = [
+    ...addressedAgentPubkeys,
+    ...mentionRefs.map((ref) => ref.pubkey),
+  ].map(key);
+  const agents = [
+    ...addressedAgentPubkeys,
+    ...mentionRefs.filter((ref) => ref.isAgent).map((ref) => ref.pubkey),
+  ].map(key);
+  return directCommandAgent(recipients, agents) == null
+    ? null
+    : shellCommand(
+        text,
+        mentionRefs.map((ref) => ref.displayName),
+      );
+}
+
 export function shellCommandTags(
   text: string,
   recipients: string[],
@@ -26,17 +64,16 @@ export function shellCommandTags(
   hasAttachments = false,
   addressNames: string[] = [],
 ): string[][] {
-  const command = shellCommand(text, addressNames);
-  if (command == null) return [];
+  const agent = directCommandAgent(recipients, agentPubkeys);
+  const command = agent == null ? null : shellCommand(text, addressNames);
+  if (agent == null || command == null) return [];
   if (
     !command ||
     new TextEncoder().encode(command).length > 16_000 ||
     command.includes("\0")
   )
     throw new Error("Enter a Bash command of 1–16000 bytes after !.");
-  if (recipients.length !== 1 || !agentPubkeys.includes(recipients[0]))
-    throw new Error("Address exactly one agent to run a Bash command.");
   if (hasAttachments)
     throw new Error("Send attachments separately from Bash commands.");
-  return [["buzz.shell", "1", recipients[0], command]];
+  return [["buzz.shell", "1", agent, command]];
 }
