@@ -612,6 +612,26 @@ fn update_time_override_preserves_pin_for_persona_less_agent() {
 mod effort_clear;
 mod forced_discovery;
 mod managed_path_resolution;
+
+/// Probes a script the test has just written, retrying briefly when the probe
+/// yields nothing.
+///
+/// On Linux, exec of a freshly written file can fail with ETXTBSY while a
+/// parallel test thread's fork still holds the write descriptor between fork
+/// and exec. The probe maps any spawn error to `None`, so a success-expecting
+/// test retries a few times; a genuine regression still returns `None` on
+/// every attempt.
+#[cfg(unix)]
+fn probe_fresh_script(bin: &std::path::Path) -> Option<(u64, u64, u64)> {
+    for _ in 0..5 {
+        if let Some(version) = probe_codex_acp_version(bin) {
+            return Some(version);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    None
+}
+
 #[cfg(unix)]
 #[test]
 fn probe_codex_acp_version_parses_full_semver_output() {
@@ -628,7 +648,7 @@ fn probe_codex_acp_version_parses_full_semver_output() {
     .expect("write script");
     std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).expect("chmod script");
 
-    let version = probe_codex_acp_version(&bin);
+    let version = probe_fresh_script(&bin);
     let _ = std::fs::remove_dir_all(dir);
 
     assert_eq!(
@@ -825,7 +845,7 @@ fn probe_codex_acp_version_returns_version_when_descendant_holds_pipe_open() {
     std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).expect("chmod script");
 
     let start = Instant::now();
-    let version = probe_codex_acp_version(&bin);
+    let version = probe_fresh_script(&bin);
     let elapsed = start.elapsed();
     let _ = std::fs::remove_dir_all(dir);
 
