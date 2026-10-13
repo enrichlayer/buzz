@@ -42,7 +42,7 @@ where
 
 async fn pause_after_aux_page(
     fixture: &Fixture,
-    filter: Value,
+    body: Value,
 ) -> impl Future<Output = (StatusCode, Value)> {
     let pages = Arc::new(AtomicUsize::new(0));
     let (reached, ready) = tokio::sync::oneshot::channel();
@@ -62,9 +62,7 @@ async fn pause_after_aux_page(
     // Stop at the production span itself, on a bounded blocking worker so
     // this test's runtime remains free to make the concurrent database edit.
     let request = tokio::task::spawn_blocking(move || {
-        runtime.block_on(
-            post(state, &host, &keys, "/query", json!([filter])).with_subscriber(subscriber),
-        )
+        runtime.block_on(post(state, &host, &keys, "/query", body).with_subscriber(subscriber))
     });
     tokio::time::timeout(Duration::from_secs(5), ready)
         .await
@@ -105,7 +103,7 @@ async fn thread_window_bridge_restarts_both_aux_hops_after_replica_failure() {
     let mut filter = f.filter();
     filter["until"] = json!(f.root.created_at.as_secs() + 1);
     filter["before_id"] = json!("00".repeat(32));
-    let request = pause_after_aux_page(&f, filter.clone()).await;
+    let request = pause_after_aux_page(&f, json!([filter])).await;
     let held: i64 = sqlx::query_scalar("SELECT count(*) FROM pg_stat_activity WHERE application_name=$1 AND xact_start IS NOT NULL")
         .bind(&reader_name).fetch_one(&f.pool).await.unwrap();
     assert_eq!(held, 1, "must actually hold the proved replica transaction");
@@ -224,7 +222,7 @@ async fn assert_aux_access_change(grant: bool) {
         "pre-transition visibility control"
     );
 
-    let request = pause_after_aux_page(&f, filter.clone()).await;
+    let request = pause_after_aux_page(&f, json!([filter])).await;
     set_access(&f, aux_channel, grant).await;
     let current = f
         .state
@@ -361,7 +359,7 @@ async fn thread_window_batch_discards_earlier_windows_after_revocation() {
         let (status, before) = f.post(&f.keys, "/query", batch.clone()).await;
         assert_eq!(status, StatusCode::OK, "{before}");
         assert_eq!(ids(&before, Some(39007)).len(), 2);
-        let request = pause_after_aux_page(f.post(&f.keys, "/query", batch.clone())).await;
+        let request = pause_after_aux_page(&f, batch.clone()).await;
         set_access(&f, f.channel, false).await;
         let (status, body) = request.await;
         assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
