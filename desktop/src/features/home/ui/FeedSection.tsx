@@ -1,4 +1,3 @@
-import { stripPromptSuggestionFooter } from "@/features/messages/lib/promptSuggestions";
 import { Check, type LucideIcon } from "lucide-react";
 
 import {
@@ -94,11 +93,8 @@ function feedHeadline(item: FeedItem) {
   }
 }
 
-function feedContent(item: FeedItem, profiles?: UserProfileLookup) {
-  const content = stripPromptSuggestionFooter(
-    item.content,
-    profiles?.[item.pubkey.toLowerCase()]?.isAgent === true,
-  ).trim();
+function feedContent(item: FeedItem) {
+  const content = item.content.trim();
   if (content.length > 0) {
     return content;
   }
@@ -238,7 +234,7 @@ export function FeedSection({
                 <div className="pointer-events-none relative mt-0.5 line-clamp-2">
                   <Markdown
                     className="max-w-none text-sm leading-snug text-muted-foreground"
-                    content={feedContent(item, profiles)}
+                    content={feedContent(item)}
                     messageId={item.id}
                     linkPreviewsSuppressed={hasLinkPreviewSuppression(
                       item.tags,

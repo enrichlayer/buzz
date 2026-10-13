@@ -2,10 +2,11 @@ import { expect, test } from "@playwright/test";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 import { waitForAnimations } from "../helpers/animations";
 
-const AGENT = TEST_IDENTITIES.alice.pubkey;
-const prompt =
-  "Can the label use the account's name instead of repeating the email?";
-const answer = `Done. The account label now follows login changes.\n\n\`\`\`suggested-prompts\n${JSON.stringify({ version: 1, suggestions: [{ label: "Use the account name", prompt }] })}\n\`\`\``;
+import {
+  SUGGESTION_AGENT as AGENT,
+  SUGGESTION_PROMPT as prompt,
+  SUGGESTION_ANSWER as answer,
+} from "../helpers/promptSuggestions";
 
 for (const surface of ["channel", "thread"] as const) {
   test(`directory-only offline agent keeps clickable suggestions in ${surface}`, async ({
