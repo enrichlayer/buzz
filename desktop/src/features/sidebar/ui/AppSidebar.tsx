@@ -1,6 +1,7 @@
 // biome-ignore format: keep compact to stay within file size limit
 import * as React from "react";
 import { FeatureGate } from "@/shared/features";
+import { AppBuildVersion } from "@/shared/ui/app-build-version";
 import { SidebarDndContext } from "@/features/sidebar/ui/SidebarDnd";
 
 import { AddCommunityDialog } from "@/features/communities/ui/AddCommunityDialog";
@@ -880,6 +881,7 @@ export function AppSidebar({
                 />
               </SidebarMenuItem>
             </SidebarMenu>
+            <AppBuildVersion />
           </SidebarFooter>
         </div>
       </div>

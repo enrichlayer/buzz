@@ -1,4 +1,6 @@
 import { getVersion } from "@tauri-apps/api/app";
+import { invoke } from "@tauri-apps/api/core";
+import type { AppBuildInfo } from "@/shared/ui/app-build-version";
 import { useMutation } from "@tanstack/react-query";
 import * as React from "react";
 
@@ -17,11 +19,19 @@ async function collectDiagnostics(): Promise<string> {
   } catch {
     // Non-fatal — fall through with "unknown".
   }
+  let build = "build identity unavailable";
+  try {
+    const info = await invoke<AppBuildInfo>("get_app_build_info");
+    build = `build: ${info.buildNumber}\nsource: ${info.repository}@${info.revision} (${info.sourceState})`;
+  } catch {
+    // Keep feedback usable when running against an older native binary.
+  }
   const nav = typeof navigator !== "undefined" ? navigator : undefined;
   return [
     "Buzz feedback diagnostics",
     `captured: ${new Date().toISOString()}`,
     `app version: ${appVersion}`,
+    build,
     `platform: ${nav?.platform ?? "unknown"}`,
     `user agent: ${nav?.userAgent ?? "unknown"}`,
     `language: ${nav?.language ?? "unknown"}`,
