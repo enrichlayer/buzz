@@ -14,12 +14,11 @@ EnvironmentFile=/etc/buzz-relay-pilot/runtime.env
 # Only cloudflared on this host can reach the origin. No database/health/metrics ports.
 PublishPort=127.0.0.1:{{ buzz_pilot_http_port }}:3000
 Volume=buzz-relay-pilot-git.volume:/data/git:U
-PodmanArgs=--memory=2g --cpus=2 --pids-limit=512
+PodmanArgs=--memory=2g --cpus=2 --pids-limit=512 --stop-timeout=60
 HealthCmd=curl --fail --silent --max-time 5 http://127.0.0.1:8080/_readiness
 HealthInterval=10s
 HealthRetries=12
 HealthStartPeriod=60s
-StopTimeout=60
 
 [Service]
 Restart=on-failure

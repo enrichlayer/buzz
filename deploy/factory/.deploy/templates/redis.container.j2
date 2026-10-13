@@ -8,13 +8,12 @@ ContainerName=buzz-relay-pilot-redis
 Image={{ buzz_pilot_redis_image }}
 Pull=never
 Network=buzz-relay-pilot.network
-NetworkAlias=buzz-relay-pilot-redis
 Volume=buzz-relay-pilot-redis.volume:/data:U
 Volume=/etc/buzz-relay-pilot/redis.conf:/usr/local/etc/redis/redis.conf:ro,Z
 # Read the root-group config without running the Redis process as root.
 User=999:0
 Exec=redis-server /usr/local/etc/redis/redis.conf
-PodmanArgs=--memory=384m --cpus=0.5 --pids-limit=128
+PodmanArgs=--memory=384m --cpus=0.5 --pids-limit=128 --network-alias=buzz-relay-pilot-redis
 
 [Service]
 Restart=on-failure

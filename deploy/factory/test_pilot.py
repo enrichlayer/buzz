@@ -286,6 +286,9 @@ class PilotTest(unittest.TestCase):
             "buzz-relay-pilot-redis",
         ):
             self.assertIn(name + ".service", result.stdout)
+        self.assertIn("--network-alias=buzz-relay-pilot-postgres", result.stdout)
+        self.assertIn("--network-alias=buzz-relay-pilot-redis", result.stdout)
+        self.assertIn("--stop-timeout=60", result.stdout)
 
 
 if __name__ == "__main__":
