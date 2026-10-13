@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:buzz/shared/huddle/huddle_auth.dart';
 import 'package:buzz/shared/huddle/huddle_transport.dart';
 import 'package:buzz/shared/huddle/huddle_wire.dart';
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -14,38 +15,58 @@ const _parentChannelId = '11111111-2222-4333-8444-555555555555';
 const _ephemeralChannelId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 
 void main() {
-  test('authenticates with object JSON and admits a v2 room', () async {
-    final channel = _ControlledWebSocketChannel();
-    final transport = _transport(channel);
-    addTearDown(transport.dispose);
+  test(
+    'authenticates with object JSON and admits a v2 room',
+    () => fakeAsync((clock) {
+      final channel = _ControlledWebSocketChannel();
+      final transport = _transport(channel);
+      addTearDown(transport.dispose);
 
-    final connect = transport.connect();
-    await _waitForPhase(transport, HuddleTransportPhase.awaitingChallenge);
-    channel.emitText(jsonEncode({'type': 'challenge', 'challenge': 'abc'}));
-    await _waitForPhase(transport, HuddleTransportPhase.authenticating);
+      var connected = false;
+      Object? connectionError;
+      transport.connect().then<void>(
+        (_) => connected = true,
+        onError: (Object error) {
+          connectionError = error;
+        },
+      );
+      clock.flushMicrotasks();
+      expect(transport.state.phase, HuddleTransportPhase.awaitingChallenge);
+      channel.emitText(jsonEncode({'type': 'challenge', 'challenge': 'abc'}));
+      clock.flushMicrotasks();
+      expect(transport.state.phase, HuddleTransportPhase.authenticating);
 
-    final auth = jsonDecode(channel.sink.sent.single as String);
-    expect(auth, isA<Map<String, dynamic>>());
-    expect(auth['type'], 'auth');
-    expect(auth['parent_channel_id'], _parentChannelId);
-    expect(auth['protocol_version'], 2);
+      final auth = jsonDecode(channel.sink.sent.single as String);
+      expect(auth, isA<Map<String, dynamic>>());
+      expect(auth['type'], 'auth');
+      expect(auth['parent_channel_id'], _parentChannelId);
+      expect(auth['protocol_version'], 2);
 
-    channel.emitText(
-      jsonEncode({
-        'type': 'joined',
-        'pubkey': 'self',
-        'peer_index': 3,
-        'peers': [
-          {'pubkey': 'desktop', 'peer_index': 1},
-        ],
-      }),
-    );
-    await connect;
+      channel.emitText(
+        jsonEncode({
+          'type': 'joined',
+          'pubkey': 'self',
+          'peer_index': 3,
+          'peers': [
+            {'pubkey': 'desktop', 'peer_index': 1},
+          ],
+        }),
+      );
+      clock.flushMicrotasks();
+      expect(connectionError, isNull);
+      expect(connected, isTrue);
 
-    expect(transport.state.phase, HuddleTransportPhase.connected);
-    expect(transport.state.localPeerIndex, 3);
-    expect(transport.state.peers.keys, containsAll([1, 3]));
-  });
+      expect(transport.state.phase, HuddleTransportPhase.connected);
+      expect(transport.state.localPeerIndex, 3);
+      expect(transport.state.peers.keys, containsAll([1, 3]));
+
+      // DEV-12945: admission must cancel the real one-second deadline; cold
+      // signing and host scheduling must not consume this fixture's clock.
+      clock.elapse(const Duration(seconds: 2));
+      expect(transport.state.phase, HuddleTransportPhase.connected);
+      expect(transport.state.error, isNull);
+    }),
+  );
 
   test(
     'parses inbound relay media and encodes outbound client media',
