@@ -1,54 +1,84 @@
 use super::*;
 use std::{
     future::Future,
-    sync::atomic::{AtomicUsize, Ordering},
-    task::Poll,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        mpsc, Mutex,
+    },
 };
 use tracing::instrument::WithSubscriber;
 use tracing_subscriber::{layer::Context, prelude::*, registry::LookupSpan, Layer};
 
 // Pause the HTTP future after the first real auxiliary page completes. This
 // observes a production span rather than replacing the database or closure.
-struct AuxPages(Arc<AtomicUsize>);
+struct AuxPages {
+    pages: Arc<AtomicUsize>,
+    reached: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+    resume: Mutex<mpsc::Receiver<()>>,
+}
 impl<S> Layer<S> for AuxPages
 where
     S: tracing::Subscriber + for<'a> LookupSpan<'a>,
 {
     fn on_close(&self, id: tracing::Id, ctx: Context<'_, S>) {
-        if ctx.span(&id).unwrap().metadata().name() == "thread_window_aux" {
-            self.0.fetch_add(1, Ordering::SeqCst);
+        if ctx.span(&id).unwrap().metadata().name() == "thread_window_aux"
+            && self.pages.fetch_add(1, Ordering::SeqCst) == 0
+        {
+            self.reached
+                .lock()
+                .unwrap()
+                .take()
+                .unwrap()
+                .send(())
+                .unwrap();
+            self.resume
+                .lock()
+                .unwrap()
+                .recv_timeout(Duration::from_secs(5))
+                .expect("test must release the first auxiliary page");
         }
     }
 }
 
-async fn pause_after_aux_page<F: Future>(
-    request: F,
-) -> std::pin::Pin<Box<impl Future<Output = F::Output>>> {
+async fn pause_after_aux_page(
+    fixture: &Fixture,
+    filter: Value,
+) -> impl Future<Output = (StatusCode, Value)> {
     let pages = Arc::new(AtomicUsize::new(0));
-    let subscriber = tracing_subscriber::registry().with(AuxPages(pages.clone()));
-    let mut request = Box::pin(request.with_subscriber(subscriber));
-    tokio::time::timeout(
-        Duration::from_secs(5),
-        std::future::poll_fn(|cx| {
-            assert!(
-                request.as_mut().poll(cx).is_pending(),
-                "must pause inside closure"
-            );
-            if pages.load(Ordering::SeqCst) > 0 {
-                Poll::Ready(())
-            } else {
-                Poll::Pending
-            }
-        }),
-    )
-    .await
-    .expect("first auxiliary page must complete before transition");
+    let (reached, ready) = tokio::sync::oneshot::channel();
+    let (resume, release) = mpsc::channel();
+    let subscriber = tracing_subscriber::registry().with(AuxPages {
+        pages: pages.clone(),
+        reached: Mutex::new(Some(reached)),
+        resume: Mutex::new(release),
+    });
+    let (state, host, keys) = (
+        fixture.state.clone(),
+        fixture.host.clone(),
+        fixture.keys.clone(),
+    );
+    let runtime = tokio::runtime::Handle::current();
+    // An outer poll can finish multiple ready SQL pages before returning.
+    // Stop at the production span itself, on a bounded blocking worker so
+    // this test's runtime remains free to make the concurrent database edit.
+    let request = tokio::task::spawn_blocking(move || {
+        runtime.block_on(
+            post(state, &host, &keys, "/query", json!([filter])).with_subscriber(subscriber),
+        )
+    });
+    tokio::time::timeout(Duration::from_secs(5), ready)
+        .await
+        .expect("first auxiliary page must complete before transition")
+        .expect("request must reach the first auxiliary page");
     assert_eq!(
         pages.load(Ordering::SeqCst),
         1,
         "barrier must precede closure completion"
     );
-    request
+    async move {
+        resume.send(()).expect("paused request must still be alive");
+        request.await.expect("HTTP request worker must finish")
+    }
 }
 
 #[tokio::test]
@@ -75,7 +105,7 @@ async fn thread_window_bridge_restarts_both_aux_hops_after_replica_failure() {
     let mut filter = f.filter();
     filter["until"] = json!(f.root.created_at.as_secs() + 1);
     filter["before_id"] = json!("00".repeat(32));
-    let request = pause_after_aux_page(f.post(&f.keys, "/query", json!([filter]))).await;
+    let request = pause_after_aux_page(&f, filter.clone()).await;
     let held: i64 = sqlx::query_scalar("SELECT count(*) FROM pg_stat_activity WHERE application_name=$1 AND xact_start IS NOT NULL")
         .bind(&reader_name).fetch_one(&f.pool).await.unwrap();
     assert_eq!(held, 1, "must actually hold the proved replica transaction");
@@ -194,7 +224,7 @@ async fn assert_aux_access_change(grant: bool) {
         "pre-transition visibility control"
     );
 
-    let request = pause_after_aux_page(f.post(&f.keys, "/query", json!([filter]))).await;
+    let request = pause_after_aux_page(&f, filter.clone()).await;
     set_access(&f, aux_channel, grant).await;
     let current = f
         .state
