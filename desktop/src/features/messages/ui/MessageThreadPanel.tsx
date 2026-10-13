@@ -155,7 +155,7 @@ const THREAD_PANEL_SUMMARY_INDENT_OFFSET_REM = 0;
 export function MessageThreadPanel(props: MessageThreadPanelProps) {
   return (
     <ThreadSessionTimelineProvider
-      key={`${props.channelId}:${props.threadHead?.id}`}
+      scopeKey={`${props.channelId}:${props.threadHead?.id}`}
     >
       <MessageThreadPanelContent {...props} />
     </ThreadSessionTimelineProvider>

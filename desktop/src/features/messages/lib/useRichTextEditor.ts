@@ -677,7 +677,9 @@ export function useRichTextEditor({
   );
 
   const focusEnd = React.useCallback(() => {
-    if (!editor?.isInitialized || editor.isDestroyed) return;
+    // Tiptap has a mounted view before its asynchronous `create` event sets
+    // isInitialized. isDestroyed also covers a missing/unmounted view.
+    if (!editor || editor.isDestroyed) return;
     editor.commands.focus("end");
   }, [editor]);
 
@@ -688,7 +690,7 @@ export function useRichTextEditor({
    * effect) where we don't want to yank the cursor to the end.
    */
   const focusPreserve = React.useCallback(() => {
-    if (!editor?.isInitialized || editor.isDestroyed) return;
+    if (!editor || editor.isDestroyed) return;
     // `focus()` with no position argument preserves the current selection.
     editor.commands.focus();
   }, [editor]);
