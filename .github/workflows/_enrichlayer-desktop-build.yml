@@ -1,0 +1,160 @@
+name: Enrich Layer macOS Release Build
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+      platform:
+        required: true
+        type: string
+      version:
+        required: true
+        type: string
+      source_sha:
+        required: true
+        type: string
+      publish:
+        type: boolean
+        default: false
+    outputs:
+      artifact-prefix:
+        description: Verified R2 prefix from the successful build attempt
+        value: ${{ jobs.build.outputs.artifact-prefix }}
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+  checks: read
+  statuses: read
+jobs:
+  build:
+    if: github.repository == 'enrichlayer/buzz'
+    runs-on: ${{ inputs.runner }}
+    outputs:
+      artifact-prefix: ${{ steps.upload.outputs.prefix }}
+    timeout-minutes: 120
+    environment: ${{ inputs.publish && 'desktop-release' || 'desktop-candidate' }}
+    env:
+      BUZZ_UPDATER_ENDPOINT: https://buzz-downloads.enrichlayer.com/latest.json
+      BUZZ_UPDATER_PUBLIC_KEY: ${{ secrets.BUZZ_UPDATER_PUBLIC_KEY }}
+      APPLE_SIGNING_IDENTITY: '-'
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify source and signing prerequisites
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH: ${{ inputs.publish }}
+          HAS_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          if [ "$PUBLISH" = true ]; then
+            GITHUB_REF="refs/tags/el-desktop-v$VERSION" scripts/verify-release-ref.sh el-desktop-v "$VERSION"
+            python3 scripts/enrichlayer-release-gate.py check "$(git rev-parse HEAD)"
+            git merge-base --is-ancestor HEAD origin/main
+          fi
+          [[ -n "$BUZZ_UPDATER_PUBLIC_KEY" ]] || { echo "::error::Missing BUZZ_UPDATER_PUBLIC_KEY"; exit 1; }
+          [[ "$HAS_SIGNING_KEY" == true ]] || { echo "::error::Missing TAURI_SIGNING_PRIVATE_KEY"; exit 1; }
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+      - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      # pnpm 11 has no standalone darwin-x64 binary. Keep Hermit's other
+      # toolchain pins and use the JavaScript package at packageManager's pin.
+      - name: Install JavaScript pnpm for Intel macOS
+        id: intel_pnpm
+        if: inputs.platform == 'darwin-x86_64'
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          standalone: false
+      - name: Expose JavaScript pnpm to Hermit subprocesses
+        if: inputs.platform == 'darwin-x86_64'
+        env:
+          PNPM_BIN: ${{ steps.intel_pnpm.outputs.bin_dest }}
+        run: |
+          # Hermit puts bin/ first again in just/node/cargo subprocesses.
+          # Repoint only this runner checkout's launcher to the same-version JS
+          # package; changing GITHUB_PATH alone still invokes the missing binary.
+          # The action emits a relative-path shell shim, so invoke its original
+          # location through a wrapper instead of moving or symlinking that shim.
+          rm bin/pnpm
+          printf '#!/bin/sh\nexec "%s/pnpm" "$@"\n' "$PNPM_BIN" > bin/pnpm
+          chmod +x bin/pnpm
+          EXPECTED=$(node -p 'require("./package.json").packageManager.replace(/^pnpm@/, "").split("+")[0]')
+          test "$(just --command pnpm --version)" = "$EXPECTED"
+      - name: Install dependencies and set release version
+        run: |
+          just desktop-install-ci
+          cd desktop
+          node scripts/set-version-from-tag.mjs "$VERSION"
+          node scripts/build-enrichlayer-release-config.mjs
+          cd src-tauri
+          cargo update --workspace
+      - name: Build sidecars
+        run: |
+          cargo build --release -p buzz-acp -p buzz-agent -p buzz-backend-kubernetes -p buzz-dev-mcp -p git-credential-nostr -p buzz-cli
+          scripts/bundle-sidecars.sh
+      # Resolve the locked Mesh revision without a shared writable build cache.
+      - name: Resolve mesh-llm rev
+        id: mesh_rev
+        run: |
+          set -euo pipefail
+          REV=$(python3 -c 'import tomllib; d=tomllib.load(open("Cargo.lock", "rb")); p=next(p for p in d["package"] if p["name"] == "mesh-llm-sdk"); print(p["source"].rsplit("#", 1)[1])')
+          [[ -n "$REV" ]] || { echo "::error::could not resolve mesh-llm rev from Cargo.lock"; exit 1; }
+          echo "rev=$REV" >> "$GITHUB_OUTPUT"
+          echo "short=${REV:0:7}" >> "$GITHUB_OUTPUT"
+      - name: Build mesh llama native libraries
+        env:
+          MESH_REV_SHORT: ${{ steps.mesh_rev.outputs.short }}
+        run: |
+          set -euo pipefail
+          cargo fetch --manifest-path desktop/src-tauri/Cargo.toml
+          SHORT="$MESH_REV_SHORT"
+          MESH_ROOT=$(find "${CARGO_HOME:-$HOME/.cargo}/git/checkouts" -path "*/$SHORT" -type d -name "$SHORT" | head -1)
+          if [[ -z "$MESH_ROOT" ]]; then
+            echo "::error::mesh-llm checkout for $SHORT not found after cargo fetch"
+            exit 1
+          fi
+          export LLAMA_STAGE_BACKEND=metal
+          export LLAMA_STAGE_BUILD_DIR="$GITHUB_WORKSPACE/.cache/mesh-llama/build-stage-abi-metal"
+          export CMAKE_OSX_DEPLOYMENT_TARGET=10.15
+          "$MESH_ROOT/scripts/prepare-llama.sh" pinned
+          "$MESH_ROOT/scripts/build-llama.sh" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
+      - name: Build ad-hoc signed Mac app
+        working-directory: desktop
+        run: pnpm tauri build --ci --features mesh-llm --config src-tauri/tauri.release.conf.json
+        env:
+          CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+          MACOSX_DEPLOYMENT_TARGET: '10.15'
+          CMAKE_OSX_DEPLOYMENT_TARGET: '10.15'
+          LLAMA_STAGE_BACKEND: metal
+          LLAMA_STAGE_BUILD_DIR: ${{ github.workspace }}/.cache/mesh-llama/build-stage-abi-metal
+          SKIPPY_LLAMA_AUTO_BUILD: '0'
+          TAURI_BUNDLER_DMG_IGNORE_CI: 'true'
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      - name: Verify ad-hoc signature and stage release assets
+        env:
+          PLATFORM: ${{ inputs.platform }}
+        run: |
+          set -euo pipefail
+          codesign --verify --deep --strict desktop/src-tauri/target/release/bundle/macos/Buzz.app
+          mkdir -p staged
+          cp desktop/src-tauri/target/release/bundle/macos/Buzz.app.tar.gz "staged/Buzz_${VERSION}_${PLATFORM}.app.tar.gz"
+          cp desktop/src-tauri/target/release/bundle/macos/Buzz.app.tar.gz.sig "staged/Buzz_${VERSION}_${PLATFORM}.app.tar.gz.sig"
+          cp desktop/src-tauri/target/release/bundle/dmg/*.dmg "staged/Buzz_${VERSION}_${PLATFORM}.dmg"
+      - name: Store verified build artifacts in private R2
+        id: upload
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BUZZ_BUILD_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BUZZ_BUILD_R2_SECRET_ACCESS_KEY }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          PLATFORM: ${{ inputs.platform }}
+        run: |
+          PREFIX="desktop/$SOURCE_SHA/$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT/$PLATFORM"
+          bash scripts/run-buzz-r2.sh upload-build "$PREFIX" staged
+          echo "prefix=$PREFIX" >> "$GITHUB_OUTPUT"

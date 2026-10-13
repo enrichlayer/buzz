@@ -13,6 +13,11 @@ const _channel = MethodChannel('buzz/push');
 const _secret =
     '0000000000000000000000000000000000000000000000000000000000000001';
 
+// Bulk fixtures sign and verify up to 1,026 real events. Keep the FIFO and
+// retry assertions bounded without letting the default timeout leak work into
+// the next test on a busy native runner.
+const _bulkVerificationTimeout = Timeout(Duration(minutes: 2));
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final calls = <MethodCall>[];
@@ -136,6 +141,7 @@ void main() {
           );
           expect(pushPresentationExportError.value, isNull);
         },
+        timeout: _bulkVerificationTimeout,
       );
     }
   }
@@ -206,6 +212,7 @@ void main() {
         expect(calls.last.arguments['communityId'], 'following-community');
         expect(pushPresentationExportError.value, terminal);
       },
+      timeout: _bulkVerificationTimeout,
     );
   }
 
@@ -352,6 +359,7 @@ void main() {
           unorderedEquals(memberships.map((event) => event.toJson())),
         );
       },
+      timeout: _bulkVerificationTimeout,
     );
   }
 

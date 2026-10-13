@@ -139,7 +139,6 @@ test("suggestions leave typing focused, append an addressed draft, and never sub
   await expect(chips).toBeVisible();
   await expect(editor).toBeFocused();
   await expect(editor).toHaveText("My existing draft");
-  const count = await page.getByTestId("message-row").count();
   await waitForAnimations(page);
   await page.screenshot({
     path: "test-results/prompt-suggestions/01-free-text.png",
@@ -150,11 +149,11 @@ test("suggestions leave typing focused, append an addressed draft, and never sub
   await expect(editor).toContainText("@");
   await expect(editor).toBeFocused();
   await expect(chips).toHaveCount(0);
-  await expect(page.getByTestId("message-row")).toHaveCount(count);
   await waitForAnimations(page);
   await page.screenshot({
     path: "test-results/prompt-suggestions/02-editable-draft.png",
   });
+  // Assert the signed draft, not row count: unrelated relay/join events may arrive.
   // Only the user's separate Send publishes, with the source agent's exact key.
   expect(
     await page.evaluate(
