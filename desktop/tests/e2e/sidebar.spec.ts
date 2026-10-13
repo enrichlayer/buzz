@@ -703,7 +703,7 @@ test("shows a sidebar update card when an update is ready", async ({
   await page.getByTestId("settings-nav-updates").click();
   await page.getByRole("button", { name: "Check for Updates" }).click();
   await expect(page.getByTestId("settings-panel-updates")).toContainText(
-    "Update downloaded. Click to apply.",
+    "Update downloaded. Restart when you’re ready.",
   );
   await expect
     .poll(() =>
@@ -727,8 +727,10 @@ test("shows a sidebar update card when an update is ready", async ({
   const updateCard = page.getByTestId("sidebar-update-card");
   await expect(updateCard).toBeVisible();
   await expect(updateCard).toContainText("Ready to update!");
-  await expect(updateCard).toContainText("Click to update");
-  await expect(page.getByTestId("sidebar-update-now")).toBeVisible();
+  await expect(updateCard).toContainText("Restart when you’re ready");
+  await expect(page.getByTestId("sidebar-update-now")).toHaveAccessibleName(
+    "Restart to update",
+  );
   await page.getByTestId("sidebar-update-now").click();
   await expect(updateCard).toContainText("Updating");
   await expect(page.getByTestId("sidebar-update-now")).toBeDisabled();
@@ -798,7 +800,7 @@ test("reflects an install started from the header update button on the sidebar c
   await page.getByTestId("settings-nav-updates").click();
   await page.getByRole("button", { name: "Check for Updates" }).click();
   await expect(page.getByTestId("settings-panel-updates")).toContainText(
-    "Update downloaded. Click to apply.",
+    "Update downloaded. Restart when you’re ready.",
   );
   await page.getByTestId("settings-back-to-app").click();
 
@@ -806,11 +808,11 @@ test("reflects an install started from the header update button on the sidebar c
 
   const updateCard = page.getByTestId("sidebar-update-card");
   await expect(updateCard).toBeVisible();
-  await expect(updateCard).toContainText("Click to update");
+  await expect(updateCard).toContainText("Restart when you’re ready");
 
   await page
     .getByTestId("chat-header")
-    .getByRole("button", { name: "Update now" })
+    .getByRole("button", { name: "Restart to update" })
     .click();
 
   await expect(updateCard).toContainText("Updating");
@@ -865,6 +867,26 @@ test("shows manual-required update card and never auto-downloads on non-AppImage
   const updateCard = page.getByTestId("sidebar-update-card-manual");
   await expect(updateCard).toBeVisible();
   await expect(updateCard).toContainText("AppImage");
+
+  await page.getByTestId("sidebar-update-download-github").click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const calls =
+          (
+            window as Window & {
+              __BUZZ_E2E_COMMAND_PAYLOADS__?: Array<{
+                command: string;
+                payload: { url?: string };
+              }>;
+            }
+          ).__BUZZ_E2E_COMMAND_PAYLOADS__ ?? [];
+        return calls
+          .filter((call) => call.command === "plugin:opener|open_url")
+          .at(-1)?.payload.url;
+      }),
+    )
+    .toBe("https://github.com/enrichlayer/buzz/releases/latest");
 
   // In-app download and install must NEVER have been called.
   const commands = await page.evaluate(

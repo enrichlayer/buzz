@@ -684,33 +684,37 @@ mod tests {
         // The perl descendant `setsid()`s out of the leader's group, records its
         // PID, writes a few bytes to the retained stdout, then sleeps. The
         // leader waits until the PID is recorded (so the test can read it) and
-        // then loops forever, forcing the timeout path.
+        // then loops forever, forcing the timeout path. Interpreter startup can
+        // exceed 300ms during the full suite; allow the same five-second budget
+        // as the other process fixtures. The escaped child self-expires if an
+        // assertion or watchdog prevents the explicit cleanup below.
         let script = format!(
-            "perl -MPOSIX -e 'POSIX::setsid() or die; open(my $f,\">\",$ARGV[0]) or die; \
+            "perl -MPOSIX -e 'alarm 30; POSIX::setsid() or die; open(my $f,\">\",$ARGV[0]) or die; \
              print $f $$; close $f; print \"x\" x 4096; sleep 300;' '{pid_path}' & \
              until [ -s '{pid_path}' ]; do :; done; while :; do sleep 1; done"
         );
         let mut cmd = Command::new("/bin/sh");
         cmd.args(["-c", &script]);
-        let result = run_watchdogged(cmd, Duration::from_millis(300), Duration::from_secs(5));
-        assert!(
-            result.is_none(),
-            "a timed-out probe must fail closed even when an escaped writer holds the pipe"
-        );
+        let result = run_watchdogged(cmd, Duration::from_secs(5), Duration::from_secs(10));
 
         let descendant_pid: i32 = std::fs::read_to_string(&pid_path)
             .expect("escaped descendant must have recorded its PID")
             .trim()
             .parse()
             .expect("descendant PID must be numeric");
-        assert!(
-            pid_alive(descendant_pid),
-            "descendant {descendant_pid} was expected to survive the group kill (proving it escaped)"
-        );
+        let escaped_alive = pid_alive(descendant_pid);
         // Reap the escaped writer so the test leaves nothing behind.
         unsafe {
             libc::kill(descendant_pid, libc::SIGKILL);
         }
+        assert!(
+            result.is_none(),
+            "a timed-out probe must fail closed even when an escaped writer holds the pipe"
+        );
+        assert!(
+            escaped_alive,
+            "descendant {descendant_pid} was expected to survive the group kill (proving it escaped)"
+        );
     }
 
     // Adversarial (capture bound): a producer that streams zero bytes

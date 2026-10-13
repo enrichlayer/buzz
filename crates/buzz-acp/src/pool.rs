@@ -2434,6 +2434,7 @@ fn question_asker(
 ///
 /// The agent is ALWAYS returned — even on panic the `JoinSet` detects the
 /// abort and the caller uses `task_map` to recover the agent index.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_prompt_task(
     mut agent: OwnedAgent,
     batch: Option<FlushBatch>,
@@ -2442,6 +2443,7 @@ pub async fn run_prompt_task(
     result_tx: mpsc::UnboundedSender<PromptResult>,
     control_rx: Option<tokio::sync::oneshot::Receiver<ControlSignal>>,
     turn_id: String,
+    prompt_routing: crate::queue::PromptRouting,
 ) {
     // Is this a channel prompt or a heartbeat?
     let source = match &batch {
@@ -2551,6 +2553,21 @@ pub async fn run_prompt_task(
         },
         PromptSource::Heartbeat => None,
     };
+    // Whether this turn's prompt renders the channel as a DM. `format_prompt`
+    // derives the same value from `resolved_channel_info`, which is fixed
+    // from here on, so the main loop's native-steer guard can rely on it now
+    // rather than after the session setup below. A follow-up steered before
+    // this turn's own prompt starts waits in the steer mailbox, so it must
+    // not be admitted while an `initial_message` setup prompt (which reads the
+    // same mailbox) is still to come; that case records after the setup turn.
+    let prompt_is_dm = resolved_channel_info
+        .as_ref()
+        .is_some_and(|info| info.channel_type == "dm");
+    let initial_message_pending = ctx.initial_message.is_some()
+        && matches!(&source, PromptSource::Channel(scope) if !agent.state.sessions.contains_key(scope));
+    if !initial_message_pending {
+        prompt_routing.record_dm(prompt_is_dm);
+    }
 
     //
     // Core memory is delivered inside the system prompt the harness already
@@ -3008,6 +3025,8 @@ pub async fn run_prompt_task(
             }
         }
     }
+    // Any `initial_message` setup turn is done; see `prompt_is_dm`.
+    prompt_routing.record_dm(prompt_is_dm);
 
     // When the batch is a single slash-command message (e.g. "@Eva /goal …"),
     // `slash_command` holds the bare command. It is sent as the FIRST prompt
@@ -3050,10 +3069,7 @@ pub async fn run_prompt_task(
         // reuse that exact typed result for prompt formatting.
         let channel_info = resolved_channel_info.clone();
 
-        let is_dm = channel_info
-            .as_ref()
-            .map(|info| info.channel_type == "dm")
-            .unwrap_or(false);
+        let is_dm = prompt_is_dm;
         let context_target = resolve_context_target(b, is_dm);
         let hydrated_thread_root = match &context_target {
             ContextTarget::Thread(root) => Some(root),
@@ -3111,6 +3127,11 @@ pub async fn run_prompt_task(
 
         let profile_lookup =
             fetch_prompt_profile_lookup(b, conversation_context.as_ref(), &ctx.rest_client).await;
+        prompt_routing.record_trigger_anchor(crate::queue::reply_anchor_is_trigger(
+            b,
+            is_dm,
+            profile_lookup.as_ref(),
+        ));
 
         let known_names: Vec<&str> = profile_lookup
             .iter()
@@ -5687,7 +5708,7 @@ async fn clear_reactions(rest: crate::relay::RestClient, event_ids: Vec<String>)
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
     use serde_json::json;
@@ -7161,6 +7182,7 @@ mod tests {
                 result_tx,
                 None,
                 "observer-test-turn".into(),
+                Default::default(),
             ));
             let liveness = tokio::time::timeout(Duration::from_secs(5), async {
                 request_rx.await.expect("channel context lookup started");
@@ -7254,6 +7276,7 @@ done"#
                 result_tx.clone(),
                 None,
                 format!("turn-{turn}"),
+                Default::default(),
             )
             .await;
             let result = result_rx.recv().await.expect("prompt result");
@@ -7377,6 +7400,7 @@ done"#
                 result_tx.clone(),
                 None,
                 format!("turn-{turn}"),
+                Default::default(),
             )
             .await;
             let result = result_rx.recv().await.expect("prompt result");
@@ -7590,6 +7614,7 @@ done"#
             result_tx.clone(),
             None,
             "first-turn".into(),
+            Default::default(),
         )
         .await;
         let first_result = result_rx.recv().await.expect("first prompt result");
@@ -7609,6 +7634,7 @@ done"#
             result_tx,
             None,
             "follow-up-turn".into(),
+            Default::default(),
         )
         .await;
         let mut result = result_rx.recv().await.expect("prompt result");
@@ -7779,6 +7805,7 @@ done"#
                 result_tx.clone(),
                 None,
                 turn_id.into(),
+                Default::default(),
             )
             .await;
             let result = result_rx.recv().await.expect("prompt result");
@@ -7943,6 +7970,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
             result_tx,
             None,
             "next-turn".into(),
+            Default::default(),
         )
         .await;
         let mut result = result_rx.recv().await.expect("next prompt result");
@@ -10429,7 +10457,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
         );
     }
 
-    pub(super) fn make_prompt_context_no_owner() -> PromptContext {
+    pub(crate) fn make_prompt_context_no_owner() -> PromptContext {
         let agent_keys = nostr::Keys::generate();
         make_prompt_context_impl(&agent_keys, None)
     }
@@ -11167,6 +11195,7 @@ done"#
             result_tx,
             None,
             "indeterminate-project-turn".into(),
+            Default::default(),
         )
         .await;
 
