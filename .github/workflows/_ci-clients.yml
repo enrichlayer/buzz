@@ -60,7 +60,9 @@ jobs:
   mobile:
     name: Mobile
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # A cold Flutter SDK download can consume 14 minutes before tests and the
+    # Android/NDK build begin. Keep the full gate within a bounded cold-run budget.
+    timeout-minutes: 60
     if: inputs.lane == 'required' && (github.event_name == 'push' || inputs.mobile)
     permissions:
       contents: read
@@ -146,6 +148,7 @@ jobs:
           xcrun simctl boot "$device"
           xcrun simctl bootstatus "$device" -b
           /bin/bash scripts/test-mobile-pagination-accessibility.sh "$device"
+          /bin/bash scripts/test-mobile-member-picker.sh "$device"
       - name: Build complete unsigned iOS release
         run: |
           /bin/bash scripts/test-mobile-gateway-recipes.sh

@@ -3643,32 +3643,48 @@ mod tests {
 
     #[tokio::test]
     async fn keepalive_resets_idle_past_deadline() {
-        // Keepalives every 50ms against a 1s idle deadline allow scheduler jitter.
-        // The turn must outlast that deadline; without resets it ends at 1s.
+        use tokio::io::AsyncWriteExt;
+
+        // Synchronize startup before measuring idle time: parallel suites may
+        // take longer than the idle budget just to schedule a new shell.
         let mut client = spawn_script(
-            r#"for i in $(seq 1 20); do echo '{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"keepalive"}}}'; sleep 0.05; done; sleep 10"#,
+            r#"echo ready; read _start; for i in $(seq 1 20); do echo '{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"keepalive"}}}'; sleep 0.05; done; sleep 10"#,
         )
         .await;
-        let max_dur = std::time::Duration::from_secs(10);
+        let ready = tokio::time::timeout(std::time::Duration::from_secs(10), client.reader.next())
+            .await
+            .expect("test shell should start")
+            .expect("test shell should emit readiness")
+            .expect("readiness should be a valid line");
+        assert_eq!(ready, "ready");
+        client
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(b"start\n")
+            .await
+            .unwrap();
+        let max_dur = std::time::Duration::from_secs(15);
         let hard_deadline = tokio::time::Instant::now() + max_dur;
         let start = std::time::Instant::now();
         let result = client
             .read_until_response_with_idle_timeout(
                 "test",
                 999,
-                std::time::Duration::from_secs(1),
+                std::time::Duration::from_millis(500),
                 hard_deadline,
                 max_dur,
             )
             .await;
         let elapsed = start.elapsed();
-        // ~1s of keepalives plus 1s idle should survive past the initial deadline.
-        // Keep the lower bound above idle so dropping all resets still fails.
+        // Keepalives extend the 500ms idle budget to roughly 1500ms. Without
+        // resets it expires at 500ms, below this lower bound. A generous gap
+        // between emissions and the budget tolerates loaded test runners.
         assert!(
-            elapsed >= std::time::Duration::from_millis(1500),
+            elapsed >= std::time::Duration::from_millis(750),
             "keepalive should reset idle past the deadline; elapsed only {elapsed:?}"
         );
-        assert!(elapsed < std::time::Duration::from_secs(8));
+        assert!(elapsed < std::time::Duration::from_secs(10));
         assert!(matches!(result, Err(AcpError::IdleTimeout(_))));
     }
 
