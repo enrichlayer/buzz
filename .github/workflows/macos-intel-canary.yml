@@ -5,11 +5,34 @@ name: macOS Intel Canary
 # publishing anything.
 on:
   workflow_dispatch:
+    inputs:
+      candidate_version:
+        description: Optional stable version for private Enrich Layer candidates on all platforms
+        type: string
+        default: ""
 
 permissions:
   contents: read
 
 jobs:
+  enrichlayer-validation:
+    if: github.repository == 'enrichlayer/buzz' && inputs.candidate_version == ''
+    uses: ./.github/workflows/enrichlayer-macos-validation.yml
+    secrets: inherit
+  enrichlayer-candidate:
+    if: github.repository == 'enrichlayer/buzz' && inputs.candidate_version != ''
+    permissions:
+      contents: write
+      actions: read
+      checks: read
+      statuses: read
+      pull-requests: read
+    uses: ./.github/workflows/enrichlayer-desktop-release.yml
+    with:
+      version: ${{ inputs.candidate_version }}
+      source_sha: ${{ github.sha }}
+      publish: false
+    secrets: inherit
   build:
     name: Build macOS Intel canary
     if: github.repository == 'block/buzz'

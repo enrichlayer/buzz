@@ -17,7 +17,8 @@ fi
 
 GH_USER=$(gh api user --jq .login)
 BRANCH="agent-screenshots/${GH_USER}"
-REPO="block/buzz"
+# Resolve the same repository the screenshot branch is pushed to, including forks.
+REPO=$(gh repo view "$(git remote get-url origin)" --json nameWithOwner --jq .nameWithOwner)
 
 # macOS ships bash 3.2, which lacks mapfile — build the array with read.
 PNGS=()
