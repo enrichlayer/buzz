@@ -3643,13 +3643,27 @@ mod tests {
 
     #[tokio::test]
     async fn keepalive_resets_idle_past_deadline() {
-        // Keepalives every 50ms against a 1s idle deadline allow scheduler jitter.
-        // The turn must outlast that deadline; without resets it ends at 1s.
+        use tokio::io::AsyncWriteExt;
+
+        // Synchronize shell startup, then allow a full second for scheduler jitter.
         let mut client = spawn_script(
-            r#"for i in $(seq 1 20); do echo '{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"keepalive"}}}'; sleep 0.05; done; sleep 10"#,
+            r#"echo ready; read _start; for i in $(seq 1 20); do echo '{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"keepalive"}}}'; sleep 0.05; done; sleep 10"#,
         )
         .await;
-        let max_dur = std::time::Duration::from_secs(10);
+        let ready = tokio::time::timeout(std::time::Duration::from_secs(10), client.reader.next())
+            .await
+            .expect("test shell should start")
+            .expect("test shell should emit readiness")
+            .expect("readiness should be a valid line");
+        assert_eq!(ready, "ready");
+        client
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(b"start\n")
+            .await
+            .unwrap();
+        let max_dur = std::time::Duration::from_secs(15);
         let hard_deadline = tokio::time::Instant::now() + max_dur;
         let start = std::time::Instant::now();
         let result = client

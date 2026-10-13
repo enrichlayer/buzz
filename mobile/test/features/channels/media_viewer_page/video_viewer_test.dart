@@ -430,49 +430,57 @@ void main() {
   // `localController.dispose()`.  With forceInitError=true the fake emits a
   // PlatformException; `initialize()` throws; the new inner catch calls
   // `dispose()` before rethrowing.  disposeCallCount >= 1 verifies it.
-  testWidgets('F2r(a): VideoPlayerController is disposed when native init fails', (
-    tester,
-  ) async {
-    final fakePlayer = _FakeVideoPlayerPlatform(forceInitError: true);
-    VideoPlayerPlatform.instance = fakePlayer;
+  testWidgets(
+    'F2r(a): VideoPlayerController is disposed when native init fails',
+    (tester) async {
+      final fakePlayer = _FakeVideoPlayerPlatform(forceInitError: true);
+      VideoPlayerPlatform.instance = fakePlayer;
 
-    // 200-ok response with a tiny immediate body so the download phase
-    // completes and initializeVideo() reaches the VideoPlayerController.file()
-    // path.  The _FinalizingFakeClient drains the request body, which proves
-    // the sink is closed (if not, the drain hangs and the test times out).
-    final fakeClient = _FinalizingFakeClient(
-      responseBuilder: () =>
-          http.StreamedResponse(Stream.value(<int>[0, 1, 2, 3]), 200),
-    );
-    addTearDown(fakeClient.close);
-
-    await tester.runAsync(() async {
-      await tester.pumpWidget(
-        WidgetHelpers.testable(
-          disableAnimations: true,
-          overrides: [
-            mediaGetAuthServiceProvider.overrideWithValue(_noopAuth()),
-            mediaHttpClientProvider.overrideWithValue(fakeClient),
-          ],
-          child: const MediaVideoViewerPage(
-            videoUrl: 'https://relay.test/media/abc.mp4',
-          ),
-        ),
+      // 200-ok response with a tiny immediate body so the download phase
+      // completes and initializeVideo() reaches the VideoPlayerController.file()
+      // path.  The _FinalizingFakeClient drains the request body, which proves
+      // the sink is closed (if not, the drain hangs and the test times out).
+      final fakeClient = _FinalizingFakeClient(
+        responseBuilder: () =>
+            http.StreamedResponse(Stream.value(<int>[0, 1, 2, 3]), 200),
       );
-      // Give the initializeVideo() async chain time to complete: HTTP response,
-      // file write, VideoPlayerController.initialize(), and dispose().
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-    });
-    await tester.pump();
+      addTearDown(fakeClient.close);
 
-    // The fake must have recorded at least one dispose() call, confirming
-    // the native player was released even on an initialisation failure.
-    expect(
-      fakePlayer.disposeCallCount,
-      greaterThanOrEqualTo(1),
-      reason: 'VideoPlayerController must be disposed when initialize() throws',
-    );
-  });
+      await tester.runAsync(() async {
+        await tester.pumpWidget(
+          WidgetHelpers.testable(
+            disableAnimations: true,
+            overrides: [
+              mediaGetAuthServiceProvider.overrideWithValue(_noopAuth()),
+              mediaHttpClientProvider.overrideWithValue(fakeClient),
+            ],
+            child: const MediaVideoViewerPage(
+              videoUrl: 'https://relay.test/media/abc.mp4',
+            ),
+          ),
+        );
+      });
+      // Advance both real file I/O and the binding's scheduled work until the
+      // disposal is observed, rather than assuming a fixed sleep is sufficient.
+      final wait = Stopwatch()..start();
+      while (!fakePlayer.disposeAttempted.isCompleted &&
+          wait.elapsed < const Duration(seconds: 10)) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 10)),
+        );
+        await tester.pump();
+      }
+
+      // The fake must have recorded at least one dispose() call, confirming
+      // the native player was released even on an initialisation failure.
+      expect(
+        fakePlayer.disposeCallCount,
+        greaterThanOrEqualTo(1),
+        reason:
+            'VideoPlayerController must be disposed when initialize() throws',
+      );
+    },
+  );
 
   // F2r(b): close-during-error-body must cancel the stream and show the
   // error UI while the body is still open.
