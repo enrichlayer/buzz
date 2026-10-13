@@ -24,6 +24,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 const _channelId = 'chan-1';
 
+class _ResumedAppLifecycle extends AppLifecycleNotifier {
+  @override
+  AppLifecycleState build() => AppLifecycleState.resumed;
+}
+
 TimelineMessage _message({
   String id = 'msg-1',
   String pubkey = 'alice',
@@ -370,6 +375,28 @@ class _FakeChannelActions extends ChannelActions {
 }
 
 void main() {
+  const connectivityChannel = MethodChannel(
+    'dev.fluttercommunity.plus/connectivity_status',
+  );
+  final connectivityCalls = <String>[];
+  setUp(() {
+    connectivityCalls.clear();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(connectivityChannel, (call) async {
+          connectivityCalls.add(call.method);
+          return null;
+        });
+  });
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(connectivityChannel, null);
+    expect(
+      connectivityCalls,
+      isEmpty,
+      reason: 'Message-action fixtures must not access platform connectivity',
+    );
+  });
+
   testWidgets(
     'message long press keeps taps and scrolling while repeated holds win',
     (tester) async {
@@ -855,6 +882,9 @@ void main() {
                 ),
               ),
               reminderServiceProvider.overrideWithValue(null),
+              // DEV-12937: the reaction surface reads presence/lifecycle, but
+              // this ownership fixture must never open a platform stream.
+              appLifecycleProvider.overrideWith(_ResumedAppLifecycle.new),
             ],
             child: MaterialApp(
               home: Consumer(
