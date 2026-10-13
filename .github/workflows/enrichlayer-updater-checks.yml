@@ -1,0 +1,33 @@
+name: Enrich Layer Updater Checks
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/enrichlayer-*.yml'
+      - 'desktop/scripts/build-*release-config*'
+      - 'desktop/enrichlayer-updater.pub'
+      - 'scripts/*enrichlayer-*.py'
+      - 'scripts/*buzz-r2*'
+      - 'scripts/*publish-sprig-rolling.py'
+      - '.github/workflows/docker.yml'
+      - '.github/workflows/sprig*.yml'
+      - '.github/workflows/_enrichlayer-*.yml'
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - run: node --test desktop/scripts/build-enrichlayer-release-config.test.mjs
+      - run: python3 scripts/test-enrichlayer-updater.py
+      - run: python3 scripts/test-enrichlayer-release-gate.py
+      - run: python3 scripts/test-enrichlayer-publish.py
+      - run: python3 scripts/test-buzz-r2.py
+      - run: python3 scripts/test-enrichlayer-minisign.py
+      - run: python3 scripts/test-publish-sprig-rolling.py
+      - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - run: actionlint .github/workflows/enrichlayer-*.yml .github/workflows/_enrichlayer-*.yml
