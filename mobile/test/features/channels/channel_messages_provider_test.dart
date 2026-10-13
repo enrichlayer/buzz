@@ -1848,22 +1848,51 @@ void main() {
         final notifier = container.read(
           channelMessagesProvider(_channelId).notifier,
         );
-        for (var root = 0; root < 9; root++) {
-          for (var i = 0; i < 300; i++) {
-            final reply = _event(
-              id: '$root-$i',
-              createdAt: 20 + root * 300 + i,
-              extraTags: [
-                ['e', 'root-$root', '', 'reply'],
+        // DEV-12942: seed the exact boundary once through the production
+        // cache seam, then cross it through the ack/live path under test.
+        notifier.cacheConfirmedThreadReplies([
+          for (var i = 0; i < 256; i++)
+            _event(
+              id: '0-$i',
+              createdAt: 20 + i,
+              extraTags: const [
+                ['e', 'root-0', '', 'reply'],
               ],
-            );
-            if (source == 'ack') {
-              notifier.addLocalMessage(reply);
-              notifier.completeLocalMessage(reply.id);
-            } else {
-              session.emit(reply);
-            }
+            ),
+        ]);
+        for (final root in [0, 8]) {
+          if (root == 8) {
+            // Check the per-root limit below the global limit first, so one
+            // guard cannot accidentally conceal the absence of the other.
+            notifier.cacheConfirmedThreadReplies([
+              for (var other = 1; other < 8; other++)
+                for (var i = 0; i < 256; i++)
+                  _event(
+                    id: '$other-$i',
+                    createdAt: 20 + other * 256 + i,
+                    extraTags: [
+                      ['e', 'root-$other', '', 'reply'],
+                    ],
+                  ),
+            ]);
           }
+          final reply = _event(
+            id: '$root-boundary',
+            createdAt: 3000 + root,
+            extraTags: [
+              ['e', 'root-$root', '', 'reply'],
+            ],
+          );
+          if (source == 'ack') {
+            notifier.addLocalMessage(reply);
+            notifier.completeLocalMessage(reply.id);
+          } else {
+            session.emit(reply);
+          }
+          expect(
+            notifier.cachedThreadReplyIds('root-$root'),
+            contains(reply.id),
+          );
           expect(
             notifier.cachedThreadReplyIds('root-$root').length,
             lessThanOrEqualTo(256),
@@ -4680,68 +4709,82 @@ void main() {
     );
   }
 
-  test('fallback global eviction preserves another root summary', () async {
-    final reply = _event(
-      id: 'old-reply',
-      createdAt: 20,
-      extraTags: const [
-        ['e', 'old-root', '', 'reply'],
-      ],
-    );
-    final recount = Completer<List<NostrEvent>>();
-    final session = _RecordingRelaySessionNotifier(
-      queryResults: [Exception('NIP-CW unavailable'), recount.future],
-      historyResults: [
-        [
-          _event(id: 'old-root', createdAt: 10),
-          reply,
-          for (var i = 0; i < 16; i++) _event(id: 'other-$i', createdAt: 10),
+  test(
+    'fallback global eviction preserves another root summary',
+    () => fakeAsync((clock) {
+      final reply = _event(
+        id: 'old-reply',
+        createdAt: 20,
+        extraTags: const [
+          ['e', 'old-root', '', 'reply'],
         ],
-      ],
-    );
-    final container = _buildContainer(session);
-    addTearDown(container.dispose);
-    container.listen(channelMessagesProvider(_channelId), (_, _) {});
-    await _pumpEventQueue();
-    final notifier = container.read(
-      channelMessagesProvider(_channelId).notifier,
-    );
-    for (var i = 0; i < 2048; i++) {
+      );
+      final recount = Completer<List<NostrEvent>>();
+      final session = _RecordingRelaySessionNotifier(
+        queryResults: [Exception('NIP-CW unavailable'), recount.future],
+        historyResults: [
+          [
+            _event(id: 'old-root', createdAt: 10),
+            reply,
+            for (var i = 0; i < 16; i++) _event(id: 'other-$i', createdAt: 10),
+          ],
+        ],
+      );
+      final container = _buildContainer(session);
+      addTearDown(container.dispose);
+      container.listen(channelMessagesProvider(_channelId), (_, _) {});
+      clock.flushMicrotasks();
+      final notifier = container.read(
+        channelMessagesProvider(_channelId).notifier,
+      );
+      // Fill to the global bound without replaying thousands of state updates.
+      // The final live event must cause the old root's real eviction/recount.
+      notifier.cacheConfirmedThreadReplies([
+        for (var i = 0; i < 2047; i++)
+          _event(
+            id: 'new-$i',
+            createdAt: 100 + i,
+            extraTags: [
+              ['e', 'other-${i ~/ 128}', '', 'reply'],
+            ],
+          ),
+      ]);
+      expect(notifier.cachedThreadReplyIds('old-root'), contains('old-reply'));
       session.emit(
         _event(
-          id: 'new-$i',
-          createdAt: 100 + i,
-          extraTags: [
-            ['e', 'other-${i ~/ 128}', '', 'reply'],
+          id: 'new-2047',
+          createdAt: 2147,
+          extraTags: const [
+            ['e', 'other-15', '', 'reply'],
           ],
         ),
       );
-    }
-    expect(notifier.cachedThreadReplyIds('old-root'), isEmpty);
-    final entries = buildMainTimelineEntries(
-      formatTimeline(
-        container.read(channelMessagesProvider(_channelId)).value!,
-      ),
-      relaySummaries: notifier.threadSummaries,
-    );
-    expect(
-      entries
-          .singleWhere((e) => e.message.id == 'old-root')
-          .summary
-          ?.replyCount,
-      1,
-    );
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    final scans = session.queryFilters.where(
-      (f) => f.extensions.containsKey('depth_limit'),
-    );
-    expect(scans, hasLength(1));
-    expect(scans.single.tags['#e'], ['old-root']);
-    recount.complete([reply]);
-    await _pumpEventQueue();
-    expect(notifier.threadSummaries['old-root']?.descendantCount, 1);
-    expect(notifier.threadSummaries['old-root']?.isLowerBound, isFalse);
-  });
+      expect(notifier.cachedThreadReplyIds('old-root'), isEmpty);
+      final entries = buildMainTimelineEntries(
+        formatTimeline(
+          container.read(channelMessagesProvider(_channelId)).value!,
+        ),
+        relaySummaries: notifier.threadSummaries,
+      );
+      expect(
+        entries
+            .singleWhere((e) => e.message.id == 'old-root')
+            .summary
+            ?.replyCount,
+        1,
+      );
+      clock.elapse(const Duration(milliseconds: 300));
+      final scans = session.queryFilters.where(
+        (f) => f.extensions.containsKey('depth_limit'),
+      );
+      expect(scans, hasLength(1));
+      expect(scans.single.tags['#e'], ['old-root']);
+      recount.complete([reply]);
+      clock.flushMicrotasks();
+      expect(notifier.threadSummaries['old-root']?.descendantCount, 1);
+      expect(notifier.threadSummaries['old-root']?.isLowerBound, isFalse);
+    }),
+  );
 
   for (final fromHistory in [false, true]) {
     for (final survives in [false, true]) {
