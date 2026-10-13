@@ -26,6 +26,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 const _channelId = 'chan-1';
 
+// Message-action fixtures exercise real UI behavior without opening the
+// lifecycle notifier's platform connectivity stream. The suite checks this seam.
 class _ResumedAppLifecycle extends AppLifecycleNotifier {
   @override
   AppLifecycleState build() => AppLifecycleState.resumed;
@@ -153,6 +155,7 @@ Future<void> _pumpSheet(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        appLifecycleProvider.overrideWith(_ResumedAppLifecycle.new),
         savedPrefsProvider.overrideWithValue(prefs),
         myPubkeyProvider.overrideWithValue('self'),
         readStateProvider.overrideWith(
@@ -216,6 +219,7 @@ Future<void> _pumpImageSheet(
 }) async {
   await tester.pumpWidget(
     ProviderScope(
+      overrides: [appLifecycleProvider.overrideWith(_ResumedAppLifecycle.new)],
       child: MaterialApp(
         theme: AppTheme.light(),
         home: Scaffold(
@@ -323,6 +327,7 @@ Future<_MessageActionsPopoverHarness> _pumpMessageActionsPopover(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        appLifecycleProvider.overrideWith(_ResumedAppLifecycle.new),
         savedPrefsProvider.overrideWithValue(prefs),
         myPubkeyProvider.overrideWithValue('self'),
         readStateProvider.overrideWith(
@@ -826,6 +831,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            appLifecycleProvider.overrideWith(_ResumedAppLifecycle.new),
             savedPrefsProvider.overrideWithValue(await _mockPrefs()),
             myPubkeyProvider.overrideWithValue('self'),
             readStateProvider.overrideWith(
@@ -1775,7 +1781,10 @@ void main() {
 
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [savedPrefsProvider.overrideWithValue(prefs)],
+          overrides: [
+            appLifecycleProvider.overrideWith(_ResumedAppLifecycle.new),
+            savedPrefsProvider.overrideWithValue(prefs),
+          ],
           child: MaterialApp(
             theme: AppTheme.light(),
             builder: (context, child) => MediaQuery(
