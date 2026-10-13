@@ -161,6 +161,7 @@ async fn run_with_signal(fixture: &Fixture, signal: ControlSignal) -> (PromptRes
         result_tx,
         Some(control_rx),
         "shell-turn".into(),
+        crate::queue::PromptRouting::default(),
     ));
     tokio::time::sleep(Duration::from_millis(300)).await;
     let signalled = Instant::now();
