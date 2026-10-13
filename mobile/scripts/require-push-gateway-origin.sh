@@ -22,7 +22,7 @@ IFS=$old_ifs
 
 if [ "$has_dart_define" = false ] && [ -n "${BUZZ_PUSH_GATEWAY_URL:-}" ]; then
   gateway_origin=$BUZZ_PUSH_GATEWAY_URL
-  encoded=$(printf '%s' "BUZZ_PUSH_GATEWAY_URL=$gateway_origin" | base64 | tr -d '\n')
+  encoded=$(printf '%s' "BUZZ_PUSH_GATEWAY_URL=$gateway_origin" | base64 | tr -d '\r\n')
   DART_DEFINES=${DART_DEFINES:+$DART_DEFINES,}$encoded
   export DART_DEFINES
 fi

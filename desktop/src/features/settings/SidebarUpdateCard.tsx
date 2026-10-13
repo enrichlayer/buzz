@@ -66,10 +66,10 @@ export function SidebarUpdateCompactCard({
 
   return (
     <SidebarCompactActionCard
-      actionAriaLabel="Update now"
+      actionAriaLabel="Restart to update"
       actionDisabled={pending}
       actionTestId={actionTestId}
-      description={pending ? "Updating" : "Click to update"}
+      description={pending ? "Updating" : "Restart when you’re ready"}
       dismissLabel="Dismiss update notification"
       icon={
         pending ? (
