@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:buzz/features/channels/channel_messages_provider.dart';
@@ -2756,7 +2757,7 @@ void main() {
 
   test(
     'continued replies do not restart an active paginated recount',
-    () async {
+    () => fakeAsync((clock) {
       final replies = [
         for (var i = 0; i < 603; i++)
           _event(
@@ -2778,15 +2779,24 @@ void main() {
       final container = _buildContainer(session);
       addTearDown(container.dispose);
       container.listen(channelMessagesProvider(_channelId), (_, _) {});
-      await _pumpEventQueue();
+      clock.flushMicrotasks();
       for (final reply in replies.take(300)) {
         session.emit(reply);
       }
-      await Future<void>.delayed(const Duration(milliseconds: 300));
+      clock.elapse(const Duration(milliseconds: 300));
       for (var page = 0; page < 3; page++) {
         session.emit(replies[600 + page]);
+        // DEV-12931: let the dirty-root timer fire while this page is still
+        // pending. It must not start a second scan of the active root.
+        clock.elapse(const Duration(milliseconds: 300));
+        expect(
+          session.queryFilters.where(
+            (filter) => filter.extensions.containsKey('depth_limit'),
+          ),
+          hasLength(page + 1),
+        );
         gates[page].complete(replies.skip(page * 200).take(200).toList());
-        await _pumpEventQueue();
+        clock.flushMicrotasks();
         final scans = session.queryFilters
             .where((filter) => filter.extensions.containsKey('depth_limit'))
             .toList();
@@ -2797,13 +2807,13 @@ void main() {
         );
       }
       gates.last.complete([]);
-      await _pumpEventQueue();
+      clock.flushMicrotasks();
       final notifier = container.read(
         channelMessagesProvider(_channelId).notifier,
       );
       expect(notifier.threadSummaries['root']?.descendantCount, 603);
       expect(notifier.threadSummaries['root']?.isLowerBound, isTrue);
-      await Future<void>.delayed(const Duration(milliseconds: 300));
+      clock.elapse(const Duration(milliseconds: 300));
       expect(notifier.threadSummaries['root']?.descendantCount, 603);
       expect(notifier.threadSummaries['root']?.isLowerBound, isFalse);
       expect(
@@ -2812,7 +2822,7 @@ void main() {
         ),
         hasLength(8),
       );
-    },
+    }),
   );
 
   for (final newest in [false, true]) {
