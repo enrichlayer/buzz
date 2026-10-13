@@ -452,3 +452,11 @@ matches the code is worse than no rule; a new pattern that isn't written down
 here will be broken by the next agent that never learns it existed. Reviewers:
 treat a config-behavior diff without a matching AGENTS.md diff (or an explicit
 "no rules changed" note) as incomplete.
+
+## Channel steering guidance
+
+The persona conversation-context setting explains the stock default: explicit
+mentions can steer active work; ordinary thread replies may enter the next
+turn as recent context. Qualify this as default channel behavior, since
+subscription overrides, message handling modes, and custom ACP commands may
+behave differently. Context isolation does not change subscription admission.
