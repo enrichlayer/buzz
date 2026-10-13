@@ -20,31 +20,49 @@ const ItemsContext = React.createContext<ThreadActivityFragment[]>([]);
 /** Thread-owned slots keep published messages and observer evidence in one DOM reading order. */
 export function ThreadSessionTimelineProvider({
   children,
+  scopeKey = "",
 }: {
   children: React.ReactNode;
+  scopeKey?: string;
 }) {
-  const [owners, setOwners] = React.useState<
-    Record<string, ThreadActivityFragment[]>
-  >({});
-  const register = React.useCallback<Register>((owner, items) => {
-    setOwners((previous) => {
-      if (previous[owner] === items || (!items && !previous[owner]))
-        return previous;
-      const next = { ...previous };
-      if (items) next[owner] = items;
-      else delete next[owner];
-      return next;
-    });
-  }, []);
+  const generation = React.useMemo(() => ({ scopeKey }), [scopeKey]);
+  const [state, setState] = React.useState<{
+    generation: typeof generation;
+    owners: Record<string, ThreadActivityFragment[]>;
+  }>({ generation, owners: {} });
+  // Reset only the registry. Keying the provider remounts the composer too,
+  // losing focus and interrupting its pending-send/draft recovery lifecycle.
+  if (state.generation !== generation) {
+    setState({ generation, owners: {} });
+  }
+  const register = React.useCallback<Register>(
+    (owner, items) => {
+      setState((previous) => {
+        // Retired registrations/cleanups must not change a later visit, even
+        // when navigation returns to the same thread key.
+        if (previous.generation !== generation) return previous;
+        if (
+          previous.owners[owner] === items ||
+          (!items && !previous.owners[owner])
+        )
+          return previous;
+        const owners = { ...previous.owners };
+        if (items) owners[owner] = items;
+        else delete owners[owner];
+        return { generation, owners };
+      });
+    },
+    [generation],
+  );
   const items = React.useMemo(
     () =>
-      Object.values(owners)
+      Object.values(state.generation === generation ? state.owners : {})
         .flat()
         .sort(
           (a, b) =>
             a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id),
         ),
-    [owners],
+    [state, generation],
   );
   return (
     <RegisterContext.Provider value={register}>

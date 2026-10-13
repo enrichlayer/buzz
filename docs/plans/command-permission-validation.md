@@ -31,3 +31,25 @@ Publication preflight caught and repaired two regression-suite integration gaps:
 The first full pre-push Rust run completed 83/84 steps; the `cargo test -p buzz-dev-mcp` process crashed with signal 11 after compilation and before a test-run banner. An unchanged isolated rerun passed (78 unit and 2 integration tests, plus doc tests). This is a non-reproduced execution failure, not a claim that the initial gate passed; the complete push gate is rerun. Receipt: `/tmp/buzz-dev-mcp-publish-retry.log`.
 
 The second full push attempt passed frontend and native desktop gates and the MCP step, but the ACP keepalive fixture failed once under concurrent load (354 ms elapsed) and passed on its second invocation. Its 50 ms emission interval previously had only a 100 ms idle budget. The fixture now allows 1 s idle and requires at least 1.5 s survival, so removing keepalive resets still fails while subprocess scheduling has headroom. The targeted test passed in 2.2 s. Production timeout logic is unchanged; the complete gate is rerun. Receipt: `/tmp/buzz-keepalive-publish-repair.log`.
+
+
+## DEV-12832 transport continuation (2026-10-12)
+
+PR #4 source head `3fe8a71` failed smoke CI. Repair continues in an isolated
+worktree on `codex/DEV-11526-transport-ci-repair`; the existing owner checkout
+and unpublished repair commit remain unchanged.
+
+| Finding | Disposition and owner/next action | Validation |
+|---|---|---|
+| Core-memory/observer captures assert metadata hidden by Activity mode | Reused existing `efa7e36` fix, signed cherry-pick `1242957`; captures select Full transcript | 13 affected browser captures passed on isolated port |
+| Thread-keyed activity provider remounts the composer | DEV-11526 repair here: reset the registry by scope generation without remounting children; fence retired registrations | Seven existing retained-composer cases reproduced before fix and now pass; 3 focused DOM tests also pass |
+| Local smoke run can reuse another worktree's port 4173 server | DEV-11526 repair here: optional BUZZ_E2E_PORT refuses server reuse; document isolated runs | Wrong-server run discarded; isolated reproduction exercised this checkout |
+| Mock observer archive lacks its empty backfill read | DEV-11526 repair here: return empty unindexed rows, matching mock archive's persisted=0 contract | All 13 capture cases pass; unsupported-command warning absent |
+| Mounted editor focus requests are dropped before Tiptap emits its asynchronous create event | DEV-11526 repair here: retain the destroyed/missing-view guard and remove the premature isInitialized guard | Five original messaging focus cases reproduced before fix; all five now pass |
+| Hosted CI and native publication checks | DEV-11526 continuation owns current-head checks after fixes | Pending; no CI success or merge claimed |
+
+The browser reproduction before the composer fix passed all 13 transcript
+captures and failed the seven existing draft/retained-host cases. Assertions
+were preserved; production lifecycle ownership is repaired instead.
+
+The second isolated run passed 20 cases (13 captures and seven retained-draft cases), with five focus failures. Pinned Tiptap source creates its view synchronously before setting isInitialized in a timer; its isDestroyed getter already rejects missing/unmounted views. The focus repair preserves that safety guard. No assertion is weakened. The final isolated run passed all 25 cases in 2.4 minutes. TypeScript, the E2E build, eight-file Biome check and the repository file-size gate pass. Receipts: `/tmp/dev12832-transport-focus-smoke.log`, `/tmp/dev12832-transport-focus-build.log`, `/tmp/dev12832-focus-scoped-lint.log`, `/tmp/dev12832-transport-final-size.log`.

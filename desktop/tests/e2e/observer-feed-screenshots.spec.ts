@@ -59,6 +59,9 @@ async function openObserverFeedPanel(
 
   const feedPanel = page.getByTestId("agent-session-thread-panel");
   await expect(feedPanel).toBeVisible({ timeout: 10_000 });
+  // Activity (the default reader view) hides routine metadata and lifecycle
+  // lines; these captures document the full transcript.
+  await feedPanel.getByTestId("session-view-full").click();
   return feedPanel;
 }
 

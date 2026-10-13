@@ -12,6 +12,47 @@ function Publisher({ owner, items }) {
   useThreadActivityFragments(owner, items);
   return null;
 }
+test("thread scope changes clear activity without remounting the focused composer", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const fragments = (text) => [
+    {
+      id: "same-event-slot",
+      afterMessageId: "prompt",
+      timestamp: "1",
+      content: text,
+    },
+  ];
+  const a = fragments("A activity");
+  const b = fragments("B activity");
+  const tree = (scopeKey, items) =>
+    h(
+      ThreadSessionTimelineProvider,
+      { scopeKey },
+      items ? h(Publisher, { key: scopeKey, owner: "agent", items }) : null,
+      h(ThreadSessionActivitySlot, { messageId: "prompt" }),
+      h("input", { defaultValue: "Unsent draft" }),
+    );
+  try {
+    await act(async () => root.render(tree("A", a)));
+    const composer = container.querySelector("input");
+    composer.focus();
+    await act(async () => root.render(tree("B", b)));
+    assert.equal(container.textContent, "B activity");
+    assert.equal(container.querySelector("input"), composer);
+    assert.equal(document.activeElement, composer);
+    assert.equal(composer.value, "Unsent draft");
+    await act(async () => root.render(tree("A", null)));
+    assert.equal(container.textContent, "");
+    assert.equal(container.querySelector("input"), composer);
+    await act(async () => root.render(tree("A", a)));
+    assert.equal(container.textContent, "A activity");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
 test("activity slots interleave independent agents, update in place and remove unmounted owners", async () => {
   const container = document.createElement("div");
   document.body.append(container);
