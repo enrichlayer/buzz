@@ -1,0 +1,27 @@
+[Unit]
+Description=Buzz pilot persistent Postgres
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Container]
+ContainerName=buzz-relay-pilot-postgres
+Image={{ buzz_pilot_postgres_image }}
+Pull=never
+Network=buzz-relay-pilot.network
+NetworkAlias=buzz-relay-pilot-postgres
+EnvironmentFile=/etc/buzz-relay-pilot/postgres.env
+Volume=buzz-relay-pilot-postgres.volume:/var/lib/postgresql/data
+PodmanArgs=--memory=1g --cpus=1 --pids-limit=256
+HealthCmd=pg_isready -U buzz -d buzz
+HealthInterval=10s
+HealthRetries=12
+HealthStartPeriod=30s
+
+[Service]
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=120
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target
