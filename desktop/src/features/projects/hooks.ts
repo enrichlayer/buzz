@@ -73,6 +73,7 @@ import {
   PROJECT_QUERY_STRUCTURAL_SHARING,
 } from "./projectSnapshot";
 import { projectMatchesRouteId } from "./projectRoutes";
+import { useRefreshingReviewQuery } from "./useRefreshingReviewQuery";
 
 export { fetchProjects } from "./projectFetch";
 export { projectsQueryKey };
@@ -818,7 +819,7 @@ export function useProjectIssuesQuery(project: Repository | null | undefined) {
 export function useProjectPullRequestsQuery(
   project: Repository | null | undefined,
 ) {
-  return useQuery({
+  return useRefreshingReviewQuery({
     enabled: Boolean(project),
     queryKey: ["project", project?.id ?? "none", "pull-requests"],
     queryFn: () => {
