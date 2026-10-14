@@ -8,6 +8,10 @@
 //! 4. [`AcpClient::session_prompt_with_idle_timeout`] — send prompt with idle/hard deadline, return stop reason
 //! 5. [`AcpClient::session_cancel`] / [`AcpClient::cancel_with_cleanup`] — cancel in-flight turn
 
+#[cfg(test)]
+#[path = "acp/validation_tests.rs"]
+mod validation_tests;
+
 mod launch;
 mod permissions;
 mod questions;
@@ -3445,33 +3449,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn idle_resets_on_stdout_activity() {
-        // Send valid JSON (session/update notifications) to reset the idle timer.
-        // Non-JSON lines no longer reset idle — only valid JSON notifications do.
-        let mut client = spawn_script(
-            r#"for i in $(seq 1 10); do echo '{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"agent_thought_chunk","content":{"text":"thinking"}}}}'; sleep 0.05; done; sleep 10"#,
-        )
-        .await;
-        let max_dur = std::time::Duration::from_secs(10);
-        let hard_deadline = tokio::time::Instant::now() + max_dur;
-        let start = std::time::Instant::now();
-        let result = client
-            .read_until_response_with_idle_timeout(
-                "test",
-                999,
-                std::time::Duration::from_millis(200),
-                hard_deadline,
-                max_dur,
-            )
-            .await;
-        let elapsed = start.elapsed();
-        // 10 messages × 50ms = ~500ms of activity, then idle timeout fires after 200ms more
-        assert!(elapsed >= std::time::Duration::from_millis(400));
-        assert!(elapsed < std::time::Duration::from_secs(3));
-        assert!(matches!(result, Err(AcpError::IdleTimeout(_))));
-    }
-
-    #[tokio::test]
     async fn response_returned_when_matching_id_arrives() {
         let mut client =
             spawn_script(r#"echo '{"jsonrpc":"2.0","id":42,"result":{"stopReason":"end_turn"}}'"#)
@@ -3923,34 +3900,6 @@ mod tests {
         assert!(!claude_cli_accepts_thinking_display(&cmd).await);
         cmd.env("CLAUDE_CODE_EXECUTABLE", "");
         assert!(!claude_cli_accepts_thinking_display(&cmd).await);
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn claude_version_timeout_kills_launcher_children() {
-        let dir = std::env::temp_dir().join(format!("buzz-acp-hang-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).expect("create dir");
-        let pidfile = dir.join("child.pid");
-        // A launcher that starts a child holding stdout open, then hangs.
-        let mut cmd = tokio::process::Command::new("sh");
-        cmd.arg("-c")
-            .arg(format!("sleep 300 & echo $! > {}; wait", pidfile.display()));
-        configure_version_probe(&mut cmd);
-        let child = cmd.spawn().expect("spawn launcher");
-        let version = claude_version_within(child, std::time::Duration::from_millis(500)).await;
-        assert_eq!(version, None);
-        let grandchild = std::fs::read_to_string(&pidfile).expect("pidfile");
-        let grandchild = nix::unistd::Pid::from_raw(grandchild.trim().parse().expect("pid"));
-        let mut alive = true;
-        for _ in 0..50 {
-            alive = nix::sys::signal::kill(grandchild, None).is_ok();
-            if !alive {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-        }
-        std::fs::remove_dir_all(&dir).expect("remove dir");
-        assert!(!alive, "the launcher's child must not outlive the timeout");
     }
 
     /// Spawn a fake `claude-agent-acp` whose `CLAUDE_CODE_EXECUTABLE` is a
