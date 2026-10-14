@@ -34,8 +34,12 @@ with open(os.environ["RECORD"], "a") as f:
         "dev_debug": os.environ.get("CARGO_PROFILE_DEV_DEBUG"),
         "test_debug": os.environ.get("CARGO_PROFILE_TEST_DEBUG")}) + "\n")
 if name == "just":
+    if sys.argv[1] == "test-unit":
+        assert not (target / "test-objects").exists(), "Clippy objects were retained"
+    target.mkdir(parents=True, exist_ok=True)
     (target / "test-objects").write_text("generated")
-    sys.exit(int(os.environ.get("JUST_EXIT", "0")))
+    if os.environ.get("JUST_FAIL_PHASE", sys.argv[1]) == sys.argv[1]:
+        sys.exit(int(os.environ.get("JUST_EXIT", "0")))
 if name == "cargo" and sys.argv[1] == "clean":
     assert sys.argv[2:] == ["--target-dir", str(target)]
     assert target.parent == pathlib.Path.cwd() / ".tmp"
@@ -83,9 +87,9 @@ if name == "cargo" and sys.argv[1] == "build":
         result = self.run_check()
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         records = [json.loads(line) for line in self.record.read_text().splitlines()]
-        checks = next(r for r in records if r["name"] == "just")
+        checks = [r for r in records if r["name"] == "just"]
         self.assertEqual(
-            checks["args"],
+            [arg for r in checks for arg in r["args"]],
             [
                 "fmt-check",
                 "clippy",
@@ -104,10 +108,23 @@ if name == "cargo" and sys.argv[1] == "build":
             )
         )
         self.assertEqual(
-            [r["args"][0] for r in records if r["name"] == "cargo"], ["clean", "build"]
+            [r["args"][0] for r in records if r["name"] == "cargo"],
+            ["clean", "clean", "build"],
         )
         self.assertEqual((self.shared / "keep").read_text(), "peer cache")
         self.assertTrue(
+            (self.root / ".tmp/factory-artifacts/buzz-linux.tar.gz").is_file()
+        )
+
+    def test_unit_failure_after_clippy_cleanup_preserves_verdict(self):
+        result = self.run_check(JUST_EXIT="19", JUST_FAIL_PHASE="test-unit")
+        self.assertEqual(result.returncode, 19, result.stderr + result.stdout)
+        records = [json.loads(line) for line in self.record.read_text().splitlines()]
+        self.assertEqual(
+            [r["args"][0] for r in records if r["name"] == "cargo"], ["clean"]
+        )
+        self.assertEqual((self.shared / "keep").read_text(), "peer cache")
+        self.assertFalse(
             (self.root / ".tmp/factory-artifacts/buzz-linux.tar.gz").is_file()
         )
 
