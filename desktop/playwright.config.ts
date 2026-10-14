@@ -19,6 +19,7 @@ export default defineConfig({
     {
       name: "smoke",
       testMatch: [
+        "**/project-review-workspace.spec.ts",
         "**/smoke.spec.ts",
         "**/mock-subscription-readiness.spec.ts",
         "**/owned-agent-discovery.spec.ts",
@@ -190,6 +191,7 @@ export default defineConfig({
     {
       name: "integration",
       testMatch: [
+        "**/project-review-workspace.live.spec.ts",
         "**/agents.spec.ts",
         "**/agent-availability.spec.ts",
         "**/agent-snapshot-recipient.spec.ts",

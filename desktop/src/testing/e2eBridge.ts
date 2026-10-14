@@ -13170,7 +13170,7 @@ export function maybeInstallE2eTauriMocks() {
               patch: [
                 "@@ -1,6 +1,8 @@",
                 ' import { Tabs } from "@/shared/ui/tabs";',
-                "",
+                " ",
                 "-function CommunityTabs() {",
                 "+function CommunityTabs({ selectedCommitHash }) {",
                 '+  const [selectedTab, setSelectedTab] = useState("overview");',

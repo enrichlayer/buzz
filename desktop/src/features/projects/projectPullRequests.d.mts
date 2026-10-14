@@ -18,6 +18,9 @@ export type ProjectPullRequestComment = {
   createdAt: number;
   commit: string | null;
   anchor: ProjectPullRequestCommentAnchor | null;
+  repoAddress?: string | null;
+  replyTo?: string | null;
+  threadAction?: "resolve" | "reopen" | null;
   inlineCommentStatus: "current" | "outdated" | null;
   isInlineComment: boolean;
   isApproval: boolean;

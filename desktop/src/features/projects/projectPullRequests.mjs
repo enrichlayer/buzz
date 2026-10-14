@@ -40,10 +40,17 @@ function latestStatusForPullRequest(pullRequest, statusEvents) {
 
 function eventsForPullRequest(pullRequestId, events) {
   return events
-    .filter((event) =>
-      event.tags.some(
-        (tag) => (tag[0] === "e" || tag[0] === "E") && tag[1] === pullRequestId,
-      ),
+    .filter(
+      (event) =>
+        (!event.tags.some((tag) => tag[0] === "e" && tag[3] === "reply") ||
+          event.tags.some(
+            (tag) =>
+              tag[0] === "e" && tag[3] === "root" && tag[1] === pullRequestId,
+          )) &&
+        event.tags.some(
+          (tag) =>
+            (tag[0] === "e" || tag[0] === "E") && tag[1] === pullRequestId,
+        ),
     )
     .sort((left, right) => left.created_at - right.created_at);
 }
@@ -201,6 +208,17 @@ function eventToPullRequestComment(event) {
     createdAt: event.created_at,
     commit: getTag(event, "c") ?? null,
     anchor,
+    repoAddress: getTag(event, "a") ?? null,
+    replyTo:
+      event.tags.find((tag) => tag[0] === "e" && tag[3] === "reply")?.[1] ??
+      null,
+    threadAction:
+      labels.includes("review-thread-resolve") !==
+      labels.includes("review-thread-reopen")
+        ? labels.includes("review-thread-resolve")
+          ? "resolve"
+          : "reopen"
+        : null,
     isInlineComment:
       Boolean(anchor) || labels.includes(PR_INLINE_COMMENT_LABEL),
     isApproval,
