@@ -21,6 +21,7 @@ import {
 import { useProjectBranchActions } from "@/features/projects/branchMutations";
 import { useOptimisticProjectBranches } from "@/features/projects/useOptimisticProjectBranches";
 import { useProjectRepositoryRefSelection } from "@/features/projects/useProjectRepositoryRefSelection";
+import { useReconcileProjectRepositorySource } from "@/features/projects/useReconcileProjectRepositorySource";
 import { useUpdateProjectPullRequestMutation } from "@/features/projects/pullRequestMutations";
 import { useCreateProjectIssueMutation } from "@/features/projects/issueMutations";
 import { UserProfilePanel } from "@/features/profile/ui/UserProfilePanel";
@@ -452,30 +453,16 @@ export function ProjectDetailScreen(props: ProjectDetailScreenProps) {
       setSelectedCommitHash(null);
     }
   }, [projectPending, repository]);
-  React.useEffect(() => {
-    if (selectedTag) {
-      if (repoSource !== "remote") setRepoSource("remote");
-      return;
-    }
-    if (repoSource === "local" && !hasLocalCheckout) {
-      setRepoSource("remote");
-      return;
-    }
-    if (
-      !selectedPullRequestId &&
-      repoSource === "remote" &&
-      !snapshotHasContent(displayedRepoSnapshot) &&
-      hasLocalCheckout
-    ) {
-      setRepoSource("local");
-    }
-  }, [
-    displayedRepoSnapshot,
+  useReconcileProjectRepositorySource({
     hasLocalCheckout,
-    repoSource,
+    localCheckoutPending:
+      localRepoSnapshotQuery.isPending || repoSyncStatusQuery.isPending,
+    remoteHasContent: snapshotHasContent(displayedRepoSnapshot),
     selectedPullRequestId,
     selectedTag,
-  ]);
+    setSource: setRepoSource,
+    source: repoSource,
+  });
   const {
     contributorActivityCounts,
     contributorPubkeys,

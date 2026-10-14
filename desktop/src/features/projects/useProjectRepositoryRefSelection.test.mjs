@@ -93,3 +93,70 @@ test("selections survive option refreshes within the same repository", async () 
   assert.equal(result.current.activeBranch, "release");
   assert.equal(result.current.selectedTag, "v1");
 });
+
+test("an unpublished local branch survives remote-only option refreshes", async () => {
+  const { act, rerender, result } = await renderSelection(REPO_A);
+  act(() => result.current.selectBranch("local-review"));
+  rerender({ ...REPO_A, branchOptions: ["main", "release"] });
+  assert.equal(result.current.activeBranch, "local-review");
+  rerender(REPO_B);
+  assert.equal(result.current.activeBranch, "trunk");
+});
+
+async function renderSource(initialProps) {
+  const React = await import("react");
+  const { renderHook } = await import("@testing-library/react");
+  const { useReconcileProjectRepositorySource } = await import(
+    "./useReconcileProjectRepositorySource.ts"
+  );
+  return renderHook(
+    (props) => {
+      const [source, setSource] = React.useState(props.initialSource);
+      useReconcileProjectRepositorySource({ ...props, source, setSource });
+      return source;
+    },
+    { initialProps },
+  );
+}
+
+const LOCAL_SOURCE = {
+  initialSource: "local",
+  hasLocalCheckout: true,
+  localCheckoutPending: false,
+  remoteHasContent: true,
+  selectedPullRequestId: null,
+  selectedTag: null,
+};
+
+test("local source survives branch query loading but resets for a missing checkout", async () => {
+  const { rerender, result } = await renderSource(LOCAL_SOURCE);
+  rerender({
+    ...LOCAL_SOURCE,
+    hasLocalCheckout: false,
+    localCheckoutPending: true,
+  });
+  assert.equal(result.current, "local");
+  rerender(LOCAL_SOURCE);
+  assert.equal(result.current, "local");
+  rerender({ ...LOCAL_SOURCE, hasLocalCheckout: false });
+  assert.equal(result.current, "remote");
+});
+
+test("tag selection still uses remote data while local queries are pending", async () => {
+  const { result } = await renderSource({
+    ...LOCAL_SOURCE,
+    hasLocalCheckout: false,
+    localCheckoutPending: true,
+    selectedTag: "v1",
+  });
+  assert.equal(result.current, "remote");
+});
+
+test("an empty remote still selects a discovered checkout", async () => {
+  const { result } = await renderSource({
+    ...LOCAL_SOURCE,
+    initialSource: "remote",
+    remoteHasContent: false,
+  });
+  assert.equal(result.current, "local");
+});
