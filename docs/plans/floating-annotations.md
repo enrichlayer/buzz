@@ -43,11 +43,11 @@ native bridge; native installation checks are recorded separately.
 
 ## Integration with PR #4
 
-This branch includes `codex/DEV-11526-buzz-output-modes` at `5ae03ed` and
-preserves its integrated transcript and expandable annotation quote receipts.
+This branch builds on `codex/DEV-11526-buzz-output-modes` (merged to `main` as
+PR #4) and preserves its integrated transcript and expandable annotation quote receipts.
 Each interleaved activity fragment registers its own annotation destination.
 New receipts use a neutral Selection label; existing Response receipts continue
-to parse and render. The PR targets that branch until its dependency merges.
+to parse and render. The PR targets `main`.
 
 The four overlapping files were reconciled in this checkout without editing the
 peer checkout. TypeScript, the e2e frontend build and 16 focused annotation and
