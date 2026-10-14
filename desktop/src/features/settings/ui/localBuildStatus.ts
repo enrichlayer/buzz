@@ -1,6 +1,5 @@
 export interface LocalBuildInfo {
   version: string;
-  builtAtMs?: string;
   buildNumber: string;
   revision: string;
   sourceState: "clean" | "modified" | "unknown";

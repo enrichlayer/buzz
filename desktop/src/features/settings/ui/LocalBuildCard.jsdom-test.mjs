@@ -41,7 +41,6 @@ test("installed metadata and native copy work alongside plugin requirements", as
         revision: "a".repeat(40),
         repository: "https://github.com/enrichlayer/buzz",
         sourceState: "clean",
-        builtAtMs: "1791580000000",
       };
     },
   };

@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-[[ "$(uname -s)" == Darwin ]] || { echo 'This installer supports macOS. Use local-install.mjs start on other platforms.' >&2; exit 1; }
+[[ "$(uname -s)" == Darwin ]] || { echo 'This installer supports macOS. Use node scripts/local-install.mjs start on other platforms.' >&2; exit 1; }
 [[ -z "$(git status --porcelain --untracked-files=normal)" ]] || { echo 'Refusing modified checkout; preserve/commit changes first.' >&2; exit 1; }
 refuse_running() {
   if pgrep -f "Buzz Local Coding.app/Contents/MacOS" >/dev/null; then
@@ -12,6 +12,22 @@ refuse_running() {
   fi
 }
 refuse_running
+# One installer at a time: concurrent runs could delete each other's backup
+# before a failed placement restores it. mkdir is atomic; macOS has no flock.
+LOCK="$HOME/Applications/.buzz-local-install.lock"
+mkdir -p "$HOME/Applications"
+if ! mkdir "$LOCK" 2>/dev/null; then
+  holder="$(cat "$LOCK/pid" 2>/dev/null || true)"
+  if [[ -n "$holder" ]] && kill -0 "$holder" 2>/dev/null; then
+    echo "Another Buzz Local Coding install is running (pid $holder). Wait for it to finish." >&2
+    exit 1
+  fi
+  # The previous holder exited without releasing; take the lock over.
+  rm -rf "$LOCK"
+  mkdir "$LOCK" || { echo "Could not acquire $LOCK; another install just started." >&2; exit 1; }
+fi
+echo $$ > "$LOCK/pid"
+trap 'rm -rf "$LOCK"' EXIT
 . ./bin/activate-hermit
 pnpm install --frozen-lockfile
 TARGET="$(rustc -vV | sed -n 's/^host: //p')"
@@ -34,7 +50,7 @@ APP="$DESKTOP_TARGET/debug/bundle/macos/Buzz Local Coding.app"
 DEST="$HOME/Applications/Buzz Local Coding.app"
 mkdir -p "$HOME/Applications"
 STAGED="$(mktemp -d "$HOME/Applications/.buzz-local-install.XXXXXX")"
-trap 'rm -f "$CONFIG"; if [[ -d "$STAGED" ]]; then echo "Staged build retained for recovery: $STAGED" >&2; fi' EXIT
+trap 'rm -rf "$LOCK"; rm -f "$CONFIG"; if [[ -d "$STAGED" ]]; then echo "Staged build retained for recovery: $STAGED" >&2; fi' EXIT
 ditto "$APP" "$STAGED/Buzz Local Coding.app"
 BUNDLE="$STAGED/Buzz Local Coding.app"
 # Sign nested code first, without entitlements: camera, microphone and

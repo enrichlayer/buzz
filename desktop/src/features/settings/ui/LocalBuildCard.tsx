@@ -60,13 +60,6 @@ export function LocalBuildCard() {
           {info.repository}
           <br />
           {info.revision} · {info.sourceState}
-          <br />
-          Built:{" "}
-          {info.builtAtMs &&
-          Number.isFinite(Number(info.builtAtMs)) &&
-          !Number.isNaN(new Date(Number(info.builtAtMs)).getTime())
-            ? new Date(Number(info.builtAtMs)).toLocaleString()
-            : "unavailable"}
         </p>
       )}
       <p role="status">{status}</p>

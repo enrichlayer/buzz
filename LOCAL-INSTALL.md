@@ -55,7 +55,7 @@ node scripts/local-install.mjs plugins
 
 In **Settings → Plugins**, choose each printed JSON file and Install. Review,
 Feedback, Runbook and Session demo require stable 1.x versions (minimum 1.0.0).
-The compatibility panel lists Missing, Disabled, Incompatible or Ready. The
+The compatibility panel lists each plugin's status, such as Missing, Disabled, Incompatible or Ready. The
 preexisting `test.session-card` renderer is also accepted. An unrelated renderer
 using the same fence is flagged for review. Do not remove a renderer blindly;
 use Update only when you intend to replace that same plugin ID. Plugins are
@@ -69,7 +69,7 @@ shows a setup notice.
 running binary's metadata through DEV-12462's `get_app_build_info` API. Copy build
 info when reporting a problem. Older binaries say identity is unavailable rather
 than guessing from the current checkout. The existing native identity owner
-provides version, build number, revision and modified-source state. The build date is captured at compilation; automatic signed distribution remains with DEV-12467.
+provides version, build number, revision and modified-source state. Automatic signed distribution remains with DEV-12467.
 
 **Check demo channel** compares that embedded revision with the configured demo
 branch on GitHub. Exact clean matches say Current. A different revision says

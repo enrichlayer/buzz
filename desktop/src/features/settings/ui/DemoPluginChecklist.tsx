@@ -27,9 +27,9 @@ export function DemoPluginChecklist() {
         </ul>
       )}
       <p>
-        Import the JSON files from docs/examples/runtime-plugins in your local
-        checkout below. Keep an existing compatible renderer; do not remove it
-        to install a duplicate.
+        Use the Install or update section below to import the JSON files from
+        docs/examples/runtime-plugins in your local checkout. Keep an existing
+        compatible renderer; do not remove it to install a duplicate.
       </p>
     </div>
   );
