@@ -142,5 +142,6 @@ test("agent-requested access edits preserve thread-scoped conversation context",
     respondToAllowlist: undefined,
     parallelism: 3,
     sessionPolicy: "thread",
+    outputMode: "full",
   });
 });

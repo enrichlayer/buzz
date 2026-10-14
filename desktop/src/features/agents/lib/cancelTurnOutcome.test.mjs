@@ -3,12 +3,13 @@ import test from "node:test";
 
 import { awaitCancelTurnOutcome } from "./cancelTurnOutcome.ts";
 
-function harness(sendCancel = async () => {}) {
+function harness(sendCancel = async () => {}, threadRootEventId) {
   let listener;
   let timeout;
   let unsubscribed = false;
   let timeoutCancelled = false;
   const outcome = awaitCancelTurnOutcome({
+    threadRootEventId,
     requestId: "request-a",
     channelId: "channel-a",
     subscribe: (fn) => {
@@ -98,5 +99,22 @@ test("a late transport rejection does not replace the settled result", async () 
   assert.equal(await h.outcome, "unconfirmed");
   rejectSend(new Error("late transport error"));
   await new Promise((resolve) => setImmediate(resolve));
+  h.assertCleaned();
+});
+
+test("thread stop requires the scoped command and exact root, never a legacy ack", async () => {
+  const h = harness(undefined, "root-a");
+  h.push("sent");
+  h.push("sent", { type: "cancel_thread_turn", threadRootEventId: "root-b" });
+  h.push("sent", { type: "cancel_thread_turn" });
+  h.timeout();
+  assert.equal(await h.outcome, "unconfirmed");
+  h.assertCleaned();
+});
+
+test("thread stop settles for the exact scoped acknowledgement", async () => {
+  const h = harness(undefined, "root-a");
+  h.push("sent", { type: "cancel_thread_turn", threadRootEventId: "root-a" });
+  assert.equal(await h.outcome, "sent");
   h.assertCleaned();
 });

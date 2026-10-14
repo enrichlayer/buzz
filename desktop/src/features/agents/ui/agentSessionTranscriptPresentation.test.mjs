@@ -41,7 +41,7 @@ function makeMessage(overrides = {}) {
 }
 
 test("getActivityHeadline formats tool titles and assistant text", () => {
-  assert.equal(getActivityHeadline(makeTool()), "Send Message · abc");
+  assert.equal(getActivityHeadline(makeTool()), "Posting reply · abc");
   assert.equal(
     getActivityHeadline(makeMessage({ text: "First line\nSecond line" })),
     "First line",
@@ -128,7 +128,7 @@ test("getActivityHeadline uses semantic tool descriptors", () => {
         },
       }),
     ),
-    "Send Message · hi",
+    "Posting reply · hi",
   );
 });
 
@@ -225,7 +225,7 @@ test("two-tier headline: metadata excluded when spine work is present", () => {
     "System prompt should not headline when spine work exists",
   );
   assert.ok(
-    headlines.some((h) => h?.includes("Send Message")),
+    headlines.some((h) => h?.includes("Posting reply")),
     "Tool headline should appear",
   );
 });

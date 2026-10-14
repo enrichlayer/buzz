@@ -26,6 +26,7 @@ fn refresh_builtin_agent_avatars_updates_seeded_values_and_preserves_customizati
     ];
     let definition = crate::managed_agents::AgentDefinition {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         description: None,
         id: "builtin:fizz".to_string(),
         display_name: "Fizz".to_string(),
