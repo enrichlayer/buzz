@@ -48,19 +48,32 @@ jobs:
           tar -czf staged/buzz-cli-macos.tar.gz -C target/release buzz
       - name: Package private unsigned validation app
         env:
-          BUZZ_BUILD_DEMO_SLUG: validation
-          BUZZ_TEST_EXPECTED_DEMO_SLUG: validation
           CMAKE_POLICY_VERSION_MINIMUM: '3.5'
           MACOSX_DEPLOYMENT_TARGET: '10.15'
           CMAKE_OSX_DEPLOYMENT_TARGET: '10.15'
         run: |
           set -euo pipefail
-          cat > desktop/src-tauri/tauri.validation.conf.json <<'JSON'
-          {"identifier":"com.enrichlayer.buzz.validation","bundle":{"createUpdaterArtifacts":false},"plugins":{"updater":{"endpoints":[]},"deep-link":{"desktop":{"schemes":["buzz-demo-validation"]}}}}
-          JSON
-          cargo test --manifest-path desktop/src-tauri/Cargo.toml --lib build_identity::tests::compiled_demo_slug_matches_expected -- --ignored --exact
-          (cd desktop && pnpm tauri build --no-sign --bundles app --config src-tauri/tauri.validation.conf.json) 2>&1 | tee staged/native-packaging.log
-          tar -czf staged/Buzz-validation.app.tar.gz -C desktop/src-tauri/target/release/bundle/macos Buzz.app
+          # Two native clients exercise normal Keychain persistence independently.
+          # These are app namespaces, never injected Nostr identities.
+          for slug in validation validation-author; do
+            export BUZZ_BUILD_DEMO_SLUG="$slug"
+            export BUZZ_TEST_EXPECTED_DEMO_SLUG="$slug"
+            python3 - <<'PYCONFIG'
+          import json, os
+          from pathlib import Path
+          slug = os.environ["BUZZ_BUILD_DEMO_SLUG"]
+          assert slug in ("validation", "validation-author")
+          Path("desktop/src-tauri/tauri.validation.conf.json").write_text(json.dumps({
+              "identifier": f"com.enrichlayer.buzz.{slug}",
+              "bundle": {"createUpdaterArtifacts": False},
+              "plugins": {"updater": {"endpoints": []},
+                          "deep-link": {"desktop": {"schemes": [f"buzz-demo-{slug}"]}}},
+          }))
+          PYCONFIG
+            cargo test --manifest-path desktop/src-tauri/Cargo.toml --lib build_identity::tests::compiled_demo_slug_matches_expected -- --ignored --exact 2>&1 | tee "staged/native-identity-$slug.log"
+            (cd desktop && pnpm tauri build --no-sign --bundles app --config src-tauri/tauri.validation.conf.json) 2>&1 | tee "staged/native-packaging-$slug.log"
+            tar -czf "staged/Buzz-$slug.app.tar.gz" -C desktop/src-tauri/target/release/bundle/macos Buzz.app
+          done
       - name: Verify private R2 artifact round trip
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.BUZZ_BUILD_R2_ACCESS_KEY_ID }}
