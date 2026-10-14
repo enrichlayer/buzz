@@ -1,4 +1,5 @@
 import * as React from "react";
+import { AdaptiveSegmentedControl } from "@/shared/ui/adaptive-segmented-control";
 import { DiffViewer } from "@/features/messages/ui/DiffViewer";
 import { copyTextToClipboard } from "@/shared/lib/clipboard";
 import { Button } from "@/shared/ui/button";
@@ -40,6 +41,7 @@ function RuntimeActionButton({
   };
   return (
     <Button
+      className="h-auto min-h-8 max-w-full whitespace-normal py-1.5"
       data-runtime-action={action.kind}
       disabled={unavailable}
       onClick={run}
@@ -87,10 +89,14 @@ function RuntimeForm({
     null,
   );
 
+  // Reset only when the initial content changes: a re-render that hands back
+  // an equal manifest or payload must not discard the user's choices.
+  const initialValuesKey = JSON.stringify(initialValues);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: initialValuesKey is the content identity of initialValues
   React.useEffect(() => {
     setValues(initialValues);
     setValidationError(null);
-  }, [initialValues]);
+  }, [initialValuesKey]);
 
   const submit = () => {
     const missing = block.fields.find((field) => {
@@ -155,6 +161,52 @@ function RuntimeForm({
             </label>
           );
         }
+        if (field.type === "select") {
+          const selectedValue = String(
+            values[field.id] ?? field.options?.[0] ?? "",
+          );
+          const change = (value: string) => {
+            setValidationError(null);
+            setValues((current) => ({ ...current, [field.id]: value }));
+          };
+          const dropdown = (
+            <select
+              className="flex h-9 min-w-0 w-full rounded-lg border border-input/40 bg-background px-3 text-sm focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+              id={inputId}
+              onChange={(event) => change(event.target.value)}
+              required={field.required}
+              value={selectedValue}
+            >
+              {field.options?.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          );
+          return (
+            <div className="space-y-1 text-sm" key={field.id}>
+              <label className="font-medium" htmlFor={inputId}>
+                {field.label}
+              </label>
+              {field.presentation === "segmented" ? (
+                <AdaptiveSegmentedControl
+                  fallback={dropdown}
+                  id={inputId}
+                  legend={field.label}
+                  onValueChange={change}
+                  options={(field.options ?? []).map((option) => ({
+                    label: option,
+                    value: option,
+                  }))}
+                  value={selectedValue}
+                />
+              ) : (
+                dropdown
+              )}
+            </div>
+          );
+        }
         return (
           <label
             className="block space-y-1 text-sm"
@@ -176,26 +228,6 @@ function RuntimeForm({
                 required={field.required}
                 value={String(values[field.id] ?? "")}
               />
-            ) : field.type === "select" ? (
-              <select
-                className="flex h-9 w-full rounded-lg border border-input/40 bg-background px-3 text-sm focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-                id={inputId}
-                onChange={(event) => {
-                  setValidationError(null);
-                  setValues((current) => ({
-                    ...current,
-                    [field.id]: event.target.value,
-                  }));
-                }}
-                required={field.required}
-                value={String(values[field.id] ?? field.options?.[0] ?? "")}
-              >
-                {field.options?.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
             ) : (
               <Input
                 id={inputId}
@@ -220,6 +252,7 @@ function RuntimeForm({
         </p>
       ) : null}
       <Button
+        className="h-auto min-h-8 max-w-full whitespace-normal py-1.5"
         data-runtime-action={block.submit.kind}
         disabled={submitUnavailable}
         size="sm"
@@ -350,7 +383,7 @@ export function RuntimePluginRenderer({
   return (
     <section
       aria-label={`${manifest.name} plugin content`}
-      className="my-2 space-y-3 rounded-2xl border border-border/70 bg-background/70 p-4"
+      className="my-2 min-w-0 space-y-3 rounded-2xl border border-border/70 bg-background/70 p-4 [overflow-wrap:anywhere]"
       data-runtime-plugin={manifest.id}
     >
       <RuntimeBlocks blocks={manifest.blocks} data={parsed.data} />
