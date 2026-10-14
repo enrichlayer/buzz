@@ -140,6 +140,7 @@ export function useLoadArchivedObserverEvents(
   const [hasOlderArchived, setHasOlderArchived] = React.useState(
     ps.hasOlderArchived,
   );
+  const [archiveError, setArchiveError] = React.useState<string | null>(null);
 
   // Reset per-channel paging state when channelId changes. Backfill state is
   // identity-level (not per-channel) and must NOT be reset here — the backfill
@@ -152,6 +153,7 @@ export function useLoadArchivedObserverEvents(
   React.useEffect(() => {
     applyChannelReset(ps, channelId);
     setHasOlderArchived(true);
+    setArchiveError(null);
   }, [channelId]);
 
   // Check for an owner_p subscription once per identity.
@@ -312,6 +314,7 @@ export function useLoadArchivedObserverEvents(
     // block only releases the lock if the generation still matches — so a stale
     // in-flight request cannot clear the lock that belongs to a later reset.
     ps.isFetching = true;
+    setArchiveError(null);
     try {
       const before = ps.cursor ?? undefined;
       const events = await readArchivedObserverEventsForChannel(channelId, {
@@ -352,7 +355,13 @@ export function useLoadArchivedObserverEvents(
         ps.hasOlderArchived = false;
       }
     } catch (error) {
-      console.error("[useLoadArchivedObserverEvents] fetch failed:", error);
+      if (requestGeneration === ps.resetGeneration) {
+        setArchiveError(
+          `Could not load older session activity: ${
+            error instanceof Error ? error.message : "archive read failed"
+          }`,
+        );
+      }
     } finally {
       // Only release the fetch lock if this request still owns it. If the
       // generation advanced (any channel switch including A→B→A), the new
@@ -405,5 +414,5 @@ export function useLoadArchivedObserverEvents(
     };
   }, [enabled, identityPubkey, hasSubscription, channelId]);
 
-  return { fetchOlderArchived, hasOlderArchived };
+  return { archiveError, fetchOlderArchived, hasOlderArchived };
 }

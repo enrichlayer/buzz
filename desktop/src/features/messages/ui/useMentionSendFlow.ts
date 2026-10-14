@@ -1,4 +1,5 @@
 import * as React from "react";
+import { shellCommandTags } from "@/features/messages/lib/shellCommand";
 import { claimDraftSend } from "@/features/messages/lib/useDrafts";
 import { toast } from "sonner";
 import {
@@ -460,6 +461,13 @@ export function useMentionSendFlow({
           ...readyAgentPubkeys,
           ...agentMentionPubkeys,
         ]);
+        shellCommandTags(
+          draft.trimmed,
+          admittedMentionPubkeys,
+          preparedAgentPubkeys,
+          draft.savedImeta.length > 0 || draft.queuedAttachments.length > 0,
+          draft.savedMentionRefs.map((ref) => ref.displayName),
+        );
         let sendChannelId = draft.capturedChannelId;
         if (preparedAgentPubkeys.length > 0 && onPrepareSendChannel) {
           sendChannelId = await onPrepareSendChannel(preparedAgentPubkeys);
@@ -563,15 +571,25 @@ export function useMentionSendFlow({
             );
           if (signal?.aborted || isSendCancelled())
             return restoreComposerAfterFailure();
+          const directCommandTags = shellCommandTags(
+            draft.trimmed,
+            revalidatedMentionPubkeys,
+            preparedAgentPubkeys,
+            false,
+            draft.savedMentionRefs.map((ref) => ref.displayName),
+          );
           const finalTagsWithAgentAddress = [
             ...finalOutgoingTags,
+            ...directCommandTags,
             ...buildAgentAddressMentionTags(
               draft.addressedAgentPubkeys,
               revalidatedMentionPubkeys,
             ),
           ];
           await send(
-            finalContent,
+            directCommandTags.length
+              ? `!${directCommandTags[0][3]}`
+              : finalContent,
             revalidatedMentionPubkeys,
             finalTagsWithAgentAddress,
             sendChannelId,

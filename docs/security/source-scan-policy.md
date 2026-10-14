@@ -20,6 +20,20 @@ other secrets in the same file. The rule-targeted form avoids that early skip.
 The path suffix accommodates both a repository root and the review carrier's
 `tree/` prefix, including an absolute temporary root.
 
+## Protected policy reconciliation
+
+PR #29 introduced broader path-based triage on protected main at
+`425584ac84134118c91728f985348c0af09704b0`. This change replaces those exceptions
+with the exact path, rule and matched-value entries above. The same 60 classified
+findings remain after integrating that main revision; the changed-value,
+same-path new-secret and moved-fixture controls remain required. Test files and
+lockfiles must still be scanned for newly introduced secrets.
+
+The immutable Factory source-validation lane reads `.gitleaks.toml` from the
+validated source snapshot. A new protected-main policy does not retroactively
+change an older snapshot. Independent reviewer source screening is a separate
+Tools-owned policy and must report its own deployed policy identity.
+
 ## Reproduce the evidence
 
 Install the pinned Gitleaks version, then run from this checkout:
