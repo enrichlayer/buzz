@@ -41,7 +41,7 @@ pub enum PersonaError {
     TooLarge(String),
 
     #[error("failed to parse YAML frontmatter: {0}")]
-    Yaml(#[from] serde_yaml::Error),
+    Yaml(#[from] serde_saphyr::Error),
 
     #[error("missing required field: {0}")]
     MissingField(String),
@@ -215,7 +215,10 @@ pub fn parse_persona_md(content: &str) -> Result<PersonaConfig, PersonaError> {
         return Err(PersonaError::BodyTooLarge);
     }
 
-    let fm: Frontmatter = serde_yaml::from_str(fm_str)?;
+    let fm: Frontmatter = serde_saphyr::from_str_with_options(
+        fm_str,
+        serde_saphyr::options! { strict_booleans: true, merge_keys: serde_saphyr::options::MergeKeyPolicy::AsOrdinary },
+    )?;
 
     let name = fm.name.ok_or(PersonaError::MissingField("name".into()))?;
     let display_name = fm
