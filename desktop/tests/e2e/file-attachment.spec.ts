@@ -420,6 +420,17 @@ test("upload progress floats above the dock and lifts Jump to latest", async ({
   page,
 }) => {
   await page.goto("/");
+  // Navigation can finish before the app installs its mock IPC bridge.
+  await page.waitForFunction(
+    () =>
+      typeof (
+        window as Window & {
+          __TAURI_INTERNALS__?: { invoke?: unknown };
+        }
+      ).__TAURI_INTERNALS__?.invoke === "function",
+    null,
+    { timeout: 5_000 },
+  );
   // Keep the upload pending until the real cancel action. A fixed delay can
   // finish between the visibility assertion and geometry reads on a busy host.
   await page.evaluate(() => {
