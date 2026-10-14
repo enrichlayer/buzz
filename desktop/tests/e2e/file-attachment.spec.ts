@@ -464,22 +464,21 @@ test("upload progress floats above the dock and lifts Jump to latest", async ({
 
   const timeline = page.getByTestId("message-timeline");
   await expect(timeline.locator("[data-message-id]").first()).toBeVisible();
-  await timeline.evaluate((element) => {
-    element.scrollTop = Math.max(500, element.scrollHeight / 2);
-    element.dispatchEvent(new Event("scroll", { bubbles: true }));
-  });
+  // Real reader input retires the virtualizer's sticky-bottom intent; writing
+  // scrollTop alone lets a later resize pin the timeline back to the bottom.
+  await timeline.hover();
+  await page.mouse.wheel(0, -600);
   const jumpToLatest = page.getByTestId("message-scroll-to-latest");
   await expect(jumpToLatest).toBeVisible();
+  await waitForAnimations(page);
   const restingBox = await jumpToLatest.boundingBox();
 
   await chooseLargeVideo(page);
   await page.getByTestId("send-message").click();
   const uploadMotion = page.getByTestId("composer-upload-progress-motion");
   await expect(uploadMotion).toBeVisible();
-  await timeline.evaluate((element) => {
-    element.scrollTop = Math.max(500, element.scrollHeight / 2);
-    element.dispatchEvent(new Event("scroll", { bubbles: true }));
-  });
+  await timeline.hover();
+  await page.mouse.wheel(0, -600);
   await expect(jumpToLatest).toBeVisible();
   await waitForAnimations(page);
 
