@@ -31,6 +31,29 @@ jobs:
             exit 1
           fi
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      # pnpm 11 has no standalone darwin-x64 binary. Keep Hermit's other
+      # toolchain pins and use the JavaScript package at packageManager's pin.
+      - name: Install JavaScript pnpm for Intel macOS
+        id: intel_pnpm
+        if: matrix.runner == 'macos-15-intel'
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          standalone: false
+      - name: Expose JavaScript pnpm to Hermit subprocesses
+        if: matrix.runner == 'macos-15-intel'
+        env:
+          PNPM_BIN: ${{ steps.intel_pnpm.outputs.bin_dest }}
+        run: |
+          # Hermit puts bin/ first again in just/node/cargo subprocesses.
+          # Repoint only this runner checkout's launcher to the same-version JS
+          # package; changing GITHUB_PATH alone still invokes the missing binary.
+          # The action emits a relative-path shell shim, so invoke its original
+          # location through a wrapper instead of moving or symlinking that shim.
+          rm bin/pnpm
+          printf '#!/bin/sh\nexec "%s/pnpm" "$@"\n' "$PNPM_BIN" > bin/pnpm
+          chmod +x bin/pnpm
+          EXPECTED=$(node -p 'require("./package.json").packageManager.replace(/^pnpm@/, "").split("+")[0]')
+          test "$(just --command pnpm --version)" = "$EXPECTED"
       - name: Validate publisher
         run: |
           node --test desktop/scripts/build-enrichlayer-release-config.test.mjs
