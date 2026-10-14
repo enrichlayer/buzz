@@ -8,10 +8,10 @@ import type { Repository } from "./projectModels";
 /** Resolve implicit Git URLs reactively before passing a repository to queries. */
 export function useResolvedProjectRepository(
   repository: Repository | null | undefined,
-): Repository | null | undefined {
+): Repository | null {
   const relayOrigin = useRelayOrigin();
   return React.useMemo(() => {
-    if (!repository) return repository;
+    if (!repository) return null;
     // Event tags distinguish explicit URLs from a default derived for an older
     // relay origin. Older read models without tags retain their known URLs.
     const advertised = repository.eventTags

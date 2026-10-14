@@ -64,6 +64,10 @@ test("cold-start implicit URLs resolve without remounting and follow community o
     assert.equal(result.current, external);
     act(() => resetMediaCaches());
     assert.equal(result.current, external);
+    rerender(undefined);
+    assert.equal(result.current, null);
+    rerender(null);
+    assert.equal(result.current, null);
   } finally {
     unmount();
     resetMediaCaches();
