@@ -16,7 +16,8 @@ jobs:
       matrix:
         runner: [macos-15, macos-15-intel]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 120
+    # Intel's cold build and both isolated app packages exceed two hours.
+    timeout-minutes: ${{ matrix.runner == 'macos-15-intel' && 180 || 120 }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
