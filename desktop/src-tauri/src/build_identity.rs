@@ -102,6 +102,13 @@ mod tests {
         let expected = std::env::var("BUZZ_TEST_EXPECTED_DEMO_SLUG")
             .expect("BUZZ_TEST_EXPECTED_DEMO_SLUG must be set");
         assert_eq!(demo_slug(), Some(expected.as_str()));
+        assert_eq!(
+            crate::app_state::keyring_service(),
+            format!("buzz-desktop-demo.{expected}")
+        );
+        assert_eq!(deep_link_scheme(), format!("buzz-demo-{expected}"));
+        assert_eq!(nest_name(false), format!(".buzz-demo-{expected}"));
+        assert_eq!(cli_name(false), format!("buzz-demo-{expected}"));
     }
 
     #[test]
