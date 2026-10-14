@@ -1,15 +1,32 @@
 name: Enrich Layer Remote macOS Validation
+run-name: ${{ inputs.source_request != '' && format('Buzz native {0}', inputs.source_request) || 'Enrich Layer Remote macOS Validation' }}
 on:
   workflow_dispatch:
+    inputs:
+      source_request:
+        description: Admitted Factory native source request digest
+        type: string
+        required: false
+        default: ''
   workflow_call:
+    inputs:
+      source_request:
+        type: string
+        required: false
+        default: ''
 permissions:
   contents: read
 concurrency:
-  group: enrichlayer-macos-validation-${{ github.ref }}
+  group: enrichlayer-macos-validation-${{ inputs.source_request || github.ref }}
   cancel-in-progress: true
 jobs:
+  source:
+    if: github.repository == 'enrichlayer/buzz' && inputs.source_request != ''
+    uses: ./.github/workflows/enrichlayer-native-source-validation.yml
+    with:
+      source_request: ${{ inputs.source_request }}
   native:
-    if: github.repository == 'enrichlayer/buzz'
+    if: github.repository == 'enrichlayer/buzz' && inputs.source_request == ''
     environment: desktop-candidate
     strategy:
       fail-fast: false
@@ -73,14 +90,17 @@ jobs:
           tar -czf staged/buzz-cli-macos.tar.gz -C target/release buzz
       - name: Package private unsigned validation app
         env:
+          BUZZ_BUILD_DEMO_SLUG: validation
+          BUZZ_TEST_EXPECTED_DEMO_SLUG: validation
           CMAKE_POLICY_VERSION_MINIMUM: '3.5'
           MACOSX_DEPLOYMENT_TARGET: '10.15'
           CMAKE_OSX_DEPLOYMENT_TARGET: '10.15'
         run: |
           set -euo pipefail
           cat > desktop/src-tauri/tauri.validation.conf.json <<'JSON'
-          {"identifier":"com.enrichlayer.buzz.validation","bundle":{"createUpdaterArtifacts":false},"plugins":{"updater":{"endpoints":[]}}}
+          {"identifier":"com.enrichlayer.buzz.validation","bundle":{"createUpdaterArtifacts":false},"plugins":{"updater":{"endpoints":[]},"deep-link":{"desktop":{"schemes":["buzz-demo-validation"]}}}}
           JSON
+          cargo test --manifest-path desktop/src-tauri/Cargo.toml --lib build_identity::tests::compiled_demo_slug_matches_expected -- --ignored --exact
           (cd desktop && pnpm tauri build --no-sign --bundles app --config src-tauri/tauri.validation.conf.json) 2>&1 | tee staged/native-packaging.log
           tar -czf staged/Buzz-validation.app.tar.gz -C desktop/src-tauri/target/release/bundle/macos Buzz.app
       - name: Verify private R2 artifact round trip
@@ -94,7 +114,7 @@ jobs:
           "$RUNNER_TEMP/buzz-r2/bin/python" scripts/buzz-r2.py upload-build "validation/$GITHUB_SHA/$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT/$RUNNER_KIND" staged
           "$RUNNER_TEMP/buzz-r2/bin/python" scripts/buzz-r2.py fetch-build "validation/$GITHUB_SHA/$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT/$RUNNER_KIND" verified
   mobile:
-    if: github.repository == 'enrichlayer/buzz'
+    if: github.repository == 'enrichlayer/buzz' && inputs.source_request == ''
     environment: desktop-candidate
     runs-on: macos-15
     timeout-minutes: 60
