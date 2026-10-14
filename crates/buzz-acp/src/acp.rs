@@ -3645,8 +3645,7 @@ mod tests {
     async fn keepalive_resets_idle_past_deadline() {
         use tokio::io::AsyncWriteExt;
 
-        // Synchronize startup before measuring idle time: parallel suites may
-        // take longer than the idle budget just to schedule a new shell.
+        // Synchronize shell startup, then allow a full second for scheduler jitter.
         let mut client = spawn_script(
             r#"echo ready; read _start; for i in $(seq 1 20); do echo '{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"keepalive"}}}'; sleep 0.05; done; sleep 10"#,
         )
@@ -3671,20 +3670,19 @@ mod tests {
             .read_until_response_with_idle_timeout(
                 "test",
                 999,
-                std::time::Duration::from_millis(500),
+                std::time::Duration::from_secs(1),
                 hard_deadline,
                 max_dur,
             )
             .await;
         let elapsed = start.elapsed();
-        // Keepalives extend the 500ms idle budget to roughly 1500ms. Without
-        // resets it expires at 500ms, below this lower bound. A generous gap
-        // between emissions and the budget tolerates loaded test runners.
+        // ~1s of keepalives plus 1s idle should survive past the initial deadline.
+        // Keep the lower bound above idle so dropping all resets still fails.
         assert!(
-            elapsed >= std::time::Duration::from_millis(750),
+            elapsed >= std::time::Duration::from_millis(1500),
             "keepalive should reset idle past the deadline; elapsed only {elapsed:?}"
         );
-        assert!(elapsed < std::time::Duration::from_secs(10));
+        assert!(elapsed < std::time::Duration::from_secs(8));
         assert!(matches!(result, Err(AcpError::IdleTimeout(_))));
     }
 
