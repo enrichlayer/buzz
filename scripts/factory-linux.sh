@@ -14,6 +14,17 @@ export RUST_TEST_THREADS="${RUST_TEST_THREADS:-4}"
 export CARGO_INCREMENTAL=0
 export CARGO_PROFILE_DEV_DEBUG=0
 export CARGO_PROFILE_TEST_DEBUG=0
+report_failure() {
+  local status="$1"
+  if (( status != 0 )); then
+    # Factory retains a bounded stderr tail separately from the build stream.
+    # Put the actual Rust assertions there after later passing test output.
+    python3 scripts/factory-failure-summary.py .tmp/factory-artifacts/validation.log >&2 ||
+      echo 'Factory failure summary unavailable; original exit status retained' >&2
+    df -Pk "$PWD" >&2 || true
+  fi
+  exit "$status"
+}
 case "${1:-}" in
   setup)
     for tool in cc pkg-config cmake python3; do
@@ -27,6 +38,7 @@ case "${1:-}" in
     # Own this target directory exclusively: never clean a caller/shared cache.
     CARGO_TARGET_DIR="$(mktemp -d "$PWD/.tmp/factory-target.XXXXXX")"
     export CARGO_TARGET_DIR
+    trap 'report_failure $?' EXIT
     # Pipefail preserves the first failing check in the remote exit receipt.
     {
       df -Pk "$PWD"

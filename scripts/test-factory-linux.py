@@ -58,6 +58,10 @@ if name == "cargo" and sys.argv[1] == "build":
             "test-factory-linux.py",
         ):
             (self.root / "scripts" / name).write_text("pass\n")
+        shutil.copyfile(
+            SCRIPT.with_name("factory-failure-summary.py"),
+            self.root / "scripts/factory-failure-summary.py",
+        )
 
     def run_check(self, **extra):
         env = {
@@ -113,6 +117,47 @@ if name == "cargo" and sys.argv[1] == "build":
         records = [json.loads(line) for line in self.record.read_text().splitlines()]
         self.assertFalse(any(r["name"] == "cargo" for r in records))
         self.assertEqual((self.shared / "keep").read_text(), "peer cache")
+
+    def test_failed_assertion_survives_later_passing_output(self):
+        just = self.root / "bin/just"
+        just.write_text(
+            "#!/usr/bin/env python3\n"
+            "print(\"thread 'expected_panic' panicked at expected.rs:1:1:\\nexpected\")\n"
+            "print('test expected_panic ... ok')\n"
+            "print(\"thread 'acp::trust' (123) panicked at trust.rs:12:3:\\n"
+            'assertion `left == right` failed\\n  left: 401\\n right: 200")\n'
+            "print('test acp::trust ... FAILED')\n"
+            "print('passing test output\\n' * 2000)\n"
+            "raise SystemExit(19)\n"
+        )
+        result = self.run_check()
+        self.assertEqual(result.returncode, 19)
+        self.assertIn("left: 401", result.stderr[-4096:])
+        self.assertIn("right: 200", result.stderr[-4096:])
+        self.assertNotIn("expected_panic", result.stderr)
+        self.assertLess(len(result.stderr.encode()), 4096)
+
+    def test_summary_bounds_large_unicode_logs(self):
+        log = self.root / "large.log"
+        log.write_text(
+            "x" * (4 * 1024 * 1024 + 100)
+            + "\n"
+            + "\n".join(
+                f"thread 'failure_{n}' panicked at test.rs:1:1:\n"
+                + "Ω" * 2000
+                + f"\ntest failure_{n} ... FAILED\n"
+                for n in range(20)
+            )
+        )
+        result = subprocess.run(
+            ["python3", "scripts/factory-failure-summary.py", str(log)],
+            cwd=self.root,
+            capture_output=True,
+            timeout=10,
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertLessEqual(len(result.stdout), 3001)
+        self.assertIn("failure_0", result.stdout.decode("utf-8"))
 
 
 if __name__ == "__main__":
