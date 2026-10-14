@@ -420,13 +420,34 @@ test("upload progress floats above the dock and lifts Jump to latest", async ({
   page,
 }) => {
   await page.goto("/");
+  // Keep the upload pending until the real cancel action. A fixed delay can
+  // finish between the visibility assertion and geometry reads on a busy host.
   await page.evaluate(() => {
-    const e2e = (
-      window as Window & {
-        __BUZZ_E2E__?: { mock?: { uploadDelayMs?: number } };
+    const w = window as typeof window & {
+      __TAURI_INTERNALS__: {
+        invoke: (
+          command: string,
+          payload: unknown,
+          options: unknown,
+        ) => Promise<unknown>;
+      };
+    };
+    const original = w.__TAURI_INTERNALS__.invoke.bind(w.__TAURI_INTERNALS__);
+    let releaseUpload = () => {};
+    const pendingUpload = new Promise<void>((resolve) => {
+      releaseUpload = resolve;
+    });
+    w.__TAURI_INTERNALS__.invoke = async (command, payload, options) => {
+      if (
+        command === "upload_media_bytes" ||
+        command === "upload_media_bytes_raw"
+      ) {
+        await pendingUpload;
       }
-    ).__BUZZ_E2E__;
-    if (e2e?.mock) e2e.mock.uploadDelayMs = 2_000;
+      const result = await original(command, payload, options);
+      if (command === "cancel_media_upload") releaseUpload();
+      return result;
+    };
   });
   await page.getByTestId("channel-deep-history").click();
 
@@ -449,7 +470,7 @@ test("upload progress floats above the dock and lifts Jump to latest", async ({
     element.dispatchEvent(new Event("scroll", { bubbles: true }));
   });
   await expect(jumpToLatest).toBeVisible();
-  await page.waitForTimeout(250);
+  await waitForAnimations(page);
 
   const [uploadBox, dockBackdropBox, liftedBox] = await Promise.all([
     uploadMotion.boundingBox(),
