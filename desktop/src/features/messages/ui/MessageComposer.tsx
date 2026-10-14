@@ -435,7 +435,7 @@ function MessageComposerImpl({
     if (!replyTarget || composerDisabled) return;
     richText.focusPreserve();
   }, [composerDisabled, replyTarget, richText.focusPreserve]);
-  useComposerAutofocus(richText.focus, effectiveDraftKey, composerDisabled);
+  useComposerAutofocus(richText.editor, effectiveDraftKey, composerDisabled);
   const applyAutocompleteEdit = React.useCallback(
     (edit: AutocompleteEdit) => {
       richText.replacePlainTextRange(
