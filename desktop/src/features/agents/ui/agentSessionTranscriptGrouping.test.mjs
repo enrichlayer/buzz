@@ -1718,9 +1718,52 @@ test("getDisplayBlockKey_single_returnsItemId", () => {
   assert.equal(getDisplayBlockKey(block), "item-42");
 });
 
-test("getDisplayBlockKey_turn_returnsPrefixedTurnId", () => {
-  const block = { kind: "turn", turnId: "t-99", segments: [] };
-  assert.equal(getDisplayBlockKey(block), "turn:t-99");
+test("getDisplayBlockKey_turn_includesStableSessionRunIdentity", () => {
+  const block = {
+    kind: "turn",
+    sessionRunId: "first-item",
+    turnId: "t-99",
+    segments: [],
+  };
+  assert.equal(getDisplayBlockKey(block), "turn:first-item:t-99");
+});
+
+test("same turn id in archived and live session runs produces unique block keys", () => {
+  const items = [
+    {
+      ...sessionItem(
+        "commands-archived",
+        "sess-archived",
+        "2026-07-08T00:00:01.000Z",
+      ),
+      turnId: "shared-trigger",
+      type: "lifecycle",
+      renderClass: "status",
+      title: "Commands",
+      text: "Commands available: 97\nCommands available: 93",
+      acpSource: "available_commands_update",
+    },
+    {
+      ...sessionItem("mode-live", "sess-live", "2026-07-08T00:00:02.000Z"),
+      turnId: "shared-trigger",
+      type: "lifecycle",
+      renderClass: "status",
+      title: "Mode",
+      text: "bypassPermissions",
+      acpSource: "current_mode_update",
+    },
+  ];
+
+  const blocks = buildTranscriptDisplayBlocks(items, "sess-live");
+  const turnKeys = blocks
+    .filter((block) => block.kind === "turn")
+    .map(getDisplayBlockKey);
+
+  assert.deepEqual(turnKeys, [
+    "turn:commands-archived:shared-trigger",
+    "turn:mode-live:shared-trigger",
+  ]);
+  assert.equal(new Set(turnKeys).size, turnKeys.length);
 });
 
 test("getDisplayBlockKey_sessionBoundary_usesFirstItemIdNotRunIndex", () => {

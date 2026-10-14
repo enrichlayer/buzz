@@ -16,6 +16,7 @@ export async function sendChannelMessage(
   expectedRelayUrl?: string,
   expectedSignerPubkey?: string,
   rootEventId?: string | null,
+  shellTags?: string[][],
 ): Promise<SendChannelMessageResult> {
   const response = await invokeTauri<RawSendChannelMessageResult>(
     "send_channel_message",
@@ -24,6 +25,7 @@ export async function sendChannelMessage(
       content,
       parentEventId,
       rootEventId: rootEventId ?? null,
+      shellTags: shellTags ?? null,
       mediaTags: mediaTags ?? null,
       emojiTags: emojiTags ?? null,
       mentionTags: mentionTags ?? null,

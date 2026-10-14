@@ -17,6 +17,7 @@ type CodeFenceRenderer = React.LazyExoticComponent<
  * lazy so their libraries load only when a message contains that fence.
  */
 const CODE_FENCE_RENDERERS: Readonly<Record<string, CodeFenceRenderer>> = {
+  "buzz-annotation": React.lazy(() => import("./AnnotationReference")),
   mermaid: React.lazy(() => import("./mermaid/MermaidDiagram")),
 };
 

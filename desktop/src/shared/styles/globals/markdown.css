@@ -388,3 +388,51 @@
 .dark .code-line-diff-remove {
   background-color: hsl(0 60% 50% / 0.12);
 }
+
+/* Coding prose has a reading measure; code, tables and diffs retain their width. */
+.coding-transcript {
+  --coding-body-size: var(--buzz-type-rem);
+  --coding-body-leading: calc(var(--buzz-type-rem) * 1.625);
+  --coding-supporting-size: calc(var(--buzz-type-rem) * 0.9375);
+  --coding-supporting-leading: calc(var(--buzz-type-rem) * 1.5);
+  --coding-code-size: calc(var(--buzz-type-rem) * 0.875);
+  --coding-code-leading: calc(var(--buzz-type-rem) * 1.375);
+  --coding-receipt-size: calc(var(--buzz-type-rem) * 0.8125);
+  --coding-receipt-leading: calc(var(--buzz-type-rem) * 1.25);
+  --conversation-message-font-size: var(--coding-body-size);
+  --conversation-message-line-height: var(--coding-body-leading);
+}
+.coding-transcript .message-markdown {
+  font-size: var(--coding-body-size);
+  line-height: var(--coding-body-leading);
+}
+.coding-transcript .message-markdown pre {
+  font-size: var(--coding-code-size);
+  line-height: var(--coding-code-leading);
+}
+.coding-transcript [data-testid="publication-receipt"],
+.coding-transcript .selection-feedback > div > :is(p, button),
+.coding-transcript .selection-feedback > details {
+  font-size: var(--coding-receipt-size);
+  line-height: var(--coding-receipt-leading);
+}
+.coding-transcript .selection-feedback blockquote {
+  font-size: var(--coding-supporting-size);
+  line-height: var(--coding-supporting-leading);
+}
+.coding-transcript
+  .message-markdown
+  > :is(p, ul, ol, blockquote, h1, h2, h3, h4) {
+  max-inline-size: 75ch;
+}
+.coding-transcript [data-testid="message-row"] {
+  padding-block: 0.75rem;
+}
+.selection-feedback .message-markdown > :is(p, ul, ol) {
+  max-inline-size: 75ch;
+}
+
+.coding-transcript [data-session-supporting="true"] .message-markdown {
+  font-size: var(--coding-supporting-size);
+  line-height: var(--coding-supporting-leading);
+}
