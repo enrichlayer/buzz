@@ -232,6 +232,29 @@ class NativeSourceTest(unittest.TestCase):
             native.cleanup(self.repo, runner, required=True)
         native.cleanup(self.repo, runner, required=False)
 
+    def test_public_workflow_refuses_before_source_or_credentials(self):
+        workflow = yaml.safe_load(
+            Path(__file__)
+            .parents[1]
+            .joinpath(".github/workflows/enrichlayer-native-source-validation.yml")
+            .read_text()
+        )
+        guard = workflow["jobs"]["prepare"]["steps"][0]
+        self.assertEqual(guard["name"], "Require private artifact custody")
+        self.assertEqual(
+            guard["env"],
+            {"REPOSITORY_PRIVATE": "${{ github.event.repository.private }}"},
+        )
+        for value, expected in (("false", 1), ("", 1), ("true", 0)):
+            with self.subTest(private=value):
+                result = subprocess.run(
+                    ["bash", "-c", guard["run"]],
+                    env={**os.environ, "REPOSITORY_PRIVATE": value},
+                    capture_output=True,
+                    timeout=10,
+                )
+                self.assertEqual(result.returncode, expected)
+
     def test_workflow_keeps_source_jobs_outside_credential_boundary(self):
         workflow = yaml.safe_load(
             Path(__file__)
