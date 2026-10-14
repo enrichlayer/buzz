@@ -5,7 +5,6 @@ pub struct AppBuildInfo {
     version: String,
     build_number: &'static str,
     revision: &'static str,
-    built_at_ms: &'static str,
     source_state: &'static str,
     repository: &'static str,
 }
@@ -17,7 +16,6 @@ pub fn get_app_build_info(app: tauri::AppHandle) -> AppBuildInfo {
         version: app.package_info().version.to_string(),
         build_number: env!("BUZZ_BUILD_NUMBER"),
         revision: env!("BUZZ_BUILD_REVISION"),
-        built_at_ms: env!("BUZZ_BUILD_TIME_MS"),
         source_state: env!("BUZZ_BUILD_SOURCE_STATE"),
         repository: "https://github.com/enrichlayer/buzz",
     }

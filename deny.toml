@@ -15,6 +15,11 @@ ignore = [
     # remove these when upstream catches up.
     { id = "RUSTSEC-2026-0194", reason = "transitive via rust-s3 and mesh-llm→plist; trusted-input XML only; no upstream fix available yet" },
     { id = "RUSTSEC-2026-0195", reason = "transitive via rust-s3 and mesh-llm→plist; trusted-input XML only; no upstream fix available yet" },
+    # unsafe-libyaml 0.2.11 — unmaintained (no vulnerability). Pulled in by
+    # serde_yaml 0.9 (itself deprecated), used by buzz-agent, buzz-persona,
+    # buzz-relay and buzz-workflow for trusted local config/frontmatter. Remove
+    # when those crates migrate off serde_yaml.
+    { id = "RUSTSEC-2024-0449", reason = "unmaintained, no known vulnerability; via deprecated serde_yaml 0.9; trusted local YAML only" },
 ]
 
 [licenses]

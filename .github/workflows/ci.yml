@@ -80,6 +80,7 @@ jobs:
               - 'desktop/**'
               - 'pnpm-lock.yaml'
             desktop-rust:
+              - 'scripts/test-desktop-build-version.py'
               - 'desktop/src-tauri/**'
             web:
               - 'web/**'
