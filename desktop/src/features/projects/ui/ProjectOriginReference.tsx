@@ -7,9 +7,11 @@ import {
 export function ProjectOriginReference({
   agentName,
   channelId,
+  threadRootId,
 }: {
   agentName?: string | null;
   channelId?: string | null;
+  threadRootId?: string | null;
 }) {
   const { goChannel } = useAppNavigation();
   const channel = useChannelReference(channelId);
@@ -36,12 +38,21 @@ export function ProjectOriginReference({
         </span>
         {isOpenable ? (
           <button
-            aria-label={`Open author-claimed origin channel #${channel.name}`}
+            aria-label={
+              threadRootId
+                ? `Open coding session in #${channel.name}`
+                : `Open author-claimed origin channel #${channel.name}`
+            }
             className="min-w-0 truncate font-medium text-foreground underline-offset-2 hover:underline"
-            onClick={() => void goChannel(channel.id)}
+            onClick={() =>
+              void goChannel(
+                channel.id,
+                threadRootId ? { thread: threadRootId } : undefined,
+              )
+            }
             type="button"
           >
-            #{channel.name}
+            {threadRootId ? "Coding session" : `#${channel.name}`}
           </button>
         ) : (
           <span className="shrink-0 whitespace-nowrap">a private channel</span>

@@ -1,4 +1,5 @@
 import type { RelayEvent } from "@/shared/api/types";
+import type { SessionReviewContext } from "./sessionReviewContext";
 
 export type ProjectPullRequestUpdate = {
   id: string;
@@ -72,6 +73,7 @@ export function normalizeProjectPullRequestCommentAnchor(
 ): ProjectPullRequestCommentAnchor | null;
 
 export type ProjectPullRequest = {
+  sessionContext?: SessionReviewContext | null;
   id: string;
   title: string;
   content: string;

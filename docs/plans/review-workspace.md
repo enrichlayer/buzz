@@ -198,3 +198,83 @@ The isolated relay, PostgreSQL, Redis and MinIO services were stopped after the
 run; their data and Git repository were retained. Screenshot hashes were all
 distinct. The corrected live-spec fixture passed Biome, and `git diff --check`
 passed after documenting this run.
+
+
+## Native coding-session access
+
+The coding thread is the primary entry point for work produced in that session.
+A persistent **Review changes** section below the thread root shows each linked
+review's title, repository, branch, latest trusted commit and state, plus the
+Linear issue link. It opens the existing full Projects review workspace. The
+review's origin action opens the exact coding thread again. Projects and copied
+`buzz://pr` links remain additional entry points into that same review.
+
+The association is in the signed kind:1618 review, not a chat-message parser or
+an observer transcript. A session can produce several reviews, including work
+across repositories. No live agent is needed to rediscover them after relaunch.
+The UI uses its current community and identity, scopes discovery to channel and
+thread, and refreshes while focused. It rejects ambiguous metadata and exposes
+query failures and bounded-history limits instead of reporting an empty result.
+
+The review already carries repository `a`, head `c`, optional `merge-base`, and
+branch metadata. Session reviews additionally carry:
+
+- `e`: canonical thread-root event ID, empty relay hint, marker `buzz-session`.
+  This is distinct from NIP-10 root/reply and NIP-34 revision references.
+- `h`: the originating channel, using the existing origin convention.
+- `r`: canonical HTTPS Linear issue URL, marker `linear-issue`, when supplied.
+
+These are author-signed associations. They do not grant channel/repository
+access, verify issue ownership, sync Linear status, or authorize a merge.
+The CLI checks that the canonical thread exists in the named channel before
+publishing the review and association in one event. It rejects conflicts with
+harness-supplied thread/channel context. DMs never automatically export their
+thread or channel coordinates.
+
+### Agent workflow
+
+Thread-scoped coding sessions pass their canonical root to session MCP tools
+through `BUZZ_GIT_ORIGIN_THREAD_ID` alongside the existing channel provenance.
+Native shell tools that do not inherit MCP environment variables must pass the
+explicit thread/channel flags below. MCP
+server environment templates cannot override or retain another session's
+origin. The coding instructions tell agents to include the exact Linear issue
+URL when the task has one:
+
+```sh
+buzz pr open --repo-owner "$REPO_OWNER" --repo-id "$REPO_ID" \
+  --subject "Implement issue" --commit "$(git rev-parse HEAD)" \
+  --clone "$CLONE_URL" --branch-name "$BRANCH" \
+  --linear-issue "$LINEAR_ISSUE_URL"
+```
+
+Outside a thread-scoped harness, add `--thread "$THREAD_ROOT_ID" --channel
+"$CHANNEL_ID"`. Channel-scoped sessions cannot safely guess which thread owns a
+review; they must supply that explicit context. No branch-name or prose parsing
+is used to infer the issue. Existing reviews without these tags still work from
+Projects and their links, but are not silently attached to a coding thread.
+
+Discover reviews with `buzz pr list --repo-owner "$REPO_OWNER" --repo-id
+"$REPO_ID" --thread "$THREAD_ROOT_ID"`; read the signed record with `buzz pr get
+--event "$REVIEW_ID"`. Subsequent commits use `buzz pr update` on the same review
+ID, preserving the issue/thread association and earlier anchored discussions.
+The existing review workspace supplies split view, diff search, viewed tracking,
+and comment/reply/resolve/reopen. This extension does not invent a separate
+session-specific copy of those controls.
+
+### Session integration validation
+
+- `threadReviews.test.mjs` exercises production relay-query composition,
+  channel/thread isolation, trusted head updates, metadata validation, caps,
+  and errors.
+- `ThreadReviewList.test.mjs` renders and clicks the production UI: exact commit,
+  Linear issue and native review navigation, including malformed coordinates.
+- `pr_session.rs` tests call the production open command against HTTP fixtures,
+  verify its signed event, and prove invalid thread roots never publish.
+- Harness tests verify thread provenance and clearing across reused MCP configs.
+- Rust tests and full build/type checks run remotely. Native acceptance must
+  demonstrate a normal coding session creating the association, two users
+  opening its review, a new commit updating that same review, and the return to
+  the originating thread after restart. This remains pending until the new
+  package is installed and the Mac is unlocked; existing package receipts do
+  not validate this extension.

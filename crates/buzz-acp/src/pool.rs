@@ -1619,6 +1619,7 @@ async fn create_session_and_apply_model(
     let mcp_servers = mcp_servers_with_git_origin(
         &ctx.mcp_servers,
         channel.scope.map(SessionScope::channel_id),
+        channel.scope.and_then(SessionScope::root_event_id),
         channel.channel_type,
         ctx.session_title.as_deref(),
     );
@@ -1928,6 +1929,7 @@ pub(crate) async fn run_isolated_prompt(
 fn mcp_servers_with_git_origin(
     servers: &[McpServer],
     channel_id: Option<Uuid>,
+    thread_root_id: Option<&str>,
     channel_type: Option<&str>,
     agent_name: Option<&str>,
 ) -> Vec<McpServer> {
@@ -1945,9 +1947,26 @@ fn mcp_servers_with_git_origin(
             }),
         (None, _) => None,
     };
-    if let Some(origin) = origin {
-        for server in &mut servers {
+    for server in &mut servers {
+        // Never retain an origin from another scope or a configured MCP env.
+        server.env.retain(|entry| {
+            !matches!(
+                entry.name.as_str(),
+                "BUZZ_GIT_ORIGIN_CHANNEL_ID"
+                    | "BUZZ_GIT_ORIGIN_THREAD_ID"
+                    | "BUZZ_GIT_ORIGIN_AGENT_NAME"
+            )
+        });
+        if let Some(origin) = &origin {
             server.env.push(origin.clone());
+        }
+        if channel_type == Some("stream") && channel_id.is_some() {
+            if let Some(thread) = thread_root_id {
+                server.env.push(EnvVar {
+                    name: "BUZZ_GIT_ORIGIN_THREAD_ID".into(),
+                    value: thread.into(),
+                });
+            }
         }
     }
     servers
@@ -5984,6 +6003,7 @@ pub(crate) mod tests {
         let servers = mcp_servers_with_git_origin(
             &[test_mcp_server()],
             Some(channel_id),
+            Some(&"a".repeat(64)),
             Some("stream"),
             None,
         );
@@ -5994,6 +6014,9 @@ pub(crate) mod tests {
             .env
             .iter()
             .any(|entry| entry.name == "BUZZ_GIT_ORIGIN_AGENT_NAME"));
+        assert!(servers[0].env.iter().any(
+            |entry| entry.name == "BUZZ_GIT_ORIGIN_THREAD_ID" && entry.value == "a".repeat(64)
+        ));
     }
 
     #[test]
@@ -6001,6 +6024,7 @@ pub(crate) mod tests {
         let servers = mcp_servers_with_git_origin(
             &[test_mcp_server()],
             Some(Uuid::new_v4()),
+            Some(&"a".repeat(64)),
             Some("dm"),
             Some("Builder"),
         );
@@ -6011,6 +6035,38 @@ pub(crate) mod tests {
             .env
             .iter()
             .any(|entry| entry.name == "BUZZ_GIT_ORIGIN_CHANNEL_ID"));
+        assert!(!servers[0]
+            .env
+            .iter()
+            .any(|entry| entry.name == "BUZZ_GIT_ORIGIN_THREAD_ID"));
+    }
+
+    #[test]
+    fn reused_mcp_config_cannot_leak_another_thread_or_private_origin() {
+        let mut server = test_mcp_server();
+        for name in [
+            "BUZZ_GIT_ORIGIN_CHANNEL_ID",
+            "BUZZ_GIT_ORIGIN_THREAD_ID",
+            "BUZZ_GIT_ORIGIN_AGENT_NAME",
+        ] {
+            server.env.push(EnvVar {
+                name: name.into(),
+                value: "stale".into(),
+            });
+        }
+        for channel_type in [Some("stream"), Some("dm"), None] {
+            let servers = mcp_servers_with_git_origin(
+                std::slice::from_ref(&server),
+                Some(Uuid::new_v4()),
+                None,
+                channel_type,
+                Some("Builder"),
+            );
+            assert!(!servers[0]
+                .env
+                .iter()
+                .any(|entry| entry.name == "BUZZ_GIT_ORIGIN_THREAD_ID" || entry.value == "stale"));
+        }
     }
 
     // These pin the initial_message dispatch path (run_prompt_task, ~line 855):

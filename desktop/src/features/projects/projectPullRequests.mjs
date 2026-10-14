@@ -4,6 +4,7 @@ import {
   getImetaTags,
   getTag,
 } from "./projectIssues.mjs";
+import { sessionReviewContext } from "./sessionReviewContext.ts";
 
 // Updates and status changes rewrite the PR's tip commit, clone URLs, and
 // lifecycle state, so they are only honored when signed by the PR author or
@@ -382,6 +383,7 @@ export function eventToProjectPullRequest(
     createdAt: pullRequest.created_at,
     repoAddress: getTag(pullRequest, "a") ?? null,
     channelId: getTag(pullRequest, "h") ?? null,
+    sessionContext: sessionReviewContext(pullRequest),
     originAgentName: getTag(pullRequest, "buzz-origin-agent") ?? null,
     labels: getAllTags(pullRequest, "t"),
     recipients: getAllTags(pullRequest, "p"),

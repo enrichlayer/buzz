@@ -390,6 +390,7 @@ export function PullRequestDetailHeader({
         <ProjectOriginReference
           agentName={pullRequest.originAgentName}
           channelId={pullRequest.channelId}
+          threadRootId={pullRequest.sessionContext?.threadRootId}
         />
       </p>
     </header>
