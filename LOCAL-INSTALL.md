@@ -55,7 +55,8 @@ node scripts/local-install.mjs plugins
 
 In **Settings → Plugins**, choose each printed JSON file and Install. Review,
 Feedback, Runbook and Session demo require stable 1.x versions (minimum 1.0.0).
-The compatibility panel lists each plugin's status, such as Missing, Disabled, Incompatible or Ready. The
+The compatibility panel lists each plugin's status, such as Missing, Disabled,
+Incompatible, Ready or **Different renderer — review compatibility**. The
 preexisting `test.session-card` renderer is also accepted. An unrelated renderer
 using the same fence is flagged for review. Do not remove a renderer blindly;
 use Update only when you intend to replace that same plugin ID. Plugins are

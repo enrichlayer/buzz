@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-[[ "$(uname -s)" == Darwin ]] || { echo 'This installer supports macOS. Use node scripts/local-install.mjs start on other platforms.' >&2; exit 1; }
+[[ "$(uname -s)" == Darwin ]] || { echo 'This installer supports macOS only. On other platforms run: node scripts/local-install.mjs start' >&2; exit 1; }
 [[ -z "$(git status --porcelain --untracked-files=normal)" ]] || { echo 'Refusing modified checkout; preserve/commit changes first.' >&2; exit 1; }
 refuse_running() {
   if pgrep -f "Buzz Local Coding.app/Contents/MacOS" >/dev/null; then
@@ -19,6 +19,8 @@ mkdir -p "$HOME/Applications"
 if ! mkdir "$LOCK" 2>/dev/null; then
   holder="$(cat "$LOCK/pid" 2>/dev/null || true)"
   if [[ -z "$holder" ]]; then
+    # mkdir won the lock before its holder could publish the PID. Never steal
+    # an empty lock directory: the owner is still inside the acquisition window.
     echo "Another Buzz Local Coding install is acquiring the installer lock. Wait for it to finish." >&2
     exit 1
   fi
