@@ -1,3 +1,7 @@
+import {
+  projectRepositorySnapshotLoading,
+  useResolvedProjectRepository,
+} from "../useResolvedProjectRepository";
 import * as React from "react";
 import { toast } from "sonner";
 
@@ -107,7 +111,9 @@ export function ProjectDetailScreen(props: ProjectDetailScreenProps) {
     if (!projectId.startsWith(kindStr)) return undefined;
     return projectId.slice(kindStr.length);
   }, [projectId, repositoryId]);
-  const repository = selectProjectRepository(project, routeRepositoryId);
+  const repository = useResolvedProjectRepository(
+    selectProjectRepository(project, routeRepositoryId),
+  );
   const repoRemote = useProjectRepoPresentation(repository);
   const { applyPatch: applyRepositorySearch } = useHistorySearchState(
     PROJECT_REPOSITORY_SEARCH_KEYS,
@@ -231,7 +237,7 @@ export function ProjectDetailScreen(props: ProjectDetailScreenProps) {
   const memberChannelIds = useMemberChannelIds();
   const remoteUnavailableReason =
     repoRemote.host.kind === "buzz" &&
-    !repoSnapshotQuery.isLoading &&
+    !repoSnapshotQuery.isPending &&
     !displayedRepoSnapshot
       ? refineRepoUnavailableReason({
           reason: projectRepoUnavailableReason(repoSnapshotQuery.error),
@@ -942,7 +948,10 @@ export function ProjectDetailScreen(props: ProjectDetailScreenProps) {
                     snapshot={displayedRepoSnapshot}
                     snapshotError={repoSnapshotQuery.error}
                     snapshotLoading={
-                      repoSnapshotQuery.isLoading && !displayedRepoSnapshot
+                      projectRepositorySnapshotLoading(
+                        repoRemote.host,
+                        repoSnapshotQuery.isPending,
+                      ) && !displayedRepoSnapshot
                     }
                     sourceControls={filesSourceControls}
                     viewerGitIdentity={viewerGitIdentity}
