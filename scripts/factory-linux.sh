@@ -34,9 +34,16 @@ report_failure() {
 }
 case "${1:-}" in
   setup)
-    for tool in cc pkg-config cmake python3; do
+    for tool in cc pkg-config cmake python3 git; do
       command -v "$tool" >/dev/null || { echo "Factory image missing $tool" >&2; exit 1; }
     done
+    # Buzz's Nostr helper needs Git's credential authtype protocol (Git >=2.46).
+    # Check the actual binary before allocating dependency/compiler caches.
+    if ! git credential capability | grep -Fxq 'capability authtype'; then
+      git --version >&2
+      echo 'Factory Git lacks credential authtype; rebuild the sandbox image with Git >=2.46' >&2
+      exit 1
+    fi
     pkg-config --exists openssl
     just desktop-install-ci
     ;;

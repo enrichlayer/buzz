@@ -67,7 +67,7 @@ if name == "cargo" and sys.argv[1] == "build":
             self.root / "scripts/factory-failure-summary.py",
         )
 
-    def run_check(self, **extra):
+    def run_check(self, command="check", **extra):
         env = {
             **os.environ,
             "RECORD": str(self.record),
@@ -75,13 +75,50 @@ if name == "cargo" and sys.argv[1] == "build":
             **extra,
         }
         return subprocess.run(
-            ["bash", "factory-linux.sh", "check"],
+            ["bash", "factory-linux.sh", command],
             cwd=self.root,
             env=env,
             capture_output=True,
             text=True,
             timeout=20,
         )
+
+    def test_setup_refuses_missing_git_capability_before_install(self):
+        for name in ("cc", "cmake", "pkg-config"):
+            tool = self.root / "bin" / name
+            tool.write_text("#!/bin/sh\nexit 0\n")
+            tool.chmod(0o755)
+        git = self.root / "bin/git"
+        for status, capability in (
+            (129, ""),
+            (0, "capability other"),
+            (0, "capability authtype"),
+        ):
+            with self.subTest(status=status, capability=capability):
+                git.write_text(
+                    "#!/usr/bin/env python3\nimport sys\n"
+                    "if sys.argv[1:] == ['--version']:\n print('git version fixture')\n"
+                    f"else:\n print({capability!r}); sys.exit({status})\n"
+                )
+                git.chmod(0o755)
+                result = self.run_check(command="setup")
+                if capability == "capability authtype":
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    records = [
+                        json.loads(line)
+                        for line in self.record.read_text().splitlines()
+                    ]
+                    self.assertEqual(
+                        [r["args"] for r in records], [["desktop-install-ci"]]
+                    )
+                else:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("git version fixture", result.stderr)
+                    self.assertIn("lacks credential authtype", result.stderr)
+                    self.assertFalse(
+                        self.record.exists(),
+                        "setup ran expensive install before refusing Git",
+                    )
 
     def test_complete_suite_and_isolated_release_artifact(self):
         result = self.run_check()
