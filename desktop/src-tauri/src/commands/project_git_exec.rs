@@ -185,9 +185,12 @@ fn configure_git_auth(command: &mut Command, auth: &GitAuthConfig, needs_credent
 /// Format a path for git `credential.helper`.
 ///
 /// Git for Windows invokes helpers via MinGW bash, which treats `\` as
-/// escapes. Forward slashes work on every platform git supports.
+/// escapes. Forward slashes work on every platform git supports. The `!`
+/// form keeps Git from interpreting the quoted path as a helper name;
+/// shell quoting preserves spaces and prevents path characters becoming code.
 fn credential_helper_config_value(path: &std::path::Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
+    let value = path.to_string_lossy().replace('\\', "/");
+    format!("!'{}'", value.replace('\'', "'\\''"))
 }
 
 fn apply_git_config(command: &mut Command, entries: &[(&str, String)]) {
@@ -404,8 +407,53 @@ mod tests {
             std::path::PathBuf::from(r"C:\Users\x\AppData\Local\Buzz\git-credential-nostr.exe");
         assert_eq!(
             credential_helper_config_value(&path),
-            "C:/Users/x/AppData/Local/Buzz/git-credential-nostr.exe",
+            "!'C:/Users/x/AppData/Local/Buzz/git-credential-nostr.exe'",
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn git_credentials_preserve_helper_path_with_shell_characters() {
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+        use std::process::{Command, Stdio};
+
+        let dir = tempfile::tempdir().unwrap();
+        let helper = dir.path().join("Buzz Review's $(false) `false` helper");
+        std::fs::write(
+            &helper,
+            "#!/bin/sh\nprintf 'username=fixture\\npassword=fixture-token\\n'\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let auth = super::GitAuthConfig {
+            git_path: "git".into(),
+            credential_helper: Some(helper),
+            nsec: String::new(),
+            allow_file_transport: false,
+        };
+        let mut command = Command::new(&auth.git_path);
+        command.args(["credential", "fill"]);
+        super::configure_git_auth(&mut command, &auth, true);
+        let mut child = command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(b"protocol=https\nhost=review.invalid\n\n")
+            .unwrap();
+        let result = child.wait_with_output().unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert!(String::from_utf8_lossy(&result.stdout).contains("password=fixture-token"));
     }
 
     #[test]
