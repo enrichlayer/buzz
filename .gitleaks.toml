@@ -1,0 +1,70 @@
+# Reviewed gitleaks triage for this fork (DEV-12875).
+#
+# The el-bot reviewer secret-scans the whole tree before every remote review
+# and honours this file only from the protected default branch. Every entry
+# below admits a value that is public by construction: upstream test keys,
+# protocol sample values, documentation constants and placeholders. Paths are
+# unanchored at the start because the reviewer scans the checkout below a
+# `tree/` prefix. A new finding outside these entries still blocks review:
+# remove or rotate a real secret, never add it here.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Test-only files: fixtures, test data, unit and e2e test sources"
+paths = [
+  '''(^|/)tests?/fixtures/''',
+  '''(^|/)testdata/''',
+  '''(^|/)tests\.rs$''',
+  '''_tests?\.rs$''',
+  '''\.test\.(mjs|ts|tsx)$''',
+  '''\.spec\.ts$''',
+  '''_test\.dart$''',
+]
+
+[[allowlists]]
+description = "Lockfiles: crate names and pod checksums next to key-like words"
+paths = [
+  '''(^|/)Cargo\.lock$''',
+  '''(^|/)Podfile\.lock$''',
+]
+
+[[allowlists]]
+description = "NIP specifications: worked examples with public keys, signatures and the secp256k1 generator point"
+targetRules = ["generic-api-key"]
+paths = [
+  '''(^|/)docs/nips/[^/]+\.md$''',
+]
+
+[[allowlists]]
+description = "Throwaway PEM keys inside #[cfg(test)] modules of these source files"
+targetRules = ["private-key"]
+paths = [
+  '''(^|/)crates/buzz-auth/src/nip_fi/command\.rs$''',
+  '''(^|/)crates/buzz-relay/src/api/git/transport\.rs$''',
+  '''(^|/)crates/buzz-relay/src/api/invites\.rs$''',
+  '''(^|/)crates/buzz-relay/src/api/media\.rs$''',
+  '''(^|/)crates/buzz-relay/src/api/nip_fi\.rs$''',
+  '''(^|/)crates/buzz-relay/src/router\.rs$''',
+]
+
+[[allowlists]]
+description = "Exact public values: protocol samples, placeholders and documented test identities"
+regexes = [
+  # RFC 6455 section 1.3 sample Sec-WebSocket-Key.
+  '''^dGhlIHNhbXBsZSBub25jZQ==$''',
+  # Deliberately malformed JWT in a parser test.
+  '''^eyJhbGciOiJFUzI1NiJ9\.e30\.sig$''',
+  # Model id and keyboard chord that sit next to "key"/"token" words.
+  '''^claude-3-7-sonnet$''',
+  '''^Shift\+Escape$''',
+  # Placeholders and sentinels.
+  '''^REPLACE_WITH_[A-Z0-9_]+$''',
+  '''^nsec1secretdonotpublish$''',
+  '''^invalid-token$''',
+  # Shared test nsec used by agent and provider-wire fixtures.
+  '''^nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5$''',
+  # The public "Tyler" local test identity (Justfile mesh-dev-fresh, docs/buzz-shared-compute-dev.md).
+  '''^3dbaebadb5dfd777ff25149ee230d907a15a9e1294b40b830661e65bb42f6c03$''',
+]
