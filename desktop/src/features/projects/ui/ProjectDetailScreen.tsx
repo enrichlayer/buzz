@@ -454,9 +454,8 @@ export function ProjectDetailScreen(props: ProjectDetailScreenProps) {
     }
   }, [projectPending, repository]);
   useReconcileProjectRepositorySource({
+    checkoutQueries: [localRepoSnapshotQuery, repoSyncStatusQuery],
     hasLocalCheckout,
-    localCheckoutPending:
-      localRepoSnapshotQuery.isPending || repoSyncStatusQuery.isPending,
     remoteHasContent: snapshotHasContent(displayedRepoSnapshot),
     selectedPullRequestId,
     selectedTag,
