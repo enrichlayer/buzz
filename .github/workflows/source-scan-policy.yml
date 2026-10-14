@@ -26,4 +26,6 @@ jobs:
           tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP/gitleaks-bin" gitleaks
           echo "$RUNNER_TEMP/gitleaks-bin" >> "$GITHUB_PATH"
       - name: Exercise source policy and negative controls
-        run: python3 scripts/check-source-scan-policy.py
+        run: |
+          python3 scripts/test-source-scan-policy.py
+          python3 scripts/check-source-scan-policy.py

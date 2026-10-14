@@ -246,7 +246,7 @@ regexes = ['''(?s)^\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-\\nMIGHAgEAMBMGByqGSM4
 
 [[allowlists]]
 targetRules = ["generic-api-key"]
-description = "test-only cryptographic identity at crates/buzz-relay/src/api/nip_fi.rs"
+description = "public WebSocket handshake nonce at crates/buzz-relay/src/api/nip_fi.rs"
 condition = "AND"
 regexTarget = "match"
 paths = ['''(?:^|/)(?:tree/)?crates/buzz\-relay/src/api/nip_fi\.rs$''']
@@ -314,7 +314,7 @@ regexes = ['''(?s)^\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-\\n\\\
 
 [[allowlists]]
 targetRules = ["private-key"]
-description = "public WebSocket handshake nonce at crates/buzz-relay/src/router.rs"
+description = "test-only cryptographic identity at crates/buzz-relay/src/router.rs"
 condition = "AND"
 regexTarget = "match"
 paths = ['''(?:^|/)(?:tree/)?crates/buzz\-relay/src/router\.rs$''']

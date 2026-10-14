@@ -2,6 +2,7 @@
 """Exercise the real pinned scanner; never print matched credential material."""
 import argparse
 import collections
+import errno
 import hashlib
 import json
 import os
@@ -18,6 +19,16 @@ POLICY = ROOT / ".gitleaks.toml"
 
 def digest(value):
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def snapshot_file(original, destination):
+    """Hard-link tracked files, copying when the private snapshot is on another device."""
+    try:
+        os.link(original, destination)
+    except OSError as error:
+        if error.errno != errno.EXDEV:
+            raise
+        shutil.copy2(original, destination)
 
 
 def scan(scanner, source, policy, report):
@@ -87,7 +98,7 @@ def main():
                 continue
             destination = source / name
             destination.parent.mkdir(parents=True, exist_ok=True)
-            os.link(original, destination)
+            snapshot_file(original, destination)
         defaults = private / "defaults.toml"
         defaults.write_text("[extend]\nuseDefault = true\n")
         baseline = scan(scanner, source, defaults, private / "baseline.json")
