@@ -440,7 +440,8 @@ async function fetchProjectRepoSnapshot(
   });
 }
 
-async function fetchProjectRepoDiff(
+/** Fetch the complete review against its target branch from the remote. */
+export async function fetchProjectRepoDiff(
   project: Repository,
   branchName?: string | null,
   pullRequest?: ProjectPullRequest | null,
@@ -451,13 +452,14 @@ async function fetchProjectRepoDiff(
   return getProjectRepoDiff({
     cloneUrl,
     defaultBranch: branchName ?? project.defaultBranch,
-    baseBranch: project.defaultBranch,
+    baseBranch: pullRequest?.targetBranch ?? project.defaultBranch,
     targetCommit: pullRequest?.commit ?? null,
     targetRef: pullRequest ? `refs/nostr/${pullRequest.id}` : null,
   });
 }
 
-async function fetchProjectLocalRepoDiff(
+/** Fetch the same complete review comparison from an existing local checkout. */
+export async function fetchProjectLocalRepoDiff(
   project: Repository,
   reposDir?: string | null,
   branchName?: string | null,
@@ -468,12 +470,8 @@ async function fetchProjectLocalRepoDiff(
     projectDtag: project.dtag,
     cloneUrl: project.cloneUrls[0] ?? null,
     defaultBranch: branchName ?? project.defaultBranch,
-    baseBranch: project.defaultBranch,
-    baseCommit:
-      pullRequest?.initialCommit &&
-      pullRequest.initialCommit !== pullRequest.commit
-        ? pullRequest.initialCommit
-        : null,
+    baseBranch: pullRequest?.targetBranch ?? project.defaultBranch,
+    baseCommit: null,
     targetCommit: pullRequest?.commit ?? null,
   });
 }
