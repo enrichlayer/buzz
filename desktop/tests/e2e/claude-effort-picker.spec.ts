@@ -145,7 +145,17 @@ async function menuOf(page: Page, trigger: Locator) {
   return menu;
 }
 
+// A choice field renders as a segmented radio group when its options fit the
+// dialog width, and as a menu otherwise, so the helpers accept either form.
+async function isSegmented(control: Locator) {
+  await expect(control).toBeVisible();
+  return (await control.getAttribute("role")) === "radiogroup";
+}
+
 async function menuValues(page: Page, trigger: Locator) {
+  if (await isSegmented(trigger)) {
+    return trigger.getByRole("radio").allTextContents();
+  }
   await trigger.click();
   const menu = await menuOf(page, trigger);
   const rows = await menu.getByRole("menuitemradio").allTextContents();
@@ -155,6 +165,12 @@ async function menuValues(page: Page, trigger: Locator) {
 }
 
 async function pick(page: Page, trigger: Locator, name: string) {
+  if (await isSegmented(trigger)) {
+    const option = trigger.getByRole("radio", { name, exact: true });
+    await option.click();
+    await expect(option).toHaveAttribute("aria-checked", "true");
+    return;
+  }
   await trigger.press("Enter");
   const menu = await menuOf(page, trigger);
   const option = menu.getByRole("menuitemradio", { name, exact: true });
@@ -162,6 +178,16 @@ async function pick(page: Page, trigger: Locator, name: string) {
   // Keyboard selection avoids racing the menu's open animation.
   await option.press("Enter");
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
+}
+
+/** The selected choice: the checked radio, or the menu trigger's label. */
+async function expectChoice(control: Locator, name: string) {
+  await expect(async () => {
+    const selected = (await isSegmented(control))
+      ? control.getByRole("radio", { checked: true })
+      : control;
+    await expect(selected).toHaveText(name, { timeout: 1_000 });
+  }).toPass();
 }
 
 const DISCOVERY_FAILED = "Could not load live models for this provider.";
@@ -317,14 +343,14 @@ test.describe("edit dialog", () => {
     const dialog = await openEdit(page);
     const effort = dialog.locator("#edit-agent-effort");
     const model = dialog.locator("#edit-agent-model");
-    await expect(effort).toHaveText("max");
+    await expectChoice(effort, "max");
 
     await pick(page, model, "Opus");
-    await expect(effort).toHaveText("max");
+    await expectChoice(effort, "max");
     await expect(dialog).toContainText("This model may not support max.");
 
     await pick(page, model, "Haiku");
-    await expect(effort).toHaveText("max");
+    await expectChoice(effort, "max");
     expect(await menuValues(page, effort)).toEqual(["Adapter default", "max"]);
 
     await dialog.getByRole("button", { name: "Save changes" }).click();
@@ -343,9 +369,9 @@ test.describe("edit dialog", () => {
     });
     const dialog = await openEdit(page);
     const effort = dialog.locator("#edit-agent-effort");
-    await expect(effort).toHaveText("max");
+    await expectChoice(effort, "max");
     await pick(page, effort, "Adapter default");
-    await expect(effort).toHaveText("Adapter default");
+    await expectChoice(effort, "Adapter default");
     await expect(dialog).not.toContainText("This model may not support max.");
 
     await dialog.getByRole("button", { name: "Save changes" }).click();
@@ -366,7 +392,7 @@ test.describe("edit dialog", () => {
       const dialog = await openEdit(page);
       const effort = dialog.locator("#edit-agent-effort");
       await expect(dialog).toContainText(DISCOVERY_FAILED);
-      await expect(effort).toHaveText("max");
+      await expectChoice(effort, "max");
       await expect(dialog).toContainText("Support for max isn't known yet.");
       expect(await menuValues(page, effort)).toEqual([
         "Adapter default",
@@ -374,7 +400,7 @@ test.describe("edit dialog", () => {
       ]);
       if (clear) {
         await pick(page, effort, "Adapter default");
-        await expect(effort).toHaveText("Adapter default");
+        await expectChoice(effort, "Adapter default");
       }
 
       await dialog.getByRole("button", { name: "Save changes" }).click();
@@ -403,17 +429,17 @@ test.describe("edit dialog", () => {
       const effort = dialog.locator("#edit-agent-effort");
       const runtime = dialog.locator("#edit-agent-runtime");
       const model = dialog.locator("#edit-agent-model");
-      await expect(effort).toHaveText("max");
+      await expectChoice(effort, "max");
       await pick(page, runtime, "Codex");
       await pick(page, runtime, "Claude Code");
       await pick(page, model, "Opus");
-      await expect(effort).toHaveText("max");
+      await expectChoice(effort, "max");
       await pick(page, model, "Haiku");
-      await expect(effort).toHaveText("max");
+      await expectChoice(effort, "max");
       await expect(dialog).toContainText("This model may not support max.");
       if (clear) {
         await pick(page, effort, "Adapter default");
-        await expect(effort).toHaveText("Adapter default");
+        await expectChoice(effort, "Adapter default");
       }
 
       await dialog.getByRole("button", { name: "Save changes" }).click();
@@ -434,7 +460,7 @@ test.describe("edit dialog", () => {
     });
     const dialog = await openEdit(page);
     const effort = dialog.locator("#edit-agent-effort");
-    await expect(effort).toHaveText("Adapter default");
+    await expectChoice(effort, "Adapter default");
     expect(await menuValues(page, effort)).toEqual(ADAPTER_LEVELS);
   });
 
@@ -444,7 +470,7 @@ test.describe("edit dialog", () => {
       agentConfigSurface: surface(undefined, "max", "configFile"),
     });
     const dialog = await openEdit(page);
-    await expect(dialog.locator("#edit-agent-model")).toHaveText("Haiku");
+    await expectChoice(dialog.locator("#edit-agent-model"), "Haiku");
     await expect(dialog.locator("#edit-agent-effort")).toHaveCount(0);
   });
 
@@ -466,7 +492,7 @@ test.describe("edit dialog", () => {
     const effort = dialog.locator("#edit-agent-effort");
     await pick(page, effort, "high");
     await pick(page, dialog.locator("#edit-agent-model"), "Haiku");
-    await expect(effort).toHaveText("max");
+    await expectChoice(effort, "max");
     await expect(dialog).toContainText("This model may not support max.");
 
     await dialog.getByRole("button", { name: "Save changes" }).click();
@@ -487,9 +513,9 @@ test.describe("edit dialog", () => {
       });
       const dialog = await openEdit(page);
       const effort = dialog.locator("#edit-agent-effort");
-      await expect(effort).toHaveText("xhigh");
+      await expectChoice(effort, "xhigh");
       await pick(page, dialog.locator("#edit-agent-runtime"), "Claude Code");
-      await expect(effort).toHaveText("xhigh");
+      await expectChoice(effort, "xhigh");
       await expect(dialog).toContainText("This model may not support xhigh.");
       expect(await menuValues(page, effort)).toEqual([
         ...ADAPTER_LEVELS,
@@ -497,7 +523,7 @@ test.describe("edit dialog", () => {
       ]);
       if (clear) {
         await pick(page, effort, "Adapter default");
-        await expect(effort).toHaveText("Adapter default");
+        await expectChoice(effort, "Adapter default");
       }
 
       await dialog.getByRole("button", { name: "Save changes" }).click();

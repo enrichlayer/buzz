@@ -17,6 +17,8 @@ export type RuntimePluginField = {
   type: "text" | "textarea" | "select" | "checkbox";
   initial?: RuntimeValue;
   options?: string[];
+  /** Omitted or dropdown preserves the original select presentation. */
+  presentation?: "dropdown" | "segmented";
   placeholder?: string;
   required?: boolean;
 };
