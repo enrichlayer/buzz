@@ -18,6 +18,10 @@ LOCK="$HOME/Applications/.buzz-local-install.lock"
 mkdir -p "$HOME/Applications"
 if ! mkdir "$LOCK" 2>/dev/null; then
   holder="$(cat "$LOCK/pid" 2>/dev/null || true)"
+  if [[ -z "$holder" ]]; then
+    echo "Another Buzz Local Coding install is acquiring the installer lock. Wait for it to finish." >&2
+    exit 1
+  fi
   if [[ -n "$holder" ]] && kill -0 "$holder" 2>/dev/null; then
     echo "Another Buzz Local Coding install is running (pid $holder). Wait for it to finish." >&2
     exit 1
@@ -40,7 +44,7 @@ for binary in buzz-acp buzz-agent buzz-backend-kubernetes buzz-dev-mcp git-crede
   chmod +x "desktop/src-tauri/binaries/$binary-$TARGET"
 done
 CONFIG="$(mktemp "${TMPDIR:-/tmp}/buzz-local-config.XXXXXX")"
-trap 'rm -f "$CONFIG"' EXIT
+trap 'rm -rf "$LOCK"; rm -f "$CONFIG"' EXIT
 # Stable lane identity: updates retain this lane's profile, never production's.
 node desktop/scripts/demo-build-config.mjs 'Local Coding' "$CONFIG" 0000000000000001 >/dev/null
 cd desktop

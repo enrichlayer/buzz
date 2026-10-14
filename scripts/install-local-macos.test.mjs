@@ -161,3 +161,90 @@ test("installer refuses to replace a running Local Coding app", () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("installer keeps an in-progress lock and does not start a second install", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "buzz-install-locking-"));
+  try {
+    mkdirSync(path.join(root, "scripts"));
+    mkdirSync(path.join(root, "bin"));
+    const lock = path.join(root, "Applications/.buzz-local-install.lock");
+    mkdirSync(lock, { recursive: true });
+    copyFileSync(
+      new URL("./install-local-macos.sh", import.meta.url),
+      path.join(root, "scripts/install-local-macos.sh"),
+    );
+    for (const [name, body] of Object.entries({
+      uname: "echo Darwin",
+      git: "exit 0",
+      pgrep: "exit 1",
+      pnpm: 'touch "$HOME/second-install-started"',
+    }))
+      writeFileSync(path.join(root, "bin", name), `#!/bin/sh\n${body}\n`, {
+        mode: 0o755,
+      });
+
+    const result = spawnSync(
+      "bash",
+      [path.join(root, "scripts/install-local-macos.sh")],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: root,
+          PATH: `${path.join(root, "bin")}:${process.env.PATH}`,
+        },
+      },
+    );
+
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /is acquiring the installer lock/);
+    assert.equal(existsSync(lock), true, "the active lock is not stolen");
+    assert.equal(existsSync(path.join(root, "second-install-started")), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("installer releases its lock when dependency installation fails", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "buzz-install-cleanup-"));
+  try {
+    mkdirSync(path.join(root, "scripts"));
+    mkdirSync(path.join(root, "bin"));
+    copyFileSync(
+      new URL("./install-local-macos.sh", import.meta.url),
+      path.join(root, "scripts/install-local-macos.sh"),
+    );
+    writeFileSync(path.join(root, "bin/activate-hermit"), "");
+    for (const [name, body] of Object.entries({
+      uname: "echo Darwin",
+      git: "exit 0",
+      pgrep: "exit 1",
+      pnpm: "exit 42",
+    }))
+      writeFileSync(path.join(root, "bin", name), `#!/bin/sh\n${body}\n`, {
+        mode: 0o755,
+      });
+
+    const result = spawnSync(
+      "bash",
+      [path.join(root, "scripts/install-local-macos.sh")],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: root,
+          PATH: `${path.join(root, "bin")}:${process.env.PATH}`,
+        },
+      },
+    );
+
+    assert.equal(result.status, 42);
+    assert.equal(
+      existsSync(path.join(root, "Applications/.buzz-local-install.lock")),
+      false,
+      "the EXIT trap releases the lock",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
