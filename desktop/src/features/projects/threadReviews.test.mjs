@@ -67,6 +67,11 @@ test("thread discovery opens the same durable review and follows only trusted co
     limit: 200,
   });
   assert.deepEqual(requests[1]["#E"], [root.id]);
+  assert.deepEqual(
+    requests[2].kinds,
+    [1630, 1631, 1632, 1633],
+    "discussion volume must not consume the session summary cap",
+  );
   assert.equal(reviews[0].commit, "2".repeat(40));
   assert.equal(reviews[0].id, root.id);
   assert.equal(reviews[0].sessionContext.threadRootId, thread);

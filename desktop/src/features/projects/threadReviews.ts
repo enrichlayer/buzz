@@ -30,24 +30,19 @@ export async function fetchThreadReviews(
   );
   if (!scoped.length) return [];
   const ids = scoped.map((root) => root.id);
-  const [updates, activity] = await Promise.all([
+  const [updates, statuses] = await Promise.all([
     fetchEvents({ kinds: [1619], "#E": ids, limit: LIMIT }),
     fetchEvents({
-      kinds: [1, 1630, 1631, 1632, 1633],
+      kinds: [1630, 1631, 1632, 1633],
       "#e": ids,
       limit: LIMIT,
     }),
   ]);
-  if (updates.length >= LIMIT || activity.length >= LIMIT)
+  if (updates.length >= LIMIT || statuses.length >= LIMIT)
     throw new Error(
       "This thread's review history is too large for a summary. Open Projects for the full review.",
     );
   return scoped.map((root) =>
-    eventToProjectPullRequest(
-      root,
-      updates,
-      activity.filter((event) => event.kind === 1),
-      activity.filter((event) => event.kind !== 1),
-    ),
+    eventToProjectPullRequest(root, updates, [], statuses),
   );
 }
