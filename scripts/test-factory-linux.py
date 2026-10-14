@@ -122,11 +122,13 @@ if name == "cargo" and sys.argv[1] == "build":
         just = self.root / "bin/just"
         just.write_text(
             "#!/usr/bin/env python3\n"
-            "print(\"thread 'expected_panic' panicked at expected.rs:1:1:\\nexpected\")\n"
-            "print('test expected_panic ... ok')\n"
+            "print(\"thread 'acp::trust' panicked at expected.rs:1:1:\\nexpected\")\n"
+            "print('test acp::trust ... ok')\n"
+            "print('test result: ok. 1 passed; 0 failed')\n"
             "print(\"thread 'acp::trust' (123) panicked at trust.rs:12:3:\\n"
             'assertion `left == right` failed\\n  left: 401\\n right: 200")\n'
             "print('test acp::trust ... FAILED')\n"
+            "print('test result: FAILED. 0 passed; 1 failed')\n"
             "print('passing test output\\n' * 2000)\n"
             "raise SystemExit(19)\n"
         )
@@ -134,7 +136,7 @@ if name == "cargo" and sys.argv[1] == "build":
         self.assertEqual(result.returncode, 19)
         self.assertIn("left: 401", result.stderr[-4096:])
         self.assertIn("right: 200", result.stderr[-4096:])
-        self.assertNotIn("expected_panic", result.stderr)
+        self.assertNotIn("expected.rs", result.stderr)
         self.assertLess(len(result.stderr.encode()), 4096)
 
     def test_summary_bounds_large_unicode_logs(self):
@@ -148,6 +150,7 @@ if name == "cargo" and sys.argv[1] == "build":
                 + f"\ntest failure_{n} ... FAILED\n"
                 for n in range(20)
             )
+            + "\ntest result: FAILED. 0 passed; 20 failed\n"
         )
         result = subprocess.run(
             ["python3", "scripts/factory-failure-summary.py", str(log)],

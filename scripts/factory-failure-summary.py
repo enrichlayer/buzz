@@ -16,18 +16,24 @@ def summarize(path: Path) -> str:
         stream.seek(offset)
         text = stream.read(window).decode("utf-8", errors="replace")
     text = re.sub(r"\x1b\[[0-9;]*m", "", text)
-    failed = set(re.findall(r"^test (\S+) \.\.\. FAILED", text, re.MULTILINE))
     contexts = []
     count = 0
-    for match in re.finditer(r"thread '([^']+)'(?: \([^\n]*\))? panicked at", text):
-        if match[1] in failed:
-            count += 1
-            if len(contexts) < 3:
-                contexts.append(
-                    "\n".join(
-                        text[match.start() : match.start() + 1000].splitlines()[:9]
-                    )[:850]
-                )
+    # A name can occur in several crates. Match panics only within the same
+    # failed libtest invocation, never an earlier successful should_panic test.
+    parts = re.split(r"(^test result: [^\n]*$)", text, flags=re.MULTILINE)
+    for run, result in zip(parts[::2], parts[1::2]):
+        if not result.startswith("test result: FAILED"):
+            continue
+        failed = set(re.findall(r"^test (\S+) \.\.\. FAILED", run, re.MULTILINE))
+        for match in re.finditer(r"thread '([^']+)'(?: \([^\n]*\))? panicked at", run):
+            if match[1] in failed:
+                count += 1
+                if len(contexts) < 3:
+                    contexts.append(
+                        "\n".join(
+                            run[match.start() : match.start() + 1000].splitlines()[:9]
+                        )[:850]
+                    )
     if not contexts:
         for match in re.finditer(r"^error(?:\[[^\]\n]+\])?:", text, re.MULTILINE):
             count += 1
