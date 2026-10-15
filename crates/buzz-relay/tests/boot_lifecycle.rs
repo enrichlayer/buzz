@@ -82,6 +82,10 @@ impl RelayProcess {
             }
             thread::sleep(Duration::from_millis(10));
         };
+        self.finish_output(status)
+    }
+
+    fn finish_output(&mut self, status: ExitStatus) -> Output {
         self.child.take();
         let output = Output {
             status,
@@ -170,10 +174,15 @@ fn wait_for_relay_metrics(process: &mut RelayProcess, port: u16) -> String {
 fn wait_for_scraped_metric(process: &mut RelayProcess, port: u16, needle: &str) -> String {
     let deadline = Instant::now() + METRICS_SCRAPE_DEADLINE;
     loop {
-        assert!(
-            process.try_wait().is_none(),
-            "relay exited before exporting {needle}"
-        );
+        if let Some(status) = process.try_wait() {
+            let output = process.finish_output(status);
+            panic!(
+                "relay exited before exporting {needle}: {}\nstdout:\n{}\nstderr:\n{}",
+                output.status,
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr),
+            );
+        }
         if let Ok(response) = scrape_metrics(port) {
             if response.contains(needle) {
                 return response;
@@ -332,6 +341,42 @@ fn phases(events: &[Value]) -> Vec<&str> {
         .filter(|event| event["edge"] == "started")
         .map(|event| event["phase"].as_str().expect("phase"))
         .collect()
+}
+
+#[test]
+fn early_metrics_exit_preserves_child_failure_diagnostics_and_cleanup() {
+    let mut process = RelayProcess::spawn(&[
+        ("RUST_LOG", "off"),
+        ("BUZZ_BIND_ADDR", "not-a-socket-address"),
+    ]);
+    let scratch_dir = process.scratch_dir.clone();
+    let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        wait_for_scraped_metric(&mut process, 0, "unreachable_metric")
+    }))
+    .expect_err("an invalid relay must fail before exporting metrics");
+    let message = failure
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| failure.downcast_ref::<&str>().copied())
+        .expect("panic should contain a diagnostic string");
+
+    assert!(message.contains("relay exited before exporting unreachable_metric"));
+    let status = message
+        .strip_prefix("relay exited before exporting unreachable_metric: ")
+        .and_then(|rest| rest.lines().next())
+        .expect("missing exit status");
+    assert!(!status.is_empty(), "missing exit status: {message}");
+    assert!(message.contains("stdout:\n"));
+    assert!(message.contains("stderr:\n"));
+    assert!(
+        message.contains("config_invalid"),
+        "missing child failure: {message}"
+    );
+    assert!(process.child.is_none(), "exited child must be reaped");
+    assert!(
+        !scratch_dir.exists(),
+        "relay scratch directory must be removed"
+    );
 }
 
 #[test]
