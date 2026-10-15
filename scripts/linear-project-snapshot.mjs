@@ -262,7 +262,8 @@ export function linearQueryThroughCli(
 
 /** Preserve the previous complete input if a read or atomic replacement fails. */
 export async function writeSnapshot(path, snapshot) {
-  const text = `${JSON.stringify(snapshot)}\n`;
+  // The CLI signs these exact bytes; keep the outbox content contract canonical.
+  const text = JSON.stringify(snapshot);
   if (Buffer.byteLength(text) > 64 * 1024 * 1024)
     throw new Error("Snapshot exceeds 64 MiB");
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });

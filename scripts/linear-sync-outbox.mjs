@@ -124,6 +124,7 @@ export async function runLinearSyncBatch({
   directory,
   binding,
   snapshot,
+  loadSnapshot,
   sign,
   publish,
   maxRecords = 50,
@@ -140,7 +141,6 @@ export async function runLinearSyncBatch({
     maxDurationMs > 15 * 60_000
   )
     throw new Error("Invalid sync time budget");
-  const deadline = Date.now() + maxDurationMs;
   const destination = bindingKey(binding);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   // SQLite's OS-backed write lock is released on process death. It prevents
@@ -162,6 +162,9 @@ export async function runLinearSyncBatch({
     const jobPath = join(directory, "job.json");
     let job = await read(jobPath);
     if (!job) {
+      // Source reads share the writer lock and failure receipt with publication.
+      // Never fetch newer input while an immutable batch still needs replay.
+      snapshot ??= await loadSnapshot?.();
       const records = snapshotRecords(snapshot);
       const sourcePath = join(directory, "source.json");
       const priorSource = await read(sourcePath);
@@ -221,6 +224,7 @@ export async function runLinearSyncBatch({
       records.length !== job.count
     )
       throw new Error("Durable sync input checksum mismatch");
+    const deadline = Date.now() + maxDurationMs;
     let processed = 0;
     for (
       ;

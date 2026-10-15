@@ -140,60 +140,80 @@ async function seed(page: import("@playwright/test").Page) {
   await page.getByTestId("projects-section-projects").click();
 }
 
-test("Linear project opens native tasks with full context, coding roots and real review navigation", async ({
-  page,
-}) => {
-  await seed(page);
-  await page.getByRole("button", { name: /Mirrored planning project/ }).click();
-  await expect(
-    page.getByRole("heading", {
-      name: "Mirrored planning project",
-      exact: true,
-    }),
-  ).toBeVisible();
-  await expect(page.getByText("Project acceptance context")).toBeVisible();
-  await page
-    .getByRole("button", { name: /DEV-42.*Connected source task/ })
-    .click();
-  await expect(
-    page.getByRole("heading", { name: "Connected source task", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByText(
-      "Acceptance: preserve the same issue across coding and review.",
-    ),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /Implement the source task/ }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Work on this task" }),
-  ).toBeEnabled();
-  await page
-    .getByRole("button", { name: "Review changes: Connected task review" })
-    .click();
-  await expect(page).toHaveURL(
-    (url) =>
-      new URLSearchParams(url.hash.split("?")[1]).get("pullRequestId") ===
-      JSON.stringify("4".repeat(64)),
-  );
-  await page.getByRole("button", { name: "Open task", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Connected source task", exact: true }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: /Implement the source task/ }).click();
-  await expect(page).toHaveURL(
-    (url) =>
-      new URLSearchParams(url.hash.split("?")[1]).get("thread") ===
-      JSON.stringify("3".repeat(64)),
-  );
-  await expect(
-    page
-      .getByTestId("message-thread-panel")
-      .getByTestId("message-body")
-      .filter({ hasText: "Implement the source task" }),
-  ).toBeVisible();
-});
+for (const origin of ["task", "review"] as const) {
+  test(`Linear project opens native tasks and a loaded coding thread from ${origin}`, async ({
+    page,
+  }) => {
+    await seed(page);
+    await page
+      .getByRole("button", { name: /Mirrored planning project/ })
+      .click();
+    await expect(
+      page.getByRole("heading", {
+        name: "Mirrored planning project",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(page.getByText("Project acceptance context")).toBeVisible();
+    await page
+      .getByRole("button", { name: /DEV-42.*Connected source task/ })
+      .click();
+    await expect(
+      page.getByRole("heading", { name: "Connected source task", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "Acceptance: preserve the same issue across coding and review.",
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /Implement the source task/ }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Work on this task" }),
+    ).toBeEnabled();
+    await page
+      .getByRole("button", { name: "Review changes: Connected task review" })
+      .click();
+    await expect(page).toHaveURL(
+      (url) =>
+        new URLSearchParams(url.hash.split("?")[1]).get("pullRequestId") ===
+        JSON.stringify("4".repeat(64)),
+    );
+    if (origin === "review") {
+      await page
+        .getByRole("button", {
+          name: "Open coding session in #general",
+          exact: true,
+        })
+        .click();
+    } else {
+      await page
+        .getByRole("button", { name: "Open task", exact: true })
+        .click();
+      await expect(
+        page.getByRole("heading", {
+          name: "Connected source task",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await page
+        .getByRole("button", { name: /Implement the source task/ })
+        .click();
+    }
+    await expect(page).toHaveURL(
+      (url) =>
+        new URLSearchParams(url.hash.split("?")[1]).get("thread") ===
+        JSON.stringify("3".repeat(64)),
+    );
+    await expect(
+      page
+        .getByTestId("message-thread-panel")
+        .getByTestId("message-body")
+        .filter({ hasText: "Implement the source task" }),
+    ).toBeVisible();
+  });
+}
 
 test("failed private mirror reads hide cached source cards and expose retry", async ({
   page,

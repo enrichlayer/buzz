@@ -59,7 +59,10 @@ export function buzzLinearTransport(
 }
 
 /** Resume an interrupted batch before fetching any newer source observation. */
-export async function runLinearSyncOnce(config, { signal } = {}) {
+export async function runLinearSyncOnce(
+  config,
+  { signal, query, run = execute } = {},
+) {
   signal?.throwIfAborted();
   const directory = resolve(config.directory);
   try {
@@ -77,19 +80,6 @@ export async function runLinearSyncOnce(config, { signal } = {}) {
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
-  let pending;
-  try {
-    pending = JSON.parse(await readFile(join(directory, "job.json"), "utf8"));
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-  }
-  const snapshot = pending
-    ? null
-    : await readLinearProjectSnapshot({
-        query: linearQueryThroughCli(config.profile, undefined, { signal }),
-        workspace: config.workspace,
-        projectId: config.projectId,
-      });
   return runLinearSyncBatch({
     directory,
     binding: {
@@ -97,15 +87,27 @@ export async function runLinearSyncOnce(config, { signal } = {}) {
       channel: config.channel,
       signer: config.signer,
     },
-    snapshot,
+    loadSnapshot: async () => {
+      try {
+        return await readLinearProjectSnapshot({
+          query:
+            query ??
+            linearQueryThroughCli(config.profile, undefined, { signal }),
+          workspace: config.workspace,
+          projectId: config.projectId,
+        });
+      } catch {
+        throw new Error(
+          "Linear source scan failed; last complete observation retained",
+        );
+      }
+    },
     maxRecords: config.maxRecords ?? 50,
     signal,
-    ...buzzLinearTransport({
-      directory,
-      relay: config.relay,
-      binary: config.binary,
-      signal,
-    }),
+    ...buzzLinearTransport(
+      { directory, relay: config.relay, binary: config.binary, signal },
+      run,
+    ),
   });
 }
 

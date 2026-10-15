@@ -50,7 +50,9 @@ export function ProjectOriginReference({
             onClick={() =>
               void goChannel(
                 channel.id,
-                threadRootId ? { thread: threadRootId } : undefined,
+                threadRootId
+                  ? { messageId: threadRootId, threadRootId }
+                  : undefined,
               )
             }
             type="button"

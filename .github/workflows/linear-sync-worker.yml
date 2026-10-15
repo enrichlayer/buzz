@@ -25,7 +25,7 @@ jobs:
           node-version: '24'
       - run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: workers/linear-sync
-      - run: node --test desktop/scripts/linear-project-snapshot.test.mjs desktop/scripts/linear-sync-outbox.test.mjs workers/linear-sync/worker.test.cjs workers/linear-sync/temporal.test.cjs
+      - run: node --test desktop/scripts/linear-project-snapshot.test.mjs desktop/scripts/linear-sync-outbox.test.mjs desktop/scripts/linear-sync.test.mjs workers/linear-sync/worker.test.cjs workers/linear-sync/temporal.test.cjs
       - run: |
           python3 -m pip install Jinja2==3.1.6 PyYAML==6.0.3
           python3 workers/linear-sync/deploy.test.py
