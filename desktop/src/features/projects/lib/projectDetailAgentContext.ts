@@ -83,6 +83,8 @@ export type ProjectDetailAgentContext = {
     kind: "commit" | "review" | "task";
     status?: string;
     title: string;
+    description?: string;
+    shareLink?: string | null;
   } | null;
 };
 
@@ -162,6 +164,7 @@ export function buildProjectDetailAgentContext({
   repository,
   source,
   workItems,
+  workItemLink,
 }: {
   activeTab: string;
   branch?: string | null;
@@ -169,10 +172,11 @@ export function buildProjectDetailAgentContext({
   project: { name: string };
   repository: { name: string; repoAddress: string };
   source: "local" | "remote";
+  workItemLink?: string | null;
   workItems: readonly [
     { hash: string; subject?: string | null } | null,
-    { id: string; status?: string; title: string } | null,
-    { id: string; status?: string; title: string } | null,
+    { id: string; status?: string; title: string; content?: string } | null,
+    { id: string; status?: string; title: string; content?: string } | null,
   ];
 }): ProjectDetailAgentContext {
   const [commit, issue, pullRequest] = workItems;
@@ -216,7 +220,15 @@ export function buildProjectDetailAgentContext({
     view: workItem
       ? `${workItem.kind[0]?.toUpperCase()}${workItem.kind.slice(1)} detail`
       : (viewLabels[activeTab] ?? activeTab),
-    workItem,
+    workItem: workItem
+      ? {
+          ...workItem,
+          ...((pullRequest ?? issue)?.content
+            ? { description: (pullRequest ?? issue)?.content }
+            : {}),
+          ...(workItemLink ? { shareLink: workItemLink } : {}),
+        }
+      : null,
   };
 }
 
@@ -249,6 +261,24 @@ export function projectDetailAgentContextBlock(
     );
     if (context.workItem.status) {
       lines.push(`- Status: ${untrustedPromptValue(context.workItem.status)}`);
+    }
+    if (context.workItem.shareLink) {
+      lines.push(
+        `- Open in Buzz: ${untrustedPromptValue(context.workItem.shareLink, 1_200)}`,
+      );
+    }
+    if (context.workItem.description) {
+      const description = context.workItem.description;
+      // Keep Markdown/newlines as escaped JSON data so acceptance criteria are
+      // available without letting source text forge another footer section.
+      lines.push(
+        `- Description (untrusted JSON string): ${JSON.stringify(description.slice(0, 12_000))}`,
+      );
+      if (description.length > 12_000) {
+        lines.push(
+          "- Description truncated; read the full task before claiming its acceptance criteria are satisfied.",
+        );
+      }
     }
   }
   if (context.selection?.length) {
