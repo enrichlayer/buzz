@@ -88,3 +88,64 @@ test("cancellation stops history pagination", async () => {
     /abort/i,
   );
 });
+
+test("relay post-filtering cannot hide older roots or uppercase-E updates", async () => {
+  const update = {
+    id: "update",
+    kind: 1619,
+    pubkey: owner,
+    content: "",
+    created_at: 2,
+    tags: [
+      ["E", root.id],
+      ["c", "e".repeat(40)],
+    ],
+  };
+  const unrelated = Array.from({ length: 1100 }, (_, i) => ({
+    ...root,
+    id: `other-${i}`,
+    created_at: 100 + i,
+    tags: [["a", `30617:${owner}:other`]],
+  }));
+  const unrelatedUpdates = unrelated.map((event) => ({
+    ...event,
+    id: `update-${event.id}`,
+    kind: 1619,
+    tags: [
+      ["E", event.id],
+      ["c", "f".repeat(40)],
+    ],
+  }));
+  const all = [root, update, ...unrelated, ...unrelatedUpdates];
+  const fetch = async (filter) => {
+    // Faithful relay ordering: kinds/e/time SQL constraints, LIMIT, then a/E.
+    const page = all
+      .filter(
+        (event) =>
+          filter.kinds.includes(event.kind) &&
+          (filter.until === undefined || event.created_at <= filter.until) &&
+          (!filter["#e"] ||
+            event.tags.some(
+              (tag) => tag[0] === "e" && filter["#e"].includes(tag[1]),
+            )),
+      )
+      .sort((a, b) => b.created_at - a.created_at)
+      .slice(0, filter.limit);
+    return page.filter((event) =>
+      ["#a", "#E"].every(
+        (key) =>
+          !filter[key] ||
+          event.tags.some(
+            (tag) => tag[0] === key.slice(1) && filter[key].includes(tag[1]),
+          ),
+      ),
+    );
+  };
+  const reviews = await fetchProjectPullRequests(
+    { repoAddress: address },
+    fetch,
+  );
+  assert.equal(reviews.length, 1);
+  assert.equal(reviews[0].id, root.id);
+  assert.equal(reviews[0].commit, "e".repeat(40));
+});

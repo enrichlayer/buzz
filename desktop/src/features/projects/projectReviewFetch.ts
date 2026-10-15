@@ -11,24 +11,29 @@ export async function fetchProjectPullRequests(
   fetchEvents: FetchEvents = relayClient.fetchEvents.bind(relayClient),
   signal?: AbortSignal,
 ) {
-  const roots = await fetchEvents({
-    kinds: [1618],
-    "#a": [project.repoAddress],
-    limit: 200,
-  });
-  if (roots.length >= 200)
+  // #a and uppercase #E are filtered AFTER the relay's SQL LIMIT. Walk
+  // SQL-pushed kinds first, then scope locally so a short page proves exhaustion.
+  const candidates = await fetchCompleteReviewEvents(
+    { kinds: [1618] },
+    fetchEvents,
+    signal,
+  );
+  const roots = candidates.filter((event) =>
+    event.tags.some((tag) => tag[0] === "a" && tag[1] === project.repoAddress),
+  );
+  if (roots.length > 200)
     throw new Error("Too many reviews to load a complete review list.");
   if (!roots.length) return [];
   const ids = roots.map((root) => root.id);
   const [updates, statuses, comments] = await Promise.all([
-    fetchEvents({ kinds: [1619], "#E": ids, limit: 500 }),
-    fetchEvents({ kinds: [1630, 1631, 1632, 1633], "#e": ids, limit: 500 }),
-    fetchReviewComments(ids, fetchEvents, signal),
+    fetchCompleteReviewEvents({ kinds: [1619] }, fetchEvents, signal),
+    fetchCompleteReviewEvents(
+      { kinds: [1630, 1631, 1632, 1633], "#e": ids },
+      fetchEvents,
+      signal,
+    ),
+    fetchCompleteReviewEvents({ kinds: [1], "#e": ids }, fetchEvents, signal),
   ]);
-  if (updates.length >= 500 || statuses.length >= 500)
-    throw new Error(
-      "Review update history exceeds the supported limit. Review state is incomplete.",
-    );
   return projectPullRequestEventsToPullRequests(
     roots,
     updates,
@@ -37,8 +42,8 @@ export async function fetchProjectPullRequests(
   );
 }
 
-async function fetchReviewComments(
-  ids: string[],
+async function fetchCompleteReviewEvents(
+  filter: { kinds: number[]; "#e"?: string[] },
   fetchEvents: FetchEvents,
   signal?: AbortSignal,
 ) {
@@ -52,8 +57,7 @@ async function fetchReviewComments(
     // establish exhaustion, so repository and semantic roles are checked by
     // the production projection instead.
     const page = await fetchEvents({
-      kinds: [1],
-      "#e": ids,
+      ...filter,
       limit,
       ...(until === undefined ? {} : { until }),
     });
@@ -73,8 +77,8 @@ async function fetchReviewComments(
       continue;
     }
     throw new Error(
-      "Review discussions are incomplete: too many comments share one timestamp.",
+      "Review history is incomplete: too many events share one timestamp.",
     );
   }
-  throw new Error("Review discussions exceed the supported history limit.");
+  throw new Error("Review history exceeds the supported history limit.");
 }
