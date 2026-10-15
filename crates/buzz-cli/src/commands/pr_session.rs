@@ -199,10 +199,20 @@ mod tests {
         type TestState = Arc<Mutex<Vec<nostr::Event>>>;
         let state: TestState =
             Arc::new(Mutex::new(vec![ordinary, wrong, ambiguous, valid.clone()]));
-        let app = Router::new().route("/query", post(|State(state): State<TestState>, Json(filter): Json<serde_json::Value>| async move {
-            assert_eq!(filter["limit"], 1000);
-            Json(state.lock().unwrap().clone())
-        })).with_state(state.clone());
+        let app = Router::new()
+            .route(
+                "/query",
+                post(
+                    |State(state): State<TestState>,
+                     Json(filters): Json<Vec<serde_json::Value>>| async move {
+                        assert_eq!(filters.len(), 1);
+                        assert_eq!(filters[0]["limit"], 1000);
+                        assert_eq!(filters[0]["#e"][0], "a".repeat(64));
+                        Json(state.lock().unwrap().clone())
+                    },
+                ),
+            )
+            .with_state(state.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
