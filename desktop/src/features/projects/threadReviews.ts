@@ -14,7 +14,8 @@ export async function fetchThreadReviews(
 ) {
   const roots = await fetchEvents({
     kinds: [1618],
-    "#h": [channelId],
+    // NIP-34 events are stored globally; their h-tag is signed provenance,
+    // not channel storage. Scope by the canonical thread and verify h below.
     "#e": [threadRootId],
     limit: LIMIT,
   });

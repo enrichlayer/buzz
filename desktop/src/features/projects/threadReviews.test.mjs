@@ -62,7 +62,6 @@ test("thread discovery opens the same durable review and follows only trusted co
   );
   assert.deepEqual(requests[0], {
     kinds: [1618],
-    "#h": [channel],
     "#e": [thread],
     limit: 200,
   });
@@ -161,4 +160,19 @@ test("relay failures and capped snapshots are errors rather than authoritative e
     ),
     /history is too large/,
   );
+});
+
+test("Git reviews remain discoverable when provenance h-tags are stored globally", async () => {
+  // Ingest stores NIP-34 kinds with channel_id=NULL. A #h SQL scope excludes
+  // those rows even though their signed tags retain the originating channel.
+  const reviews = await fetchThreadReviews(
+    async (filter) => {
+      if (filter["#h"]) return [];
+      return filter.kinds.includes(1618) ? [root] : [];
+    },
+    channel,
+    thread,
+  );
+  assert.equal(reviews.length, 1);
+  assert.equal(reviews[0].id, root.id);
 });

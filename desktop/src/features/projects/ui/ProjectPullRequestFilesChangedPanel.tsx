@@ -667,9 +667,14 @@ export function ProjectDiffFilesPanel({
       !selectedPath ||
       !filteredFiles.some((file) => file.path === selectedPath)
     ) {
-      setSelectedPath(filteredFiles[0].path);
+      // An anchor can arrive before the diff. Reconciliation must not replace
+      // that requested file with the first file when the snapshot loads.
+      setSelectedPath(
+        filteredFiles.find((file) => file.path === focusedAnchor?.path)?.path ??
+          filteredFiles[0].path,
+      );
     }
-  }, [filteredFiles, selectedPath]);
+  }, [filteredFiles, selectedPath, focusedAnchor]);
 
   if (isLoading && !diff) {
     return <BuzzLoadingState label="Loading changed files" />;
