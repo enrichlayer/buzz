@@ -255,10 +255,21 @@ test("create agent supports parallelism and system prompt overrides", async ({
   await expect(
     page.locator("#persona-session-policy-description"),
   ).toBeVisible();
-  await sessionPolicy.click();
-  await page
-    .getByRole("menuitemradio", { exact: true, name: "Each thread" })
-    .click();
+  // The field renders as a radio group when both labels fit its width and
+  // as a dropdown otherwise; drive whichever form this layout produced.
+  if ((await sessionPolicy.getAttribute("role")) === "radiogroup") {
+    const eachThread = sessionPolicy.getByRole("radio", {
+      exact: true,
+      name: "Each thread",
+    });
+    await eachThread.click();
+    await expect(eachThread).toHaveAttribute("aria-checked", "true");
+  } else {
+    await sessionPolicy.click();
+    await page
+      .getByRole("menuitemradio", { exact: true, name: "Each thread" })
+      .click();
+  }
 
   // Submitting mints a running instance whose behavioral quad resolves from
   // the definition (agents always start after creation).

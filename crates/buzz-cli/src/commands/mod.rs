@@ -1,3 +1,4 @@
+mod agent_enrollment;
 pub mod agents;
 pub mod channel_templates;
 pub mod channels;

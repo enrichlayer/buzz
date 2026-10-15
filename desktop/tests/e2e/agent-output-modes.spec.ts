@@ -1,3 +1,4 @@
+import { waitForAnimations } from "../helpers/animations";
 import { expect, test, type Page } from "@playwright/test";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
@@ -160,14 +161,14 @@ test("conversation preserves replies, failures and permissions; full transcript 
   await expect(activity).not.toContainText("Commands available: 97");
   await expect(activity).not.toContainText("bypassPermissions");
   await activity
-    .getByRole("button", { name: "Full transcript", exact: true })
+    .getByRole("radio", { name: "Full transcript", exact: true })
     .click();
   await expect(activity).toContainText("src/endpoint.ts");
   await expect(activity).toContainText("Commands available: 97");
   await expect(activity).toContainText("bypassPermissions");
   await expect(activity).toContainText("Missing auth configuration");
   await activity
-    .getByRole("button", { name: "Conversation", exact: true })
+    .getByRole("radio", { name: "Conversation", exact: true })
     .click();
   await expect(activity).not.toContainText("src/endpoint.ts");
   await expect(activity).not.toContainText("Commands available: 97");
@@ -190,8 +191,8 @@ test("legacy agents show decorated activity with local transcript controls", asy
     "const auth = null;",
   );
   await expect(
-    activity.getByRole("button", { name: "Activity", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
+    activity.getByRole("radio", { name: "Activity", exact: true }),
+  ).toHaveAttribute("aria-checked", "true");
   await expect(activity).toContainText("Command failed");
   const body = await activity.getByTestId("message-thread-body").boundingBox();
   const dock = await activity
@@ -298,7 +299,7 @@ test("publication receipts retain raw evidence and selection previews expand exa
   ).toBeGreaterThan(73);
   await feedback.getByRole("button", { name: "Show less" }).click();
   await panel
-    .getByRole("button", { name: "Full transcript", exact: true })
+    .getByRole("radio", { name: "Full transcript", exact: true })
     .click();
   await expect(receipt).toBeVisible();
   await expect(panel).toContainText(
@@ -354,10 +355,38 @@ test("persona output mode saves through the behavior group and reopens as Summar
   const dialog = page.getByTestId("persona-dialog");
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Advanced", exact: true }).click();
-  await dialog.locator("#persona-output-mode").click();
-  await page
-    .getByRole("menuitemradio", { name: "Summary", exact: true })
+  const output = dialog.getByRole("radiogroup", {
+    name: "Agent output",
+    exact: true,
+  });
+  await output.getByRole("radio", { name: "Summary", exact: true }).click();
+  const context = dialog.getByRole("radiogroup", {
+    name: "Conversation context",
+    exact: true,
+  });
+  await context
+    .getByRole("radio", { name: "Each thread", exact: true })
     .click();
+  const audience = dialog.getByRole("radiogroup", {
+    name: "Who can send instructions",
+    exact: true,
+  });
+  await audience
+    .getByRole("radio", { name: "Selected people", exact: true })
+    .click();
+  await expect(dialog.getByTestId("agent-access-warning")).toBeVisible();
+  await audience.getByRole("radio", { name: "Anyone", exact: true }).click();
+  await expect(dialog.getByTestId("agent-access-warning")).toContainText(
+    "Anyone",
+  );
+  await audience
+    .getByRole("radio", { name: "Only me (default)", exact: true })
+    .click();
+  await expect(dialog.getByTestId("agent-access-warning")).toHaveCount(0);
+  await waitForAnimations(page);
+  await dialog.screenshot({
+    path: "test-results/segmented-choices/agent-settings.png",
+  });
   await dialog.getByTestId("persona-dialog-submit").click();
   await expect(dialog).not.toBeVisible();
 
@@ -366,13 +395,28 @@ test("persona output mode saves through the behavior group and reopens as Summar
       .reverse()
       .find((candidate) => candidate.command === "update_persona");
     return entry?.payload as
-      | { input?: { behavior?: { outputMode?: string } } }
+      | {
+          input?: {
+            behavior?: {
+              outputMode?: string;
+              sessionPolicy?: string;
+              respondTo?: string;
+            };
+          };
+        }
       | undefined;
   });
   expect(updatePayload?.input?.behavior?.outputMode).toBe("summary");
+  expect(updatePayload?.input?.behavior?.sessionPolicy).toBe("thread");
+  expect(updatePayload?.input?.behavior?.respondTo).toBe("owner-only");
 
   await page.getByTestId("user-profile-edit-agent").click();
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Advanced", exact: true }).click();
-  await expect(dialog.locator("#persona-output-mode")).toHaveText("Summary");
+  await expect(
+    output.getByRole("radio", { name: "Summary", exact: true }),
+  ).toHaveAttribute("aria-checked", "true");
+  await expect(
+    context.getByRole("radio", { name: "Each thread", exact: true }),
+  ).toHaveAttribute("aria-checked", "true");
 });

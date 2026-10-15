@@ -100,3 +100,38 @@ test("rejects overly deep runtime data", () => {
   for (let index = 0; index < 18; index += 1) data = { child: data };
   assert.match(validateRuntimeContentData(data) ?? "", /depth/);
 });
+
+test("select presentation round-trips and remains optional for legacy manifests", () => {
+  for (const presentation of [undefined, "dropdown", "segmented"]) {
+    const source = structuredClone(validManifest);
+    source.blocks[1].fields = [
+      {
+        id: "decision",
+        label: "Decision",
+        type: "select",
+        options: ["Approve", "Needs changes"],
+        ...(presentation ? { presentation } : {}),
+      },
+    ];
+    const result = parseRuntimePluginManifest(JSON.stringify(source));
+    assert.equal(result.ok, true);
+    assert.equal(
+      result.manifest.blocks[1].fields[0].presentation,
+      presentation,
+    );
+  }
+});
+
+test("invalid select presentations and presentation on non-select fields are rejected", () => {
+  for (const field of [
+    { type: "select", options: ["A", "B"], presentation: "buttons" },
+    { type: "textarea", presentation: "segmented" },
+    { type: "checkbox", presentation: "dropdown" },
+  ]) {
+    const source = structuredClone(validManifest);
+    source.blocks[1].fields = [{ id: "choice", label: "Choice", ...field }];
+    const result = parseRuntimePluginManifest(JSON.stringify(source));
+    assert.equal(result.ok, false);
+    assert.match(result.error, /presentation/);
+  }
+});
