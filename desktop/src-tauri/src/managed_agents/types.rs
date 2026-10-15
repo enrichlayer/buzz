@@ -109,6 +109,10 @@ pub struct AgentDefinition {
     /// older clients and is omitted from storage/public events for stable bytes.
     #[serde(default, skip_serializing_if = "super::AcpSessionPolicy::is_channel")]
     pub session_policy: super::AcpSessionPolicy,
+    /// User-visible agent output policy. Full preserves legacy behavior and is
+    /// omitted for stable storage bytes.
+    #[serde(default, skip_serializing_if = "super::AgentOutputMode::is_full")]
+    pub output_mode: super::AgentOutputMode,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -139,6 +143,7 @@ impl AgentDefinition {
             max_turn_duration_seconds: None,
             parallelism: default_agent_parallelism(),
             session_policy: self.session_policy,
+            output_mode: self.output_mode,
             system_prompt: (!self.system_prompt.is_empty()).then_some(self.system_prompt),
             model: self.model,
             provider: self.provider,
@@ -220,6 +225,7 @@ impl ManagedAgentRecord {
             respond_to_allowlist: self.definition_respond_to_allowlist.clone(),
             parallelism: self.definition_parallelism,
             session_policy: self.session_policy,
+            output_mode: self.output_mode,
             created_at: self.created_at.clone(),
             updated_at: self.updated_at.clone(),
         })
@@ -311,6 +317,10 @@ pub struct ManagedAgentRecord {
     /// this same field as their durable value.
     #[serde(default, skip_serializing_if = "super::AcpSessionPolicy::is_channel")]
     pub session_policy: super::AcpSessionPolicy,
+    /// Output policy last applied to this record; linked instances resolve the
+    /// current definition at launch.
+    #[serde(default, skip_serializing_if = "super::AgentOutputMode::is_full")]
+    pub output_mode: super::AgentOutputMode,
     pub system_prompt: Option<String>,
     /// Desired LLM model ID. Matches AgentModelInfo.id from discovery.
     /// The harness re-discovers the correct ACP switching metadata at session
@@ -561,6 +571,8 @@ pub struct ManagedAgentSummary {
     pub parallelism: u32,
     /// Effective definition-owned ACP conversation boundary.
     pub session_policy: super::AcpSessionPolicy,
+    /// Effective definition-owned visible output policy.
+    pub output_mode: super::AgentOutputMode,
     pub system_prompt: Option<String>,
     pub avatar_url: Option<String>,
     pub model: Option<String>,

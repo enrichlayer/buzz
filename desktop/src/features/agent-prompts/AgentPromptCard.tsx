@@ -1,3 +1,5 @@
+import { PermissionCard } from "./PermissionCard";
+import { parsePermissionRequest } from "./permissionContent";
 import * as React from "react";
 import { CircleHelp, CircleSlash } from "lucide-react";
 
@@ -17,6 +19,7 @@ import {
 } from "./agentPromptContent";
 import { AgentPromptCardFrame } from "./AgentPromptCardFrame";
 import { QuestionForm } from "./QuestionForm";
+import { usePermissionRevision } from "./usePermissionRevision";
 
 type SubmitState =
   | { status: "idle" }
@@ -30,9 +33,12 @@ export function AgentPromptCard({
   currentPubkey,
   profiles,
 }: ArtifactTypeCardProps) {
+  // Submissions still name the head as `prev`; only what is shown and
+  // answered comes from the chain-resolved revision.
+  const shown = usePermissionRevision(artifact, channelId);
   const prompt = React.useMemo(
-    () => parseAgentPrompt(artifact.content, artifact.pubkey),
-    [artifact.content, artifact.pubkey],
+    () => (shown ? parseAgentPrompt(shown.content, shown.pubkey) : null),
+    [shown],
   );
   const identity = useIdentityQuery();
   const myPubkey = identity.data?.pubkey ?? currentPubkey;
@@ -44,7 +50,9 @@ export function AgentPromptCard({
 
   const handleSubmit = React.useCallback(
     async (answer: AgentPromptAnswer) => {
-      if (!prompt || !myPubkey) return;
+      if (!prompt || !myPubkey || prompt.state !== "open") return;
+      const permission = parsePermissionRequest(prompt.raw.permission);
+      if (permission && permission.ownerPubkey !== myPubkey) return;
       submittedRef.current = true;
       setSubmit({ status: "submitting" });
       try {
@@ -85,6 +93,16 @@ export function AgentPromptCard({
     [artifact, channelId, myPubkey, prompt],
   );
 
+  if (!shown) {
+    return (
+      <AgentPromptCardFrame state="fallback">
+        <p className="text-sm text-muted-foreground" role="status">
+          Checking who answered this request…
+        </p>
+      </AgentPromptCardFrame>
+    );
+  }
+
   if (!prompt) {
     return (
       <AgentPromptCardFrame state="fallback">
@@ -96,6 +114,22 @@ export function AgentPromptCard({
           This question can't be shown in this version of Buzz.
         </p>
       </AgentPromptCardFrame>
+    );
+  }
+
+  const permission = parsePermissionRequest(prompt.raw.permission);
+  if (permission) {
+    return (
+      <PermissionCard
+        channelId={channelId}
+        parentEventId={artifact.root}
+        prompt={prompt}
+        permission={permission}
+        currentPubkey={myPubkey}
+        submitting={submit.status === "submitting"}
+        errorMessage={submit.status === "error" ? submit.message : null}
+        onSubmit={handleSubmit}
+      />
     );
   }
 
@@ -118,7 +152,7 @@ export function AgentPromptCard({
   if (prompt.state === "answered") {
     return (
       <AgentPromptAnswered
-        answeredBy={artifact.pubkey}
+        answeredBy={shown.pubkey}
         currentPubkey={myPubkey}
         focusOnMount={submittedRef.current}
         lostRace={lostRace}

@@ -43,6 +43,7 @@ fn snap(record: &ManagedAgentRecord) -> serde_json::Value {
 fn record() -> ManagedAgentRecord {
     ManagedAgentRecord {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         description: None,
         pubkey: "p".repeat(64),
         name: "agent".into(),
@@ -106,6 +107,7 @@ fn record() -> ManagedAgentRecord {
 fn persona(id: &str, runtime: Option<&str>, prompt: &str) -> AgentDefinition {
     AgentDefinition {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         description: None,
         id: id.into(),
         display_name: id.into(),
@@ -222,6 +224,21 @@ fn persona_prompt_edit_changes_snapshot() {
     rec.persona_id = Some("pers".into());
     let before = [persona("pers", Some("goose"), "old prompt")];
     let after = [persona("pers", Some("goose"), "new prompt")];
+    assert_ne!(
+        snapshot(&rec, &before, &[], "wss://ws.example", &Default::default()),
+        snapshot(&rec, &after, &[], "wss://ws.example", &Default::default())
+    );
+}
+
+#[test]
+fn persona_output_mode_edit_changes_snapshot() {
+    let mut rec = record();
+    rec.persona_id = Some("pers".into());
+    let before = [persona("pers", Some("goose"), "prompt")];
+    let mut summary = persona("pers", Some("goose"), "prompt");
+    summary.output_mode = AgentOutputMode::Summary;
+    let after = [summary];
+
     assert_ne!(
         snapshot(&rec, &before, &[], "wss://ws.example", &Default::default()),
         snapshot(&rec, &after, &[], "wss://ws.example", &Default::default())

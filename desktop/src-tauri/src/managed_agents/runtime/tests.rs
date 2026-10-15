@@ -272,6 +272,7 @@ fn persona_with_provider(
 ) -> crate::managed_agents::AgentDefinition {
     crate::managed_agents::AgentDefinition {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         description: None,
         id: id.to_string(),
         display_name: id.to_string(),

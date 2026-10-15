@@ -77,6 +77,7 @@ test("create with an untouched draft submits the channel default", () => {
       respondToAllowlist: undefined,
       parallelism: undefined,
       sessionPolicy: "channel",
+      outputMode: "full",
     },
   );
 });
@@ -98,6 +99,7 @@ test("edit with a changed quad submits the full group", () => {
     respondToAllowlist: [HEX, "b".repeat(64)],
     parallelism: undefined,
     sessionPolicy: "channel",
+    outputMode: "full",
   });
 });
 
@@ -116,6 +118,7 @@ test("draftFromBehavior round-trips a full quad and copies the list", () => {
     respondToAllowlist: [HEX],
     parallelism: 3,
     sessionPolicy: "thread",
+    outputMode: "summary",
   };
   const draft = draftFromBehavior(behavior);
   assert.deepEqual(draft, {
@@ -123,6 +126,7 @@ test("draftFromBehavior round-trips a full quad and copies the list", () => {
     respondToAllowlist: [HEX],
     parallelism: "3",
     sessionPolicy: "thread",
+    outputMode: "summary",
   });
   draft.respondToAllowlist.push("mutated");
   assert.deepEqual(behavior.respondToAllowlist, [HEX], "list must be copied");
@@ -145,6 +149,7 @@ test("edit full-clear submits an explicit empty group, not nothing", () => {
       respondToAllowlist: undefined,
       parallelism: undefined,
       sessionPolicy: "channel",
+      outputMode: "full",
     },
     "full clear must submit the channel default",
   );
@@ -160,4 +165,14 @@ test("edit full-clear submits an explicit empty group, not nothing", () => {
     true,
   );
   assert.equal(noop, undefined, "empty-vs-empty must stay silent");
+});
+
+test("changing output mode submits the complete behavior group", () => {
+  const group = behaviorForSubmit(
+    { ...emptyPersonaBehaviorDraft, outputMode: "summary" },
+    emptyPersonaBehaviorDraft,
+    true,
+  );
+  assert.equal(group?.outputMode, "summary");
+  assert.equal(group?.sessionPolicy, "channel");
 });

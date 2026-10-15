@@ -534,6 +534,7 @@ export function AgentSessionThreadPanel({
                 : `Mention ${agent.name} in any channel to see its work here.`
             }
             profiles={profiles}
+            outputMode={agent.outputMode}
             rawLayout="exclusive"
             showHeader={false}
             showRaw={showRawFeed}
