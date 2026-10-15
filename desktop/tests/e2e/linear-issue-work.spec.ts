@@ -109,6 +109,33 @@ async function seed(page: import("@playwright/test").Page) {
   });
   await installMockBridge(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("channel-general").click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          window.__BUZZ_E2E_HAS_MOCK_LIVE_SUBSCRIPTION__?.({
+            channelName: "general",
+          }) ?? false,
+      ),
+    )
+    .toBe(true);
+  await page.evaluate(() => {
+    const root = window.__BUZZ_E2E_EXTRA_PROJECT_EVENTS__?.find(
+      (event) => event.kind === 9,
+    );
+    if (!root || !window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__)
+      throw new Error("Missing coding-thread fixture");
+    window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__({
+      channelName: "general",
+      id: root.id,
+      content: root.content,
+      pubkey: root.pubkey,
+      kind: 9,
+      createdAt: root.created_at,
+      extraTags: root.tags.filter((tag) => tag[0] !== "h"),
+    });
+  });
   await page.getByTestId("open-projects-view").click();
   await page.getByTestId("projects-section-projects").click();
 }
@@ -152,6 +179,12 @@ test("Linear project opens native tasks with full context, coding roots and real
   ).toBeVisible();
   await page.getByRole("button", { name: /Implement the source task/ }).click();
   await expect(page).toHaveURL(/thread=333333/);
+  await expect(
+    page
+      .getByTestId("message-thread-panel")
+      .getByTestId("message-body")
+      .filter({ hasText: "Implement the source task" }),
+  ).toBeVisible();
 });
 
 test("failed private mirror reads hide cached source cards and expose retry", async ({

@@ -200,10 +200,25 @@ test("CLI transport pins profile, uses argv instead of a shell, bounds calls, an
   );
   await assert.rejects(
     linearQueryThroughCli("acme", async () => {
-      throw new Error("unavailable");
+      throw new Error("unavailable: private source response");
     })("query", {}),
-    /unavailable/,
+    (error) => {
+      assert.match(error.message, /source read failed/);
+      assert.doesNotMatch(error.message, /private source response/);
+      return true;
+    },
   );
+  const controller = new AbortController();
+  const cancelled = linearQueryThroughCli(
+    "acme",
+    async (_binary, _args, options) => {
+      assert.equal(options.signal, controller.signal);
+      controller.abort();
+      throw new Error("child aborted");
+    },
+    { signal: controller.signal },
+  );
+  await assert.rejects(cancelled("query", {}), /abort/i);
 });
 
 test("failed source reads leave the last complete snapshot intact", async () => {

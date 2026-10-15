@@ -16,10 +16,11 @@ const execute = promisify(execFile);
 
 /** The managed environment supplies integration credentials, never desktop keys. */
 export function buzzLinearTransport(
-  { directory, relay, binary = "buzz" },
+  { directory, relay, binary = "buzz", signal },
   run = execute,
 ) {
   async function command(action, file, value, destination, createdAt) {
+    signal?.throwIfAborted();
     const path = join(directory, file);
     await writeSnapshot(path, value);
     try {
@@ -36,6 +37,7 @@ export function buzzLinearTransport(
         timeout: 60_000,
         maxBuffer: 512 * 1024,
         env: { ...process.env, BUZZ_RELAY_URL: relay },
+        signal,
       });
       return JSON.parse(stdout);
     } catch (error) {
@@ -57,7 +59,8 @@ export function buzzLinearTransport(
 }
 
 /** Resume an interrupted batch before fetching any newer source observation. */
-export async function runLinearSyncOnce(config) {
+export async function runLinearSyncOnce(config, { signal } = {}) {
+  signal?.throwIfAborted();
   const directory = resolve(config.directory);
   try {
     const source = JSON.parse(
@@ -83,7 +86,7 @@ export async function runLinearSyncOnce(config) {
   const snapshot = pending
     ? null
     : await readLinearProjectSnapshot({
-        query: linearQueryThroughCli(config.profile),
+        query: linearQueryThroughCli(config.profile, undefined, { signal }),
         workspace: config.workspace,
         projectId: config.projectId,
       });
@@ -96,10 +99,12 @@ export async function runLinearSyncOnce(config) {
     },
     snapshot,
     maxRecords: config.maxRecords ?? 50,
+    signal,
     ...buzzLinearTransport({
       directory,
       relay: config.relay,
       binary: config.binary,
+      signal,
     }),
   });
 }

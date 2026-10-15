@@ -129,7 +129,9 @@ export async function runLinearSyncBatch({
   maxRecords = 50,
   maxDurationMs = 4 * 60_000,
   now = () => Date.now(),
+  signal,
 }) {
+  signal?.throwIfAborted();
   if (!Number.isInteger(maxRecords) || maxRecords < 1 || maxRecords > 250)
     throw new Error("Invalid sync batch budget");
   if (
@@ -227,6 +229,7 @@ export async function runLinearSyncBatch({
       Date.now() < deadline;
       processed++
     ) {
+      signal?.throwIfAborted();
       const payload = records[job.cursor];
       const key = `${payload.type}-${payload.record.id}`;
       const headPath = join(headsDirectory, `${key}.json`);

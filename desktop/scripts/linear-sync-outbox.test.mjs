@@ -96,6 +96,27 @@ test("bounded batches resume durable input and publish the project receipt last"
   );
 });
 
+test("cancelled scheduler work retains its continuation for the next run", async (t) => {
+  const f = await fixture(t);
+  await runLinearSyncBatch({ ...f, maxRecords: 1 });
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(
+    runLinearSyncBatch({ ...f, snapshot: null, signal: controller.signal }),
+    /abort/i,
+  );
+  assert.equal(f.published.length, 1);
+  assert.equal(
+    JSON.parse(await readFile(join(f.directory, "job.json"), "utf8")).cursor,
+    1,
+  );
+  assert.equal(
+    (await runLinearSyncBatch({ ...f, snapshot: null })).complete,
+    true,
+  );
+  assert.equal(f.published.length, 3);
+});
+
 test("lost acknowledgement keeps exact signed bytes and retries without resigning", async (t) => {
   const f = await fixture(t);
   let uncertainEvent;

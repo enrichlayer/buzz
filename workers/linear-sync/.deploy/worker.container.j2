@@ -1,0 +1,37 @@
+{% if not (buzz_linear_sync_image | default('') is match('^ghcr[.]io/enrichlayer/buzz-linear-sync@sha256:[0-9a-f]{64}$')) %}
+{{ undef(hint='A verified immutable Buzz Linear worker image digest is required') | mandatory }}
+{% endif %}
+[Unit]
+Description=Private Buzz Linear mirror worker
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Container]
+ContainerName=buzz-linear-sync-private
+Image={{ buzz_linear_sync_image }}
+Pull=missing
+User=1000:1000
+Volume=buzz-linear-sync-private.volume:/data
+Volume=/etc/buzz-linear-sync-private/config.json:/config/sync.json:ro
+EnvironmentFile=/etc/buzz-linear-sync-private/runtime.env
+Environment=BUZZ_LINEAR_CONFIG_FILE=/config/sync.json
+Environment=TEMPORAL_ADDRESS={{ buzz_linear_sync_temporal_address }}
+Environment=TEMPORAL_NAMESPACE={{ buzz_linear_sync_temporal_namespace }}
+Environment=TASK_QUEUE={{ buzz_linear_sync_task_queue }}
+Environment=BUZZ_LINEAR_SCHEDULE_ID={{ buzz_linear_sync_task_queue }}
+PodmanArgs=--authfile=/etc/buzz-linear-sync-private/registry-auth.json
+ReadOnly=true
+Tmpfs=/tmp:rw,nosuid,nodev,size=128m
+Tmpfs=/home/node:rw,nosuid,nodev,uid=1000,gid=1000,mode=0700,size=64m
+StopTimeout=120
+
+[Service]
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=150
+UMask=0077
+MemoryMax=1G
+CPUQuota=100%
+
+[Install]
+WantedBy=multi-user.target

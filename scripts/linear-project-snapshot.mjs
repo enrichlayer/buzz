@@ -210,27 +210,48 @@ export async function readLinearProjectSnapshot({
 }
 
 /** The managed CLI owns authentication/profile selection and API rate handling. */
-export function linearQueryThroughCli(profile, execute = execFileAsync) {
+export function linearQueryThroughCli(
+  profile,
+  execute = execFileAsync,
+  { signal } = {},
+) {
   if (!/^[a-z0-9_-]+$/i.test(profile ?? ""))
     throw new Error("An explicit el-linear profile is required");
   return async (query, variables) => {
-    const { stdout } = await execute(
-      "el-linear",
-      [
-        "--profile",
-        profile,
-        "graphql",
-        query,
-        "--variables",
-        JSON.stringify(variables),
-      ],
-      {
-        timeout: 90_000,
-        maxBuffer: 8 * 1024 * 1024,
-        env: { ...process.env, EL_CLI_UPDATE_WAIT: "1" },
-      },
-    );
-    const envelope = JSON.parse(stdout);
+    signal?.throwIfAborted();
+    let stdout;
+    try {
+      ({ stdout } = await execute(
+        "el-linear",
+        [
+          "--profile",
+          profile,
+          "graphql",
+          query,
+          "--variables",
+          JSON.stringify(variables),
+        ],
+        {
+          timeout: 90_000,
+          maxBuffer: 8 * 1024 * 1024,
+          env: { ...process.env, EL_CLI_UPDATE_WAIT: "1" },
+          signal,
+        },
+      ));
+    } catch {
+      signal?.throwIfAborted();
+      throw new Error(
+        "el-linear source read failed; no complete observation produced",
+      );
+    }
+    let envelope;
+    try {
+      envelope = JSON.parse(stdout);
+    } catch {
+      throw new Error(
+        "el-linear returned invalid JSON; no complete observation produced",
+      );
+    }
     if (envelope.error || envelope.errors?.length)
       throw new Error("el-linear returned an API error");
     const data = envelope.data ?? envelope;

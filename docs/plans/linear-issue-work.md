@@ -119,7 +119,8 @@ with all Linear administration, reporting or integration features.
   receipts. Initial/periodic full enumeration precedes delta publication.
 - Native Projects/Tasks lists and source detail are implemented with stable deep links, complete-list bounds and source freshness. A signed task association on the thread opener is inherited by CLI reviews and resolves back to the native task. Frontend regressions pass; installed feature proof is pending.
 - The private destination exists in the pilot, with only the owner observed in its membership. No records have been published and no integration identity has been added.
-- Remaining: remote Rust/relay validation, deployed worker and integration identity, remote packaging and installed acceptance.
+- A Temporal worker now wraps the durable activity, with bounded retries, cancellation, private receipt-only workflow history, a paused schedule creator, and a Linux image pipeline. Its isolated single-host infractl package keeps the outbox on a persistent volume. Twenty source/outbox/config tests pass; real Temporal CI and deployment are pending.
+- Remaining: completed remote CI, worker admission and integration identity, live private sync, remote packaging and installed acceptance. The first packaging run was rejected before execution because this branch is not admitted by the desktop-candidate environment; exact-branch permission has been requested. No protection rule has changed.
 
 ## Defect and acceptance ledger
 
