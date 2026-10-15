@@ -42,7 +42,7 @@ pub async fn cmd_open_pr(
     let content = read_optional_body(body, body_file)?;
     let inherited_thread = std::env::var(super::pr_session::THREAD_ENV).ok();
     let inherited_channel = std::env::var(super::GIT_ORIGIN_CHANNEL_ENV).ok();
-    let session_tags = super::pr_session::context_tags(
+    let mut session_tags = super::pr_session::context_tags(
         thread,
         inherited_thread.as_deref(),
         channel,
@@ -52,7 +52,7 @@ pub async fn cmd_open_pr(
     if !session_tags.is_empty() {
         super::pr_session::verify_thread(
             client,
-            &session_tags,
+            &mut session_tags,
             channel.or(inherited_channel.as_deref()).unwrap_or_default(),
         )
         .await?;

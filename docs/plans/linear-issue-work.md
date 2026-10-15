@@ -4,7 +4,7 @@ Tracking: [DEV-13285](https://linear.app/verticalint/issue/DEV-13285/).
 Initial authorized source scope: **Tools and standardization**, in the
 `verticalint` Linear workspace. PR #28 remains a separate final-test candidate.
 The user selected a **private channel for themselves first**. No source issues
-have been published to a relay yet; destination membership must be verified.
+have been published to a relay yet; the installed owner app created the private destination and its member list showed only the owner. Membership must be rechecked at publication.
 
 ## Product contract
 
@@ -117,9 +117,9 @@ with all Linear administration, reporting or integration features.
   Mac loop. The SQLite process lock releases on crash; filesystem checkpoints
   retain exact signed retries, source versions, failure health and complete-scan
   receipts. Initial/periodic full enumeration precedes delta publication.
-- Remaining: remote Rust/relay validation, deployed worker and integration
-  identity, private channel provisioning, native Tasks/Projects presentation,
-  task/thread/review navigation, remote packaging and installed acceptance.
+- Native Projects/Tasks lists and source detail are implemented with stable deep links, complete-list bounds and source freshness. A signed task association on the thread opener is inherited by CLI reviews and resolves back to the native task. Frontend regressions pass; installed feature proof is pending.
+- The private destination exists in the pilot, with only the owner observed in its membership. No records have been published and no integration identity has been added.
+- Remaining: remote Rust/relay validation, deployed worker and integration identity, remote packaging and installed acceptance.
 
 ## Defect and acceptance ledger
 
@@ -132,6 +132,7 @@ with all Linear administration, reporting or integration features.
 | Lost publication acknowledgement / worker crash | Exact signed outbox, fsync checkpoints and crash-released writer lock | Retry, contention and killed-process recovery tests pass |
 | Missing source issue mistaken for deletion | Complete scan emits out-of-scope projection, clears copied body; restoration supported | Retraction/restoration regression passes |
 | New event transport and relay access | Implemented, remote validation pending | Core contract and routing tests authored; no local Rust build |
+| CLI command inventory omitted the new linear group | Fixed expected inventory after remote test failure; next remote run validates | First CI compiled the new transport, then failed the explicit command inventory test |
 | Native mirror UI and durable deployed sync | Active DEV-13285 work, owned by this agent | Not delivered, no live publication or sync claim |
 | PR #28 final test | Existing PR remains draft for the user | Full CI and paired native packages green; installed two-user proof complete |
 

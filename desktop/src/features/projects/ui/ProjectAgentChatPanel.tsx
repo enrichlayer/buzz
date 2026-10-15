@@ -222,6 +222,9 @@ function ProjectAgentChatSession({
               undefined,
               request.expectedRelayUrl,
               request.expectedSignerPubkey,
+              undefined,
+              undefined,
+              request.parentEventId ? undefined : context.linearTask,
             ),
         });
         if (!conversation) {
@@ -256,6 +259,7 @@ function ProjectAgentChatSession({
     },
     [
       contextPayload,
+      context.linearTask,
       conversation,
       homeChannel,
       identityQuery.data?.pubkey,

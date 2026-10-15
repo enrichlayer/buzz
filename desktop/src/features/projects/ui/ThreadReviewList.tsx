@@ -1,3 +1,4 @@
+import { linearWorkLinkFromAddress } from "@/shared/lib/linearWorkLink";
 import type { ProjectPullRequest } from "../projectPullRequests.mjs";
 import {
   parseEntityLink,
@@ -30,6 +31,10 @@ export function ThreadReviewList({
         const issue = review.sessionContext?.linearIssueUrl
           ? parseSessionLinearIssue(review.sessionContext.linearIssueUrl)
           : null;
+        const taskHref = review.sessionContext?.taskAddress
+          ? linearWorkLinkFromAddress(review.sessionContext.taskAddress)
+          : null;
+        const taskLink = taskHref ? parseEntityLink(taskHref) : null;
         return (
           <div
             key={review.id}
@@ -56,7 +61,11 @@ export function ThreadReviewList({
                   variant="link"
                   size="sm"
                   className="h-auto p-0 text-xs"
-                  onClick={() => onOpenIssue(issue.url)}
+                  onClick={() =>
+                    taskLink?.ok
+                      ? onOpenReview(taskLink.value)
+                      : onOpenIssue(issue.url)
+                  }
                 >
                   {issue.id}
                 </Button>

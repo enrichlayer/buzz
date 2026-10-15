@@ -1,3 +1,4 @@
+import { linearEventToWork } from "@/features/projects/linearWorkModels";
 import * as React from "react";
 
 import { invokeTauri } from "@/shared/api/tauri";
@@ -441,6 +442,33 @@ export async function fetchBuzzEntityMetadata(
   if (!parsed.ok) return null;
 
   const { owner, dtag } = parsed.value;
+  if (
+    parsed.value.type === "linear-task" ||
+    parsed.value.type === "linear-project"
+  ) {
+    const kind = parsed.value.type === "linear-task" ? 30624 : 30623;
+    const events = await fetchEvents({
+      kinds: [kind],
+      authors: [owner],
+      "#d": [dtag],
+      "#h": [dtag.split(":")[1]],
+      limit: 1,
+    });
+    const work = events
+      .map(linearEventToWork)
+      .find((record) => record?.address === `${kind}:${owner}:${dtag}`);
+    return work
+      ? {
+          siteName: "Linear work in Buzz",
+          faviconDataUrl: null,
+          imageDataUrl: null,
+          imageDomain: null,
+          title: `${work.identifier ? `${work.identifier} · ` : ""}${work.title}`,
+          description: work.state?.name ?? work.source.workspace,
+        }
+      : null;
+  }
+
   if (parsed.value.type === "project") {
     const projectAddress = `${KIND_PROJECT_ANNOUNCEMENT}:${owner}:${dtag}`;
     const projectEvents = await fetchEvents({

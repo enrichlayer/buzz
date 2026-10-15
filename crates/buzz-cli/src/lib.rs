@@ -2490,6 +2490,7 @@ mod tests {
             "feed",
             "gifs",
             "issues",
+            "linear",
             "media",
             "mem",
             "messages",

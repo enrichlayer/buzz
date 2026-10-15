@@ -177,3 +177,96 @@ mod tests {
         assert!(validate_linear_record(&large.to_string()).is_err());
     }
 }
+
+/// Validate a task coordinate against the channel that owns its copied source data.
+/// This is an author's association, never an access grant or source-status proof.
+pub fn validate_task_coordinate(address: &str, channel: &str) -> Result<(), String> {
+    let parts: Vec<_> = address.split(':').collect();
+    if parts.len() != 6
+        || parts[0] != "30624"
+        || parts[1].len() != 64
+        || !parts[1]
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        || parts[2] != "linear"
+        || parts[3] != channel
+        || parts[3..].iter().any(|part| Uuid::parse_str(part).is_err())
+    {
+        return Err("invalid channel-bound Linear task coordinate".into());
+    }
+    Ok(())
+}
+
+/// Structured context signed atomically with a coding-thread opener.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LinearTaskContext {
+    /// Stable address of the authorized channel's mirrored issue.
+    pub address: String,
+    /// Canonical source URL for human navigation.
+    pub url: String,
+}
+
+impl LinearTaskContext {
+    /// Build a bounded source association after validating its channel and URL.
+    pub fn tags(&self, channel: &str) -> Result<Vec<nostr::Tag>, String> {
+        validate_task_coordinate(&self.address, channel)?;
+        let url = url::Url::parse(&self.url).map_err(|_| "invalid Linear task URL")?;
+        let parts: Vec<_> = url.path().trim_end_matches('/').split('/').collect();
+        let valid_id = parts.get(3).is_some_and(|id| {
+            id.split_once('-').is_some_and(|(team, number)| {
+                team.as_bytes().first().is_some_and(u8::is_ascii_alphabetic)
+                    && team.bytes().all(|byte| byte.is_ascii_alphanumeric())
+                    && !number.is_empty()
+                    && number.bytes().all(|byte| byte.is_ascii_digit())
+            })
+        });
+        if self.url.len() > 2048
+            || url.scheme() != "https"
+            || url.host_str() != Some("linear.app")
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.port().is_some()
+            || url.query().is_some()
+            || url.fragment().is_some()
+            || !(parts.len() == 4 || parts.len() == 5)
+            || parts[1].is_empty()
+            || parts[2] != "issue"
+            || !valid_id
+        {
+            return Err("expected a canonical HTTPS Linear issue URL".into());
+        }
+        [
+            vec!["a", self.address.as_str(), "", "buzz-task"],
+            vec!["r", self.url.as_str(), "linear-issue"],
+        ]
+        .into_iter()
+        .map(|parts| nostr::Tag::parse(parts).map_err(|error| error.to_string()))
+        .collect()
+    }
+}
+
+#[cfg(test)]
+mod task_context_tests {
+    use super::*;
+    #[test]
+    fn task_context_binds_channel_and_rejects_untrusted_navigation() {
+        let channel = "11111111-1111-4111-8111-111111111111";
+        let mut context = LinearTaskContext {
+            address: format!("30624:{}:linear:{channel}:22222222-2222-4222-8222-222222222222:33333333-3333-4333-8333-333333333333", "a".repeat(64)),
+            url: "https://linear.app/workspace/issue/DEV-42/title".into(),
+        };
+        assert_eq!(context.tags(channel).map(|tags| tags.len()), Ok(2));
+        assert!(context
+            .tags("44444444-4444-4444-8444-444444444444")
+            .is_err());
+        for url in [
+            "https://linear.app.evil.test/workspace/issue/DEV-42",
+            "https://linear.app/workspace/project/DEV-42",
+            "https://linear.app/workspace/issue/DEV-42?token=x",
+        ] {
+            context.url = url.into();
+            assert!(context.tags(channel).is_err());
+        }
+    }
+}

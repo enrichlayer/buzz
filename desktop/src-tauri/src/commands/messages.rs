@@ -416,6 +416,7 @@ pub async fn send_channel_message(
     mention_tags: Option<Vec<Vec<String>>>,
     link_preview_tags: Option<Vec<Vec<String>>>,
     shell_tags: Option<Vec<Vec<String>>>,
+    work_context: Option<buzz_core::linear::LinearTaskContext>,
     sent_from_thread_tag: Option<Vec<String>>,
     mention_pubkeys: Option<Vec<String>>,
     kind: Option<u32>,
@@ -518,6 +519,15 @@ pub async fn send_channel_message(
             )?
         }
     };
+
+    if let Some(context) = work_context {
+        if parent_event_id.is_some() || root_event_id.is_some() || kind_num != 9 {
+            return Err("task context belongs only on a coding-thread opener".into());
+        }
+        for tag in context.tags(&channel_id)? {
+            builder = builder.tag(tag);
+        }
+    }
 
     if let Some(shell_tags) = shell_tags.filter(|tags| !tags.is_empty()) {
         if kind_num != 9 || shell_tags.len() != 1 || !media.is_empty() {

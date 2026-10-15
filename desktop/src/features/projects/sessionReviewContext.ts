@@ -1,7 +1,9 @@
+import { linearWorkLinkFromAddress } from "../../shared/lib/linearWorkLink.ts";
 import type { RelayEvent } from "@/shared/api/types";
 
 /** A signed author's association, not proof of Linear ownership or status. */
 export type SessionReviewContext = {
+  taskAddress?: string | null;
   threadRootId: string;
   linearIssueUrl: string | null;
   linearIssueId: string | null;
@@ -49,7 +51,19 @@ export function sessionReviewContext(
     ? parseSessionLinearIssue(issues[0][1] ?? "")
     : null;
   if (issues.length && !issue) return null;
+  const tasks = event.tags.filter(
+    (tag) => tag[0] === "a" && tag[3] === "buzz-task",
+  );
+  if (
+    tasks.length > 1 ||
+    (tasks.length === 1 &&
+      (tasks[0].length !== 4 ||
+        !tasks[0][1]?.startsWith("30624:") ||
+        !linearWorkLinkFromAddress(tasks[0][1])))
+  )
+    return null;
   return {
+    ...(tasks.length ? { taskAddress: tasks[0][1] } : {}),
     threadRootId: roots[0][1],
     linearIssueUrl: issue?.url ?? null,
     linearIssueId: issue?.id ?? null,
