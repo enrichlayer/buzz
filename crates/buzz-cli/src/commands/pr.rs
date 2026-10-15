@@ -179,7 +179,11 @@ pub async fn cmd_list_prs(
         filter["limit"] = serde_json::json!(n);
     }
 
-    let resp = client.query(&filter).await?;
+    let resp = if let Some(thread) = thread {
+        super::pr_session::list_thread_reviews(client, filter, thread, limit).await?
+    } else {
+        client.query(&filter).await?
+    };
     println!("{resp}");
     Ok(())
 }

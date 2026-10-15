@@ -47,6 +47,9 @@ export function ThreadReviewList({
                   </span>
                 ) : null}
               </p>
+              <p className="break-all text-xs text-muted-foreground">
+                Association claimed by reviewer: <span>{review.author}</span>
+              </p>
               {issue ? (
                 <Button
                   type="button"

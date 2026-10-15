@@ -187,9 +187,22 @@ export function normalizeProjectPullRequestCommentAnchor(anchor) {
 
 function eventToPullRequestComment(event) {
   const labels = getAllTags(event, "t").map((label) => label.toLowerCase());
-  const isReviewRequest = labels.includes(PR_REVIEW_REQUEST_LABEL);
-  const isApproval = labels.includes(PR_APPROVAL_LABEL);
-  const isChangeRequest = labels.includes(PR_CHANGES_REQUESTED_LABEL);
+  // One signed note has one authoritative semantic role. Mixed labels remain
+  // readable comments but cannot change either discussion or review state.
+  const roles = [
+    PR_REVIEW_REQUEST_LABEL,
+    PR_APPROVAL_LABEL,
+    PR_CHANGES_REQUESTED_LABEL,
+    "review-thread-resolve",
+    "review-thread-reopen",
+  ];
+  const unambiguous =
+    roles.filter((role) => labels.includes(role)).length === 1;
+  const isReviewRequest =
+    unambiguous && labels.includes(PR_REVIEW_REQUEST_LABEL);
+  const isApproval = unambiguous && labels.includes(PR_APPROVAL_LABEL);
+  const isChangeRequest =
+    unambiguous && labels.includes(PR_CHANGES_REQUESTED_LABEL);
   const lineTag = getTag(event, "line");
   const parsedLine =
     lineTag && /^[1-9]\d*$/.test(lineTag) ? Number(lineTag) : Number.NaN;
@@ -214,8 +227,9 @@ function eventToPullRequestComment(event) {
       event.tags.find((tag) => tag[0] === "e" && tag[3] === "reply")?.[1] ??
       null,
     threadAction:
-      labels.includes("review-thread-resolve") !==
-      labels.includes("review-thread-reopen")
+      unambiguous &&
+      (labels.includes("review-thread-resolve") ||
+        labels.includes("review-thread-reopen"))
         ? labels.includes("review-thread-resolve")
           ? "resolve"
           : "reopen"

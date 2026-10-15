@@ -52,6 +52,22 @@ test("session review entry exposes the issue and exact commit and opens the exis
       ui.getByTitle(commit).textContent.trim(),
       `· ${commit.slice(0, 12)}`,
     );
+    assert.ok(ui.getByText(/Association claimed by reviewer:/));
+    assert.equal(ui.getByText(owner).textContent, owner);
+    // A signed association from an unrelated identity is explicitly a claim.
+    ui.rerender(
+      React.createElement(ThreadReviewList, {
+        reviews: [{ ...review, author: "e".repeat(64) }],
+        onOpenReview: (link) => {
+          opened = link;
+        },
+        onOpenIssue: (url) => {
+          issue = url;
+        },
+      }),
+    );
+    assert.ok(ui.getByText(/Association claimed by reviewer:/));
+    assert.ok(ui.getByText("e".repeat(64)));
     fireEvent.click(
       ui.getByRole("button", { name: "Review changes: Fix discounts" }),
     );

@@ -3,6 +3,9 @@
 Extends the existing Projects review surface in line with VISION_PROJECTS.md:
 review discussion remains signed, queryable Buzz events alongside the code.
 
+Evidence paths under `test-results/`, `.tmp/` and `verified-dev-state/` below
+refer to local verification receipts, not files distributed in this repository.
+
 ## Comparison with Codiff
 
 [Codiff](https://github.com/nkzw-tech/codiff) provides a local Git review app,
@@ -41,7 +44,9 @@ separate migration work; this change does not claim that parity.
 ## Event contract
 
 Reuse kind 1 comments, the existing Buzz/NIP-34 review convention; no new HTTP
-endpoint or event kind. Every reply/status operation carries:
+endpoint or event kind. This intentionally retains the current format while
+VISION_PROJECTS.md targets NIP-22 kind 1111; that migration also requires relay
+support. Every reply/status operation carries:
 
 - `e` with the PR ID and `root` marker, for existing review-history queries;
 - a separate `e` with the discussion starter's ID and `reply` marker;
@@ -272,9 +277,14 @@ session-specific copy of those controls.
 - `pr_session.rs` tests call the production open command against HTTP fixtures,
   verify its signed event, and prove invalid thread roots never publish.
 - Harness tests verify thread provenance and clearing across reused MCP configs.
-- Rust tests and full build/type checks run remotely. Native acceptance must
-  demonstrate a normal coding session creating the association, two users
-  opening its review, a new commit updating that same review, and the return to
-  the originating thread after restart. This remains pending until the new
-  package is installed and the Mac is unlocked; existing package receipts do
-  not validate this extension.
+- Remote full CI run 38719020960 and paired native build 38721389273 passed
+  at `ad09660f41a8c291a051437676590a014664d5dd`. Installed native testing
+  demonstrated normal Keychain launch and Quit, a managed coding session
+  publishing its review with DEV-13099, two users exchanging and resolving/
+  reopening comments, and a real new commit updating that review. After cold
+  restart, the association, discussions and per-user viewed progress persisted.
+  Local receipts: `test-results/review-normal-launch/repair/README.md`.
+- Final independent review identified additional subprocess, history and
+  provenance repairs. Their changed-head validation is tracked separately;
+  the receipts above apply only to the named revision. Human acceptance is
+  still pending. These are private unsigned validation packages, not a release.

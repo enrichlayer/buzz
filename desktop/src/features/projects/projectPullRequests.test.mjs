@@ -658,7 +658,7 @@ test("mixed effective decisions keep requested changes visible", () => {
   assert.equal(summary.state, "1 reviewer requested changes.");
 });
 
-test("trusted review requests cannot borrow decision timeline visuals", () => {
+test("mixed review request and approval labels have no authoritative role", () => {
   const reviewer = "d".repeat(64);
   const request = commentEvent({
     pubkey: AUTHOR,
@@ -673,12 +673,9 @@ test("trusted review requests cannot borrow decision timeline visuals", () => {
   );
   const comment = pullRequest.comments[0];
 
-  assert.equal(comment.isTrustedReviewRequest, true);
+  assert.equal(comment.isTrustedReviewRequest, false);
   assert.equal(comment.isTrustedReviewDecision, false);
-  assert.equal(
-    projectPullRequestCommentTimelineKind(comment),
-    "review-request",
-  );
+  assert.equal(projectPullRequestCommentTimelineKind(comment), null);
 });
 
 test("equal-timestamp decisions use event ID ordering in both input orders", () => {

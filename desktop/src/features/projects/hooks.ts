@@ -54,8 +54,8 @@ import {
   normalizeProjectPullRequestCommentAnchor,
   PR_CHANGES_REQUESTED_LABEL,
   PR_INLINE_COMMENT_LABEL,
-  projectPullRequestEventsToPullRequests,
 } from "./projectPullRequests.mjs";
+import { fetchProjectPullRequests } from "./projectReviewFetch";
 import { fetchProjectsWorkItems } from "./projectWorkItems";
 import {
   projectDeletionMutationOptions,
@@ -240,46 +240,6 @@ async function fetchProjectIssues(
     issueEvents,
     statusEvents,
     mergeEventsById(commentEvents, assignmentEvents),
-  );
-}
-
-async function fetchProjectPullRequests(
-  project: Repository,
-): Promise<ProjectPullRequest[]> {
-  const [pullRequestEvents, updateEvents, commentEvents, statusEvents] =
-    await Promise.all([
-      relayClient.fetchEvents({
-        kinds: [KIND_GIT_PULL_REQUEST],
-        "#a": [project.repoAddress],
-        limit: 200,
-      }),
-      relayClient.fetchEvents({
-        kinds: [KIND_GIT_PR_UPDATE],
-        "#a": [project.repoAddress],
-        limit: 500,
-      }),
-      relayClient.fetchEvents({
-        kinds: [KIND_TEXT_NOTE],
-        "#a": [project.repoAddress],
-        limit: 500,
-      }),
-      relayClient.fetchEvents({
-        kinds: [
-          KIND_GIT_STATUS_OPEN,
-          KIND_GIT_STATUS_MERGED,
-          KIND_GIT_STATUS_CLOSED,
-          KIND_GIT_STATUS_DRAFT,
-        ],
-        "#a": [project.repoAddress],
-        limit: 500,
-      }),
-    ]);
-
-  return projectPullRequestEventsToPullRequests(
-    pullRequestEvents,
-    updateEvents,
-    commentEvents,
-    statusEvents,
   );
 }
 
@@ -820,9 +780,9 @@ export function useProjectPullRequestsQuery(
   return useRefreshingReviewQuery({
     enabled: Boolean(project),
     queryKey: ["project", project?.id ?? "none", "pull-requests"],
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       if (!project) throw new Error("No project selected.");
-      return fetchProjectPullRequests(project);
+      return fetchProjectPullRequests(project, undefined, signal);
     },
     staleTime: 30_000,
   });

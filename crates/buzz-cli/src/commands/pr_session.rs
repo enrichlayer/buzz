@@ -128,10 +128,101 @@ pub(crate) async fn verify_thread(
     Ok(())
 }
 
+/// Filter relay candidates by the signed session marker, never a bare e reference.
+pub(crate) async fn list_thread_reviews(
+    client: &BuzzClient,
+    mut filter: serde_json::Value,
+    thread: &str,
+    limit: Option<u32>,
+) -> Result<String, CliError> {
+    // A full relay page cannot establish completeness. Fail visibly rather
+    // than let unrelated references hide a valid review behind its boundary.
+    filter["limit"] = serde_json::json!(1000);
+    let response = client.query(&filter).await?;
+    let events: Vec<nostr::Event> = serde_json::from_str(&response)
+        .map_err(|error| CliError::Other(format!("invalid review response: {error}")))?;
+    if events.len() >= 1000 {
+        return Err(CliError::Other(
+            "too many thread review candidates; narrow the query".into(),
+        ));
+    }
+    let thread = thread.to_ascii_lowercase();
+    let mut scoped: Vec<_> = events
+        .into_iter()
+        .filter(|event| {
+            let markers: Vec<_> = event
+                .tags
+                .iter()
+                .filter(|tag| {
+                    let parts = tag.as_slice();
+                    parts.first().map(String::as_str) == Some("e")
+                        && parts.get(3).map(String::as_str) == Some("buzz-session")
+                })
+                .collect();
+            event.kind.as_u16() == 1618
+                && markers.len() == 1
+                && markers[0].as_slice().get(1) == Some(&thread)
+        })
+        .collect();
+    if let Some(limit) = limit {
+        scoped.truncate(limit as usize);
+    }
+    serde_json::to_string(&scoped).map_err(|error| CliError::Other(error.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     const CHANNEL: &str = "4978b750-109a-4aa4-8bbb-c9402217813c";
+
+    #[tokio::test]
+    async fn thread_list_filters_actual_relay_response_and_rejects_saturation() {
+        use axum::{extract::State, routing::post, Json, Router};
+        use nostr::{EventBuilder, Keys, Kind};
+        use std::sync::{Arc, Mutex};
+        let keys = Keys::generate();
+        let thread = "a".repeat(64);
+        let event = |tags: Vec<Tag>| {
+            EventBuilder::new(Kind::from(1618), "Review")
+                .tags(tags)
+                .sign_with_keys(&keys)
+                .unwrap()
+        };
+        let marker = Tag::parse(["e", &thread, "", "buzz-session"]).unwrap();
+        let valid = event(vec![marker.clone()]);
+        let ordinary = event(vec![Tag::parse(["e", &thread, "", "root"]).unwrap()]);
+        let wrong = event(vec![Tag::parse(["e", &thread, "", "mention"]).unwrap()]);
+        let ambiguous = event(vec![
+            marker,
+            Tag::parse(["e", &"b".repeat(64), "", "buzz-session"]).unwrap(),
+        ]);
+        type TestState = Arc<Mutex<Vec<nostr::Event>>>;
+        let state: TestState =
+            Arc::new(Mutex::new(vec![ordinary, wrong, ambiguous, valid.clone()]));
+        let app = Router::new().route("/query", post(|State(state): State<TestState>, Json(filter): Json<serde_json::Value>| async move {
+            assert_eq!(filter["limit"], 1000);
+            Json(state.lock().unwrap().clone())
+        })).with_state(state.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let client = BuzzClient::new(url, keys, None, None).unwrap();
+        let filter = serde_json::json!({"kinds": [1618], "#e": [thread]});
+        let response =
+            list_thread_reviews(&client, filter.clone(), &thread.to_uppercase(), Some(1))
+                .await
+                .unwrap();
+        let scoped: Vec<nostr::Event> = serde_json::from_str(&response).unwrap();
+        assert_eq!(scoped.len(), 1);
+        assert_eq!(scoped[0].id, valid.id);
+        *state.lock().unwrap() = vec![valid; 1000];
+        assert!(list_thread_reviews(&client, filter, &thread, None)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("too many"));
+        server.abort();
+    }
 
     #[test]
     fn session_context_is_atomic_and_normalized() {

@@ -180,3 +180,33 @@ test("a reply cannot borrow a discussion from a different PR root", () => {
     0,
   );
 });
+
+test("mixed discussion and review roles never change authoritative state", () => {
+  const labels = [
+    "review-request",
+    "approval",
+    "changes-requested",
+    "review-thread-resolve",
+    "review-thread-reopen",
+  ];
+  for (let i = 0; i < labels.length; i++) {
+    for (const other of labels.slice(i + 1)) {
+      const event = operation([root], { action: "resolve" });
+      event.tags = event.tags.filter((tag) => tag[0] !== "t");
+      event.tags.push(["t", labels[i]], ["t", other], ["p", attacker]);
+      const parsed = parse([root, event]);
+      assert.equal(
+        projectReviewThreads(parsed, owner)[0].resolved,
+        false,
+        `${labels[i]} + ${other}`,
+      );
+      assert.equal(parsed.approvals.length, 0);
+      assert.equal(parsed.changeRequests.length, 0);
+      assert.equal(
+        parsed.comments.find((comment) => comment.id === event.id)
+          .isReviewRequest,
+        false,
+      );
+    }
+  }
+});
