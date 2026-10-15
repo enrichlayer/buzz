@@ -350,6 +350,11 @@ fn early_metrics_exit_preserves_child_failure_diagnostics_and_cleanup() {
         ("BUZZ_BIND_ADDR", "not-a-socket-address"),
     ]);
     let scratch_dir = process.scratch_dir.clone();
+    std::fs::create_dir_all(&scratch_dir).expect("create scratch directory before child exits");
+    assert!(
+        scratch_dir.is_dir(),
+        "cleanup fixture must exist before waiting"
+    );
     let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         wait_for_scraped_metric(&mut process, 0, "unreachable_metric")
     }))
