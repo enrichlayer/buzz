@@ -107,17 +107,9 @@ fn terminal(output: &Output, code: i32, status: &str) -> Value {
     assert_eq!(value["status"], status);
     value
 }
-fn assert_dead(pid: u32) {
-    use nix::{sys::signal::kill, unistd::Pid};
-    let deadline = Instant::now() + Duration::from_secs(2);
-    while kill(Pid::from_raw(pid as i32), None).is_ok() && Instant::now() < deadline {
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    assert!(
-        kill(Pid::from_raw(pid as i32), None).is_err(),
-        "child {pid} survived"
-    );
-}
+#[path = "support/process.rs"]
+mod process;
+use process::assert_dead;
 
 #[test]
 fn file_and_stdin_run_one_fresh_equipped_session_without_service() {
