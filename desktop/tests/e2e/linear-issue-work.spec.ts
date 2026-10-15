@@ -172,13 +172,21 @@ test("Linear project opens native tasks with full context, coding roots and real
   await page
     .getByRole("button", { name: "Review changes: Connected task review" })
     .click();
-  await expect(page).toHaveURL(/pullRequestId=444444/);
+  await expect(page).toHaveURL(
+    (url) =>
+      new URLSearchParams(url.hash.split("?")[1]).get("pullRequestId") ===
+      JSON.stringify("4".repeat(64)),
+  );
   await page.getByRole("button", { name: "Open task", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Connected source task", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: /Implement the source task/ }).click();
-  await expect(page).toHaveURL(/thread=333333/);
+  await expect(page).toHaveURL(
+    (url) =>
+      new URLSearchParams(url.hash.split("?")[1]).get("thread") ===
+      JSON.stringify("3".repeat(64)),
+  );
   await expect(
     page
       .getByTestId("message-thread-panel")
