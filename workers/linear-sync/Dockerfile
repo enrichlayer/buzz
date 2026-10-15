@@ -23,6 +23,6 @@ COPY --from=cli /usr/local/bin/buzz /usr/local/bin/buzz
 ENV PATH="/app/workers/linear-sync/node_modules/.bin:${PATH}"
 USER node
 # Exercise the actual release CLI against synthetic source records before publishing.
-RUN --mount=type=bind,source=desktop/scripts/linear-sync.test.mjs,target=/app/desktop/scripts/linear-sync.test.mjs \
-    BUZZ_LINEAR_TEST_BINARY=/usr/local/bin/buzz node --test /app/desktop/scripts/linear-sync.test.mjs
+RUN --mount=type=bind,source=workers/linear-sync/integration.test.mjs,target=/app/workers/linear-sync/integration.test.mjs \
+    BUZZ_LINEAR_TEST_BINARY=/usr/local/bin/buzz node --test /app/workers/linear-sync/integration.test.mjs
 CMD ["node", "worker.cjs"]
