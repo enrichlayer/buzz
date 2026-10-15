@@ -8,6 +8,7 @@ import {
   type LinearWorkRecord,
 } from "../linearWorkModels";
 import { useLinearWork } from "../useLinearWork";
+import { linearProjectKey, linearSyncStatus } from "../linearSyncStatus";
 
 /** Planning records have no fake repository and keep their source workflow names. */
 export function LinearWorkList({
@@ -54,6 +55,13 @@ export function LinearWorkList({
     ).values(),
   ];
   const needle = searchQuery.trim().toLowerCase();
+  const checkedProjects = new Set<string>();
+  const incomplete = scoped.some((record) => {
+    const key = linearProjectKey(record);
+    if (checkedProjects.has(key)) return false;
+    checkedProjects.add(key);
+    return linearSyncStatus(record, all).partial;
+  });
   const filtered = scoped.filter(
     (record) =>
       (includeCompleted ||
@@ -142,6 +150,12 @@ export function LinearWorkList({
           Refresh view
         </Button>
       </header>
+      {incomplete ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          A project mirror is incomplete. Some tasks or updates may still be
+          missing.
+        </p>
+      ) : null}
       {filtered.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No matching Linear {mode}.

@@ -15,6 +15,7 @@ import {
   entityLinkProjectRouteId,
 } from "../../shared/lib/entityLink.ts";
 import { sessionReviewContext } from "./sessionReviewContext.ts";
+import { linearSyncStatus } from "./linearSyncStatus.ts";
 const channel = "11111111-1111-4111-8111-111111111111";
 const org = "22222222-2222-4222-8222-222222222222";
 const project = "33333333-3333-4333-8333-333333333333";
@@ -55,6 +56,37 @@ function event(index = 1) {
     }),
   };
 }
+test("project completion receipts distinguish partial bootstrap and interrupted updates", () => {
+  const task = linearEventToWork(event());
+  const receipt = { ...task, type: "project", sourceId: project };
+  assert.deepEqual(linearSyncStatus(task, [task]), {
+    completeAt: null,
+    partial: true,
+  });
+  assert.deepEqual(linearSyncStatus(task, [task, receipt]), {
+    completeAt: receipt.observedAt,
+    partial: false,
+  });
+  const update = { ...task, observedAt: "2026-10-16T00:00:00Z" };
+  assert.equal(linearSyncStatus(update, [update, receipt]).partial, true);
+  assert.equal(
+    linearSyncStatus(update, [
+      update,
+      { ...receipt, observedAt: update.observedAt },
+    ]).partial,
+    false,
+  );
+  assert.equal(
+    linearSyncStatus(task, [task, { ...receipt, publisher: "b".repeat(64) }])
+      .completeAt,
+    null,
+  );
+  assert.equal(
+    linearSyncStatus(task, [task, receipt, { ...update, channelId: project }])
+      .partial,
+    false,
+  );
+});
 test("source records and native links retain channel, publisher and immutable issue identity", () => {
   const record = linearEventToWork(event());
   assert.equal(record.address, address);

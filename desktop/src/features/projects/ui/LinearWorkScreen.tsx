@@ -6,6 +6,7 @@ import { Button } from "@/shared/ui/button";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { linearWorkLinkFromAddress } from "@/shared/lib/linearWorkLink";
 import { sameLinearProject } from "../linearWorkModels";
+import { linearSyncStatus } from "../linearSyncStatus";
 import { useLinearWork } from "../useLinearWork";
 import type { ProjectDetailAgentContext } from "../lib/projectDetailAgentContext";
 import { ProjectAgentChatPanel } from "./ProjectAgentChatPanel";
@@ -22,6 +23,7 @@ export function LinearWorkScreen({ address }: { address: string }) {
   const [workOpen, setWorkOpen] = React.useState(false);
   const records = query.isError ? [] : (query.data ?? []);
   const record = records.find((item) => item.address === address);
+  const sync = record ? linearSyncStatus(record, records) : null;
   const project =
     record &&
     records.find(
@@ -145,6 +147,20 @@ export function LinearWorkScreen({ address }: { address: string }) {
             mirrored {new Date(record.observedAt).toLocaleString()}. Planning
             changes are made in Linear.
           </p>
+          {sync?.partial ? (
+            <p role="status" className="text-sm">
+              The latest mirror is incomplete. Some tasks or updates may still
+              be missing.{" "}
+              {sync.completeAt
+                ? `Last complete mirror: ${new Date(sync.completeAt).toLocaleString()}.`
+                : "No complete project mirror has arrived yet."}
+            </p>
+          ) : sync?.completeAt ? (
+            <p className="text-xs text-muted-foreground">
+              Last complete project mirror:{" "}
+              {new Date(sync.completeAt).toLocaleString()}.
+            </p>
+          ) : null}
           {record.retired ? (
             <p role="status" className="text-sm">
               This issue is no longer visible in the mirrored project. Its prior
