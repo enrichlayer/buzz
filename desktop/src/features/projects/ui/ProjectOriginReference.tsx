@@ -1,3 +1,4 @@
+import { linearWorkLinkFromAddress } from "@/shared/lib/linearWorkLink";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import {
   isChannelReferenceOpenable,
@@ -8,12 +9,14 @@ export function ProjectOriginReference({
   agentName,
   channelId,
   threadRootId,
+  taskAddress,
 }: {
   agentName?: string | null;
   channelId?: string | null;
   threadRootId?: string | null;
+  taskAddress?: string | null;
 }) {
-  const { goChannel } = useAppNavigation();
+  const { goChannel, goProject } = useAppNavigation();
   const channel = useChannelReference(channelId);
 
   if (channelId) {
@@ -63,6 +66,15 @@ export function ProjectOriginReference({
         >
           (author-claimed)
         </span>
+        {isOpenable && taskAddress && linearWorkLinkFromAddress(taskAddress) ? (
+          <button
+            type="button"
+            className="ml-2 font-medium text-foreground underline-offset-2 hover:underline"
+            onClick={() => void goProject(taskAddress)}
+          >
+            Open task
+          </button>
+        ) : null}
       </span>
     );
   }

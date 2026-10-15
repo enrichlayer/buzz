@@ -6252,6 +6252,8 @@ const MOCK_PROJECT_SUBJECTS = [
 ];
 
 const MOCK_PROJECT_KINDS = new Set<number>([
+  30623,
+  30624,
   KIND_PROJECT_ANNOUNCEMENT,
   KIND_REPO_ANNOUNCEMENT,
   KIND_REPO_STATE,
@@ -11106,13 +11108,11 @@ function sendToMockSocket(args: {
       return;
     }
 
-    // Project queries: NIP-34 kinds, or kind:1 comments scoped by repo `a`
-    // tag or by issue/PR root `e` tag (discussions, approvals, review
-    // requests, assignment operations). Channel messages are kind 9, so a
-    // kind:1 `#e` query can only target project discussion events.
+    // Git/project records and channel-scoped Linear task associations.
     if (
       filter.kinds?.some((kind) => MOCK_PROJECT_KINDS.has(kind)) ||
-      (filter.kinds?.includes(1) && (filter["#a"] || filter["#e"]))
+      (filter.kinds?.includes(1) && (filter["#a"] || filter["#e"])) ||
+      filter["#a"]?.some((address) => address.startsWith("30624:"))
     ) {
       window.__BUZZ_E2E_PROJECT_QUERY_FILTERS__ ??= [];
       window.__BUZZ_E2E_PROJECT_QUERY_FILTERS__.push(filter);

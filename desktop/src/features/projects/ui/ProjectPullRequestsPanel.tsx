@@ -391,6 +391,7 @@ export function PullRequestDetailHeader({
           agentName={pullRequest.originAgentName}
           channelId={pullRequest.channelId}
           threadRootId={pullRequest.sessionContext?.threadRootId}
+          taskAddress={pullRequest.sessionContext?.taskAddress}
         />
       </p>
     </header>

@@ -26,6 +26,7 @@ export default defineConfig({
       name: "smoke",
       testMatch: [
         "**/project-review-workspace.spec.ts",
+        "**/linear-issue-work.spec.ts",
         "**/smoke.spec.ts",
         "**/mock-subscription-readiness.spec.ts",
         "**/owned-agent-discovery.spec.ts",

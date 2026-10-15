@@ -68,8 +68,7 @@ export function LinearTaskThreads({
           className="h-auto w-full justify-start whitespace-normal p-3 text-left"
           onClick={() =>
             void goChannel(channelId, {
-              messageId: event.id,
-              threadRootId: event.id,
+              thread: event.id,
             })
           }
         >

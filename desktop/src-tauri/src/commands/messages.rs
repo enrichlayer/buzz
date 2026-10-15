@@ -416,7 +416,7 @@ pub async fn send_channel_message(
     mention_tags: Option<Vec<Vec<String>>>,
     link_preview_tags: Option<Vec<Vec<String>>>,
     shell_tags: Option<Vec<Vec<String>>>,
-    work_context: Option<buzz_core::linear::LinearTaskContext>,
+    work_context: Option<buzz_core_pkg::linear::LinearTaskContext>,
     sent_from_thread_tag: Option<Vec<String>>,
     mention_pubkeys: Option<Vec<String>>,
     kind: Option<u32>,
