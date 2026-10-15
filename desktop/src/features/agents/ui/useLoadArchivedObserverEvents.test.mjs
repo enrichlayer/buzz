@@ -312,6 +312,7 @@ function mountHook(_initialChannelId, queryClient) {
   return {
     render,
     getFetchOlderArchived: () => hookReturnRef.current?.fetchOlderArchived,
+    getResult: () => hookReturnRef.current,
     unmount: async () => {
       await act(async () => {
         root.unmount();
@@ -347,6 +348,47 @@ describe("useLoadArchivedObserverEvents — mounted hook lifecycle regressions",
     resetAgentObserverStore();
     clearIpcHandlers();
     _testRegisterKnownAgents(SUB_ID, [AGENT_PUBKEY]);
+  });
+
+  it("exposes an archive read failure and clears it when retry succeeds", async () => {
+    let shouldFail = true;
+    setIpcHandler("list_save_subscriptions", async () =>
+      makeOwnerPSubResponse(),
+    );
+    setIpcHandler("read_unindexed_observer_rows", async () => []);
+    setIpcHandler("index_observer_channel_id", async () => null);
+    setIpcHandler("read_archived_observer_events_for_channel", async () => {
+      if (shouldFail) throw new Error("archive temporarily unavailable");
+      return [];
+    });
+
+    const qc = makeQueryClient();
+    const { render, getFetchOlderArchived, getResult, unmount } = mountHook(
+      "chan-a",
+      qc,
+    );
+    await render("chan-a");
+    await settle(10);
+
+    assert.match(
+      getResult()?.archiveError ?? "",
+      /archive temporarily unavailable/,
+    );
+    assert.equal(
+      getResult()?.hasOlderArchived,
+      true,
+      "failed reads must retain the retry affordance",
+    );
+
+    shouldFail = false;
+    await act(async () => {
+      await getFetchOlderArchived()?.();
+    });
+    await settle();
+    assert.equal(getResult()?.archiveError, null);
+    assert.equal(getResult()?.hasOlderArchived, false);
+
+    await unmount();
   });
 
   /**

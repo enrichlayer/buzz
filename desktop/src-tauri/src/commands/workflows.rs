@@ -431,7 +431,10 @@ fn tag_value(ev: &nostr::Event, name: &str) -> Option<String> {
 /// empty object rather than failing the whole list query — a single malformed
 /// workflow must not break the page.
 fn parse_definition(yaml: &str) -> Value {
-    match serde_yaml::from_str::<Value>(yaml) {
+    match serde_saphyr::from_str_with_options::<Value>(
+        yaml,
+        serde_saphyr::options! { strict_booleans: true, merge_keys: serde_saphyr::options::MergeKeyPolicy::AsOrdinary },
+    ) {
         Ok(v @ Value::Object(_)) => v,
         _ => Value::Object(serde_json::Map::new()),
     }

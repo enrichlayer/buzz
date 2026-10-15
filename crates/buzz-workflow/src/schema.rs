@@ -309,7 +309,10 @@ pub(crate) fn normalize_cron(expr: &str) -> String {
 ///
 /// Returns `(WorkflowDef, canonical_json)` on success.
 pub fn parse_yaml(yaml: &str) -> Result<(WorkflowDef, String), WorkflowError> {
-    let def: WorkflowDef = serde_yaml::from_str(yaml)?;
+    let def: WorkflowDef = serde_saphyr::from_str_with_options(
+        yaml,
+        serde_saphyr::options! { strict_booleans: true, merge_keys: serde_saphyr::options::MergeKeyPolicy::AsOrdinary },
+    )?;
     def.validate()?;
     let json =
         serde_json::to_string(&def).map_err(|e| WorkflowError::InvalidDefinition(e.to_string()))?;
@@ -319,6 +322,19 @@ pub fn parse_yaml(yaml: &str) -> Result<(WorkflowDef, String), WorkflowError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn yaml_aliases_and_multiline_steps_preserve_canonical_json() {
+        let yaml = "name: Alias example\ntrigger:\n  on: message_posted\nsteps:\n  - id: first\n    action: send_message\n    text: &body |\n      First line\n      Second line\n  - id: second\n    action: send_message\n    text: *body\n";
+        let (_, json) = parse_yaml(yaml).expect("supported YAML should parse");
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["steps"][0]["text"], "First line\nSecond line\n");
+        assert_eq!(value["steps"][1]["text"], value["steps"][0]["text"]);
+        assert!(matches!(
+            parse_yaml("name: 'unterminated\n"),
+            Err(WorkflowError::InvalidYaml(_))
+        ));
+    }
 
     #[test]
     fn parse_simple_message_posted_workflow() {
@@ -741,7 +757,7 @@ mod tests {
         // Unknown trigger `on:` value should fail deserialization.
         let yaml = "name: Bad Trigger\ntrigger:\n  on: unknown_trigger_type\nsteps:\n  - id: s1\n    action: delay\n    duration: 1m\n";
         let err = parse_yaml(yaml).unwrap_err();
-        // serde_yaml will return an InvalidYaml error for unknown enum variant.
+        // The YAML parser returns an InvalidYaml error for unknown enum variant.
         assert!(
             matches!(
                 err,
@@ -983,16 +999,16 @@ mod tests {
     #[test]
     fn diff_posted_trigger_roundtrips_yaml() {
         let yaml = "on: diff_posted\n";
-        let trigger: TriggerDef = serde_yaml::from_str(yaml).unwrap();
+        let trigger: TriggerDef = serde_saphyr::from_str_with_options(yaml, serde_saphyr::options! { strict_booleans: true, merge_keys: serde_saphyr::options::MergeKeyPolicy::AsOrdinary }).unwrap();
         assert!(matches!(trigger, TriggerDef::DiffPosted { filter: None }));
-        let back = serde_yaml::to_string(&trigger).unwrap();
+        let back = serde_saphyr::to_string(&trigger).unwrap();
         assert!(back.contains("diff_posted"));
     }
 
     #[test]
     fn diff_posted_trigger_with_filter_roundtrips_yaml() {
         let yaml = "on: diff_posted\nfilter: 'str_contains(trigger_text, \"src/\")'\n";
-        let trigger: TriggerDef = serde_yaml::from_str(yaml).unwrap();
+        let trigger: TriggerDef = serde_saphyr::from_str_with_options(yaml, serde_saphyr::options! { strict_booleans: true, merge_keys: serde_saphyr::options::MergeKeyPolicy::AsOrdinary }).unwrap();
         assert!(matches!(
             trigger,
             TriggerDef::DiffPosted { filter: Some(_) }

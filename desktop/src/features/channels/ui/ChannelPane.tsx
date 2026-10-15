@@ -27,6 +27,7 @@ import { buildVideoReviewPresentationByMessageId } from "@/features/messages/lib
 import { useComposerHeightPadding } from "@/features/messages/ui/useComposerHeightPadding";
 import { UserProfilePanel } from "@/features/profile/ui/UserProfilePanel";
 import { AgentSessionThreadPanel } from "@/features/channels/ui/AgentSessionThreadPanel";
+import { AgentThreadSessionActivity } from "@/features/channels/ui/AgentThreadSessionActivity";
 import { ChannelManagementAuxiliaryPanel } from "@/features/channels/ui/ChannelManagementAuxiliaryPanel";
 import { IdleAuxiliaryPanel } from "@/features/channels/ui/IdleAuxiliaryPanel";
 import { RightAuxiliaryPane } from "@/features/channels/ui/RightAuxiliaryPane";
@@ -62,6 +63,8 @@ import { useSearchHighlightProps } from "@/features/channels/ui/useSearchHighlig
 import { useChannelIntro } from "@/features/channels/ui/useChannelIntro";
 import type { ChannelPaneProps } from "@/features/channels/ui/ChannelPane.types";
 import * as agentSessionSelection from "@/features/channels/ui/agentSessionSelection";
+import { selectThreadAgentCandidates } from "@/features/agents/ui/agentThreadSession";
+import { useLoadArchivedObserverEvents } from "@/features/agents/ui/useObserverEvents";
 import { usePrepareDmSendChannel } from "@/features/channels/ui/usePrepareDmSendChannel";
 import { useChannelPaneMessages } from "@/features/channels/ui/useChannelPaneMessages";
 import { useRoutedMessageEdit } from "@/features/channels/ui/useRoutedMessageEdit";
@@ -435,6 +438,54 @@ export const ChannelPane = React.memo(function ChannelPane({
         profiles,
       }),
     [agentSessionAgents, openAgentSessionPubkey, profilePanelPubkey, profiles],
+  );
+  const activeThreadPublishedMessages = React.useMemo(() => {
+    if (!threadHeadMessage) return [];
+    const byId = new Map(
+      [threadHeadMessage, ...threadAllMessages].map((message) => [
+        message.id,
+        message,
+      ]),
+    );
+    return [...byId.values()];
+  }, [threadAllMessages, threadHeadMessage]);
+  const activeThreadSessionAgents = React.useMemo(
+    () =>
+      selectThreadAgentCandidates(
+        activeThreadPublishedMessages,
+        agentSessionAgents,
+      ),
+    [activeThreadPublishedMessages, agentSessionAgents],
+  );
+  const threadArchiveChannelId =
+    threadHeadMessage && activeThreadSessionAgents.length > 0
+      ? (activeChannel?.id ?? null)
+      : null;
+  const {
+    archiveError: threadSessionArchiveError,
+    fetchOlderArchived: fetchOlderThreadSessionActivity,
+    hasOlderArchived: hasOlderThreadSessionActivity,
+  } = useLoadArchivedObserverEvents(
+    threadArchiveChannelId !== null,
+    threadArchiveChannelId,
+  );
+  const sendAgentThreadFeedback = React.useCallback(
+    async (message: string, agentPubkey: string) => {
+      if (!activeChannel?.id || !threadHeadMessage) {
+        throw new Error("This thread is no longer available.");
+      }
+      await onSendThreadReply(
+        message,
+        [agentPubkey],
+        undefined,
+        activeChannel.id,
+        {
+          parentEventId: threadHeadMessage.id,
+          threadHeadId: threadHeadMessage.id,
+        },
+      );
+    },
+    [activeChannel?.id, onSendThreadReply, threadHeadMessage],
   );
   const hasIdleAuxiliary =
     Boolean(idleAuxiliaryPanel) && Boolean(onCloseIdleAuxiliaryPanel);
@@ -902,6 +953,25 @@ export const ChannelPane = React.memo(function ChannelPane({
                       variant="inline"
                     />
                   ) : null
+                }
+                sessionActivityContent={
+                  activeChannel && threadHeadMessage
+                    ? activeThreadSessionAgents.map((agent) => (
+                        <AgentThreadSessionActivity
+                          agent={agent}
+                          archiveError={threadSessionArchiveError}
+                          channelId={activeChannel.id}
+                          hasOlderArchived={hasOlderThreadSessionActivity}
+                          isDirectMessage={activeChannel.channelType === "dm"}
+                          key={`${activeChannel.id}:${threadHeadMessage.id}:${agent.pubkey.toLowerCase()}`}
+                          onLoadOlderArchived={fetchOlderThreadSessionActivity}
+                          onSendFeedback={sendAgentThreadFeedback}
+                          profiles={profiles}
+                          threadMessages={activeThreadPublishedMessages}
+                          threadRootId={threadHeadMessage.id}
+                        />
+                      ))
+                    : null
                 }
               />
             );

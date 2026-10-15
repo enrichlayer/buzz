@@ -43,6 +43,10 @@ const RELAY_CALL_TIMEOUT: Duration = Duration::from_secs(10);
 /// someone else changed it, so the loop re-reads before writing again.
 const WITHDRAW_ATTEMPTS: usize = 3;
 
+/// Upper bound on revisions walked from a permission card's head back to the
+/// original card.
+const MAX_PERMISSION_CHAIN: usize = 64;
+
 /// Card withdrawals still running, so harness shutdown can let them finish.
 static WITHDRAWALS: LazyLock<TaskTracker> = LazyLock::new(TaskTracker::new);
 
@@ -70,6 +74,12 @@ pub(crate) trait QuestionRelay: Send + Sync {
         channel: Uuid,
         d: &'a str,
     ) -> BoxFuture<'a, Result<Option<Event>, String>>;
+    /// Accepted revisions of artifact `d` in `channel`, in any order.
+    fn revisions<'a>(
+        &'a self,
+        channel: Uuid,
+        d: &'a str,
+    ) -> BoxFuture<'a, Result<Vec<Event>, String>>;
 }
 
 impl QuestionRelay for RestClient {
@@ -104,6 +114,26 @@ impl QuestionRelay for RestClient {
             Ok(Some(event))
         })
     }
+
+    fn revisions<'a>(
+        &'a self,
+        channel: Uuid,
+        d: &'a str,
+    ) -> BoxFuture<'a, Result<Vec<Event>, String>> {
+        Box::pin(async move {
+            let filter = serde_json::json!({
+                "artifact": "history", "kinds": [KIND_ARTIFACT],
+                "#h": [channel.to_string()], "#d": [d], "limit": MAX_PERMISSION_CHAIN + 1,
+            });
+            let events = self.query_raw(&[filter]).await.map_err(|e| e.to_string())?;
+            Ok(events
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|value| serde_json::from_value::<Event>(value.clone()).ok())
+                .collect())
+        })
+    }
 }
 
 /// How a card ended, reported to the waiting read loop.
@@ -135,6 +165,8 @@ pub(crate) struct QuestionAsker {
     thread_root: Option<EventId>,
     agent_name: Option<String>,
     poll_interval: Duration,
+    pub(crate) permission_owner: Option<nostr::PublicKey>,
+    pub(crate) permission_cwd: String,
 }
 
 impl QuestionAsker {
@@ -152,7 +184,23 @@ impl QuestionAsker {
             thread_root,
             agent_name,
             poll_interval: POLL_INTERVAL,
+            permission_owner: None,
+            permission_cwd: String::new(),
         }
+    }
+
+    pub(crate) fn with_permission_context(
+        mut self,
+        owner: Option<nostr::PublicKey>,
+        cwd: String,
+    ) -> Self {
+        self.permission_owner = owner;
+        self.permission_cwd = cwd;
+        self
+    }
+
+    pub(crate) fn agent_pubkey(&self) -> String {
+        self.keys.public_key().to_hex()
     }
 
     #[cfg(test)]
@@ -252,6 +300,7 @@ impl QuestionAsker {
             Ok(card) => card,
             Err(e) => return QuestionOutcome::Failed(e),
         };
+        let original_card_id = card.id;
         *created = true;
         // The outer cancel select may drop this future at any point. Own the
         // submission in a task so cancellation cannot abandon an HTTP create
@@ -267,6 +316,9 @@ impl QuestionAsker {
             return QuestionOutcome::Failed(format!("question card: {e}"));
         }
         tracing::info!(target: "acp::question", artifact = d, "question card posted");
+        let is_permission = serde_json::from_str::<Value>(content)
+            .ok()
+            .is_some_and(|v| v.get("permission").is_some());
         let mut delay = self.poll_interval;
         loop {
             tokio::time::sleep(delay).await;
@@ -290,6 +342,44 @@ impl QuestionAsker {
             delay = self.poll_interval;
             let Some(head) = head else {
                 return QuestionOutcome::Withdrawn;
+            };
+            // A permission is authority, not a channel poll. Only the configured
+            // owner's revision of the unchanged request decides it, wherever it
+            // sits in the chain: other members cannot displace it by appending.
+            let head = if is_permission {
+                let decide = |revisions: &[Event]| {
+                    owner_permission_decision(
+                        content,
+                        &head,
+                        revisions,
+                        self.permission_owner,
+                        original_card_id,
+                        self.channel_id,
+                        d,
+                    )
+                    .cloned()
+                };
+                let mut decision = decide(&[]);
+                if decision.is_none() && head.id != original_card_id {
+                    match tokio::time::timeout(
+                        RELAY_CALL_TIMEOUT,
+                        self.relay.revisions(self.channel_id, d),
+                    )
+                    .await
+                    {
+                        Ok(Ok(revisions)) => decision = decide(&revisions),
+                        _ => {
+                            delay = (delay * 2).min(MAX_POLL_BACKOFF);
+                            continue;
+                        }
+                    }
+                }
+                match decision {
+                    Some(decision) => decision,
+                    None => continue,
+                }
+            } else {
+                head
             };
             match parse_prompt_state(&head.content, &head.pubkey.to_hex()) {
                 Some(PromptState::Answered(answer)) if answer_conforms(questions, &answer) => {
@@ -398,6 +488,88 @@ impl QuestionAsker {
             Err(_) => Err("relay timed out".into()),
         }
     }
+}
+
+/// A tag's value when the event carries exactly one tag of that name.
+fn single_tag<'a>(event: &'a Event, name: &str) -> Option<&'a str> {
+    let mut tags = event
+        .tags
+        .iter()
+        .filter(|t| t.as_slice().first().map(String::as_str) == Some(name));
+    let value = tags.next()?.as_slice().get(1).map(String::as_str);
+    tags.next().is_none().then_some(value).flatten()
+}
+
+/// The owner's decision on a permission card. Any channel member may append
+/// a revision, so the head alone proves nothing: walk the `prev` chain from
+/// `head` back to the original card and take the first revision, nearest the
+/// original, that the owner signed, that leaves the request unchanged and
+/// that answers or cancels it. Revisions by anyone else are skipped, not trusted.
+fn owner_permission_decision<'a>(
+    original: &str,
+    head: &'a Event,
+    revisions: &'a [Event],
+    owner: Option<nostr::PublicKey>,
+    original_id: EventId,
+    channel: Uuid,
+    d: &str,
+) -> Option<&'a Event> {
+    let owner = owner?;
+    let mut chain = Vec::new();
+    let mut cursor = head;
+    while cursor.id != original_id {
+        if chain.len() >= MAX_PERMISSION_CHAIN {
+            return None;
+        }
+        chain.push(cursor);
+        let prev = EventId::from_hex(single_tag(cursor, "prev")?).ok()?;
+        if prev == original_id {
+            break;
+        }
+        cursor = revisions.iter().find(|e| e.id == prev)?;
+    }
+    chain.into_iter().rev().find(|revision| {
+        owner_revision_matches(original, revision, owner, channel, d)
+            && matches!(
+                parse_prompt_state(&revision.content, &revision.pubkey.to_hex()),
+                Some(PromptState::Answered(_) | PromptState::Cancelled)
+            )
+    })
+}
+
+/// An owner-signed update of the original card that changes only its state.
+fn owner_revision_matches(
+    original: &str,
+    revision: &Event,
+    owner: nostr::PublicKey,
+    channel: Uuid,
+    d: &str,
+) -> bool {
+    if revision.pubkey != owner
+        || revision.verify().is_err()
+        || revision.kind != Kind::Custom(KIND_ARTIFACT)
+    {
+        return false;
+    }
+    if single_tag(revision, "h") != Some(channel.to_string().as_str())
+        || single_tag(revision, "d") != Some(d)
+        || single_tag(revision, "op") != Some("update")
+    {
+        return false;
+    }
+    let Ok(mut candidate) =
+        serde_json::from_str::<serde_json::Map<String, Value>>(&revision.content)
+    else {
+        return false;
+    };
+    let Ok(mut original) = serde_json::from_str::<serde_json::Map<String, Value>>(original) else {
+        return false;
+    };
+    for key in ["state", "answer", "answeredBy"] {
+        candidate.remove(key);
+        original.remove(key);
+    }
+    candidate == original
 }
 
 #[cfg(test)]

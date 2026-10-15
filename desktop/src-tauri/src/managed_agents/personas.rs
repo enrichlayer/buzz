@@ -143,6 +143,7 @@ fn built_in_persona_records(now: &str) -> Vec<AgentDefinition> {
             respond_to_allowlist: Vec::new(),
             parallelism: None,
             session_policy: super::AcpSessionPolicy::Channel,
+            output_mode: super::AgentOutputMode::Full,
             created_at: now.to_string(),
             updated_at: now.to_string(),
         })

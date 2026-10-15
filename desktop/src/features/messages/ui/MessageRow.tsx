@@ -1,3 +1,5 @@
+import { SelectionFeedback } from "@/shared/ui/annotations/SelectionFeedback";
+import { parseAnnotationMessage } from "@/shared/ui/annotations/annotationModel";
 import * as React from "react";
 import { AlertTriangle } from "lucide-react";
 import {
@@ -41,6 +43,7 @@ import { parseWaveMessageContent } from "@/features/messages/lib/waveMessage";
 import { resolveSnapshotSharedBy } from "@/features/messages/lib/snapshotSharedBy";
 import { resolveMentionProps } from "@/shared/lib/resolveMentionNames";
 import type { VideoReviewContext } from "@/shared/ui/VideoPlayer";
+import { SourceAnnotation } from "@/shared/ui/annotations";
 import { VideoReviewCommentMarkdown } from "@/shared/ui/VideoReviewCommentMarkdown";
 import { MessageActionBar } from "./MessageActionBar";
 import { editMessage } from "@/shared/api/tauri";
@@ -370,7 +373,12 @@ export const MessageRow = React.memo(
         collapseDepthGuideActions.map((action) => [action.depth, action]),
       );
     }, [collapseDepthGuideActions]);
+    const annotation = React.useMemo(
+      () => parseAnnotationMessage(message.body),
+      [message.body],
+    );
     const renderBody = () => {
+      if (annotation) return <SelectionFeedback value={annotation} />;
       const KindCard = getMessageKindCard(message.kind);
       if (KindCard) {
         return (
@@ -651,7 +659,16 @@ export const MessageRow = React.memo(
     const messageBodyNode = (
       <>
         <SentFromThreadLine channelId={channelId} tags={message.tags} />
-        {renderBody()}
+        {isAuthorAgent && !message.pending ? (
+          <SourceAnnotation
+            key={message.id}
+            source={{ sourceId: message.id, text: message.body, channelId }}
+          >
+            {renderBody()}
+          </SourceAnnotation>
+        ) : (
+          renderBody()
+        )}
         {channelId && !message.pending ? (
           <ArtifactAttachments
             channelId={channelId}

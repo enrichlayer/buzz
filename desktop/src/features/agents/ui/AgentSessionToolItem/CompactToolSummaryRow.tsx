@@ -16,7 +16,7 @@ import {
 } from "../activityRenderClasses/ActivityRow";
 
 export function compactSummaryTone() {
-  return "text-muted-foreground/60 transition-colors group-hover/row:text-foreground group-open:text-foreground";
+  return "text-muted-foreground transition-colors group-hover/row:text-foreground group-open:text-foreground";
 }
 
 export function CompactToolSummaryRow({
@@ -111,6 +111,8 @@ function getCompactToolActionLabel(
   label: string,
   preview: string | null,
 ): (ActivityRowLabelParts & { title?: string }) | null {
+  if (/failed/i.test(label))
+    return { verb: label, object: preview ?? undefined };
   if (action) {
     const object = action.object ?? preview ?? undefined;
     return {
