@@ -65,6 +65,7 @@ separate requirements before marking a PR ready.
 | --- | --- | --- |
 | Features split between different apps | Cumulative integration owner combines the pinned sources above | Source assembled; combined native acceptance pending |
 | Initial branding recipe creates another account namespace | Removed identifier, demo-slug and deep-link overrides; production config rejects demo variables | Configuration regression tests pass |
+| Clean CI install treats the vendored UI archive as an npm release | Pin pnpm 11.5.2, including Hermit and CI, which contains the upstream local-tarball verification fix; integration owner | Fresh empty-store frozen install passed; registry supply-chain policy remains enabled |
 | Ad-hoc rebuilds invalidate remembered Keychain authorization | Stable local signer and canonical installer; cumulative integration owner | Two different synthetic signed executables read the same test item; ad-hoc negative control denied; daily candidate continuity pending |
 | Local highlighting changes omitted from published feature heads | Preserved scoped source and production-renderer tests | Integration at `a4a9738c` passed 7,241 desktop tests and 29 combined browser workflows; native acceptance pending |
 | Private Linear mirror is not yet admitted for the daily identity | Existing review/Linear and pilot owners continue PR42 service/relay work | Native daily-account onboarding recorded privately; live task-to-review acceptance pending |

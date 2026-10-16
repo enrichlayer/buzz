@@ -7,6 +7,11 @@ https://gitlab.com/vertical-int/enrich-layer/el-lander/-/commit/04ef10f16f83c9bf
 
 SHA-256: `3f6709e4bbf14960de5ef57c36983fe30a67f67200fa5cc3f231ceb6397635a2`
 
+Use the repository-pinned pnpm 11.5.2 or later. pnpm 11.4.0 incorrectly queries
+the npm registry for this local archive during a clean frozen install, failing
+its release-age check with a 404. The [upstream fix](https://github.com/pnpm/pnpm/pull/12122)
+ships in 11.5.2; no release-age exclusion or registry-policy bypass is needed.
+
 The archive includes Apache-2.0 LICENSE and NOTICE attribution for the preview
 adapted from block/buzz. It has no runtime dependencies beyond React peers.
 
