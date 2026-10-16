@@ -1,10 +1,10 @@
 import { Check, CloudOff } from "lucide-react";
+import { BuzzActivity } from "@el/buzz-ui";
 
 import {
   SidebarCompactActionCard,
   type SidebarActionCardSurface,
 } from "@/shared/ui/sidebar-action-card";
-import { Spinner } from "@/shared/ui/spinner";
 
 type SidebarRelayConnectionCardProps = {
   isActionDisabled?: boolean;
@@ -88,7 +88,7 @@ export function SidebarRelayConnectionCompactCard({
         isConnected ? (
           <Check aria-hidden="true" className="h-5 w-5" />
         ) : isReconnectPending ? (
-          <Spinner aria-hidden="true" className="h-5 w-5 border-2" />
+          <BuzzActivity decorative variant="transfer" className="w-6" />
         ) : (
           <CloudOff aria-hidden="true" className="h-5 w-5" />
         )

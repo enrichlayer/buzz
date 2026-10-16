@@ -1,4 +1,4 @@
-import { PluginIdentity } from "@el/buzz-ui";
+import { BuzzIcon, PluginIdentity } from "@el/buzz-ui";
 import elBuzzManifest from "../../../../public/plugins/el-buzz.json";
 import * as React from "react";
 import { FileJson, Trash2 } from "lucide-react";
@@ -131,6 +131,10 @@ export function RuntimePluginSettingsPanel() {
                   onCheckedChange={(enabled) =>
                     void setRuntimePluginEnabled(entry.manifest.id, enabled)
                   }
+                />
+                <BuzzIcon
+                  name="plugin"
+                  className="h-5 w-5 shrink-0 text-muted-foreground"
                 />
                 <PluginIdentity
                   name={entry.manifest.name}
