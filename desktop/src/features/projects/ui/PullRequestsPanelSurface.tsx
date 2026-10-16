@@ -44,8 +44,28 @@ export function PullRequestsPanelSurface({
   if (kind === "loading") {
     return <BuzzLoadingState label="Loading reviews" />;
   }
-  if (kind === "detail") {
-    return detail;
+  if (kind === "detail" || kind === "list") {
+    return (
+      <>
+        {error ? (
+          <div
+            role="alert"
+            className="shrink-0 border-b border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+          >
+            <p>
+              Could not refresh complete review history. Displayed data may be
+              out of date.
+            </p>
+            <p>
+              {error instanceof Error
+                ? error.message
+                : "Refresh the repository and try again."}
+            </p>
+          </div>
+        ) : null}
+        {kind === "detail" ? detail : list}
+      </>
+    );
   }
   if (kind === "empty") {
     return (

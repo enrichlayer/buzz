@@ -18,6 +18,8 @@
  * on both sides).
  */
 
+import { parseLinearWorkLink, type LinearWorkLink } from "./linearWorkLink";
+
 const ENTITY_LINK_SCHEME = "buzz:";
 
 /**
@@ -43,6 +45,7 @@ export function isEntityLinkTab(value: unknown): value is EntityLinkTab {
 }
 
 export type ParsedEntityLink =
+  | LinearWorkLink
   | { type: "pr"; id: string; owner: string; dtag: string }
   | { type: "issue"; id: string; owner: string; dtag: string }
   | {
@@ -164,6 +167,8 @@ export function isEntityLink(href: string | undefined | null): boolean {
   return (
     href.startsWith("buzz://pr?") ||
     href.startsWith("buzz://issue?") ||
+    href.startsWith("buzz://linear-task?") ||
+    href.startsWith("buzz://linear-project?") ||
     href.startsWith("buzz://repo?") ||
     href.startsWith("buzz://project?")
   );
@@ -185,6 +190,8 @@ export function isEntityLink(href: string | undefined | null): boolean {
  * extensions (e.g. the reserved `relay=` cross-community field).
  */
 export function parseEntityLink(url: string): EntityLinkParseResult {
+  const linear = parseLinearWorkLink(url);
+  if (linear) return { ok: true, value: linear };
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -305,6 +312,13 @@ export function parseEntityLink(url: string): EntityLinkParseResult {
  * different d-tag.
  */
 export function entityLinkProjectRouteId(link: ParsedEntityLink): string {
-  const kind = link.type === "project" ? 30621 : 30617;
+  const kind =
+    link.type === "linear-task"
+      ? 30624
+      : link.type === "linear-project"
+        ? 30623
+        : link.type === "project"
+          ? 30621
+          : 30617;
   return `${kind}:${link.owner}:${link.dtag}`;
 }

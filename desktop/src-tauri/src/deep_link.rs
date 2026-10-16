@@ -366,7 +366,14 @@ fn parse_join_deep_link(url: &Url) -> Option<serde_json::Value> {
 
 /// Hosts of the `buzz://` git-entity links built by
 /// `desktop/src/shared/lib/entityLink.ts` and `crates/buzz-cli/src/links.rs`.
-const ENTITY_LINK_HOSTS: [&str; 4] = ["repo", "project", "pr", "issue"];
+const ENTITY_LINK_HOSTS: [&str; 6] = [
+    "repo",
+    "project",
+    "pr",
+    "issue",
+    "linear-task",
+    "linear-project",
+];
 
 fn is_hex64(value: &str) -> bool {
     value.len() == 64 && value.chars().all(|c| c.is_ascii_hexdigit())
@@ -448,10 +455,26 @@ fn parse_entity_deep_link(url: &Url) -> Option<()> {
         *slot = Some(value.into_owned());
     }
 
+    if matches!(host, "linear-task" | "linear-project") {
+        if !url.username().is_empty() || url.password().is_some() || url.port().is_some() {
+            return None;
+        }
+        let parts: Vec<_> = dtag.as_deref()?.split(':').collect();
+        if parts.len() != 4
+            || parts[0] != "linear"
+            || parts[1..]
+                .iter()
+                .any(|part| uuid::Uuid::parse_str(part).is_err())
+        {
+            return None;
+        }
+    }
     if !owner.is_some_and(|owner| is_hex64(&owner)) {
         return None;
     }
-    if !dtag.is_some_and(|dtag| is_linkable_dtag(&dtag)) {
+    if !matches!(host, "linear-task" | "linear-project")
+        && !dtag.is_some_and(|dtag| is_linkable_dtag(&dtag))
+    {
         return None;
     }
     if needs_event_id && !id.is_some_and(|id| is_hex64(&id)) {
@@ -689,7 +712,7 @@ pub(crate) fn handle_deep_link_url(app: &tauri::AppHandle, url_str: &str) {
             queue_navigation_deep_link(app, "message", &payload);
             let _ = app.emit("deep-link-message", payload);
         }
-        Some("repo" | "project" | "pr" | "issue") => {
+        Some("repo" | "project" | "pr" | "issue" | "linear-task" | "linear-project") => {
             // OS routing uses this build's scheme; frontend navigation consumes
             // canonical buzz:// entity links rather than transport identity.
             let Some(href) = canonical_entity_deep_link(

@@ -1,3 +1,4 @@
+import { ReviewDiscussion, type DiscussionControls } from "./ReviewDiscussion";
 import { FileCode2, MessageSquareText } from "lucide-react";
 
 import { ForumComposer } from "@/features/forum/ui/ForumComposer";
@@ -23,6 +24,7 @@ function commentAuthor(
 }
 
 export function ProjectPullRequestInlineCommentThread({
+  discussions,
   activeAnchor,
   comments,
   canRequestChanges,
@@ -31,6 +33,7 @@ export function ProjectPullRequestInlineCommentThread({
   onSubmit,
   profiles,
 }: {
+  discussions?: DiscussionControls;
   activeAnchor: ProjectPullRequestCommentAnchor | null;
   canRequestChanges: boolean;
   comments: ProjectPullRequestComment[];
@@ -51,7 +54,18 @@ export function ProjectPullRequestInlineCommentThread({
       className="border-border/50 border-y bg-background px-3 py-2 font-sans"
       data-testid="project-inline-comment-thread"
     >
-      {comments.length > 0 ? (
+      {discussions ? (
+        <div className="space-y-2">
+          {discussions.threads.map((thread) => (
+            <ReviewDiscussion
+              key={thread.root.id}
+              thread={thread}
+              controls={discussions}
+              profiles={profiles}
+            />
+          ))}
+        </div>
+      ) : comments.length > 0 ? (
         <div className="divide-y divide-border/50 rounded-lg border border-border/60 bg-card">
           {comments.map((comment) => (
             <article

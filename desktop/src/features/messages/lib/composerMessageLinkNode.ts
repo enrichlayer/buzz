@@ -1,3 +1,4 @@
+import { buildLinearWorkLink } from "@/shared/lib/linearWorkLink";
 import { mergeAttributes, Node } from "@tiptap/core";
 import type { Mark, Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Selection, TextSelection } from "@tiptap/pm/state";
@@ -83,6 +84,9 @@ export function resolveComposerMessageLinkAttributes(
   const entity = parseEntityLink(href);
   if (!entity.ok) return null;
   switch (entity.value.type) {
+    case "linear-task":
+    case "linear-project":
+      return { channelName: "", href: buildLinearWorkLink(entity.value) };
     case "repo":
       return {
         channelName: "",
@@ -391,6 +395,20 @@ function composerLinkPresentation(
     };
   }
 
+  if (
+    entity.value.type === "linear-task" ||
+    entity.value.type === "linear-project"
+  ) {
+    const label =
+      entity.value.type === "linear-task" ? "Linear task" : "Linear project";
+    return {
+      ariaLabel: `Open ${label}`,
+      channelName: "",
+      dataAttributes: { "data-buzz-link-kind": entity.value.type },
+      icon: "issue",
+      label,
+    };
+  }
   const shortId =
     entity.value.type === "repo" || entity.value.type === "project"
       ? ""
