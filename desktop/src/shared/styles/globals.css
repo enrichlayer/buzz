@@ -19,6 +19,7 @@
 @import "./globals/video-review.css";
 @import "./globals/progress.css";
 
+@source "../../../node_modules/@el/buzz-ui";
 @config "../../../tailwind.config.js";
 
 /* Tailwind v4 gates `hover:` behind `@media (hover: hover)`. Some Windows

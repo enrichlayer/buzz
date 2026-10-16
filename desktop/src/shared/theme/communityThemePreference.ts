@@ -1,6 +1,6 @@
 import { normalizeRelayUrl } from "@/features/profile/lib/selfProfileStorage";
 import { ACCENT_COLORS } from "./ThemeProvider";
-import { SYNTAX_THEMES, type SyntaxThemeName } from "./theme-loader";
+import { isThemeSelection, type SyntaxThemeName } from "./theme-loader";
 
 const STORAGE_KEY_PREFIX = "buzz-community-theme.v1";
 const OUTBOX_KEY_PREFIX = "buzz-community-theme-outbox.v1";
@@ -20,7 +20,6 @@ export const DEFAULT_COMMUNITY_THEME: CommunityThemePreference = Object.freeze({
   followSystem: true,
 });
 
-const THEME_NAMES = new Set<string>(SYNTAX_THEMES);
 const ACCENTS = new Set<string>(ACCENT_COLORS.map(({ value }) => value));
 
 export function communityThemeStorageKey(
@@ -47,7 +46,7 @@ export function parseCommunityThemePreference(
   if (
     candidate.version !== 1 ||
     typeof candidate.theme !== "string" ||
-    !THEME_NAMES.has(candidate.theme) ||
+    !(isThemeSelection(candidate.theme) || candidate.theme === "el-buzz") ||
     typeof candidate.accent !== "string" ||
     !ACCENTS.has(candidate.accent) ||
     typeof candidate.followSystem !== "boolean"
@@ -56,7 +55,10 @@ export function parseCommunityThemePreference(
   }
   return {
     version: 1,
-    theme: candidate.theme as SyntaxThemeName,
+    theme:
+      candidate.theme === "el-buzz"
+        ? "plugin:enrichlayer.el-buzz:dark"
+        : (candidate.theme as SyntaxThemeName),
     accent: candidate.accent,
     followSystem: candidate.followSystem,
   };

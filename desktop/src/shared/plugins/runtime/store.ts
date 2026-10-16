@@ -3,6 +3,7 @@ import { parseRuntimePluginManifest } from "./schema";
 import type {
   InstalledRuntimePlugin,
   RuntimePluginManifest,
+  RuntimeContentPluginManifest,
   RuntimePluginSnapshot,
   RuntimePluginStoreState,
 } from "./types";
@@ -53,10 +54,13 @@ function readSnapshot(): RuntimePluginStoreState {
       return { enabled: entry.enabled, manifest: result.manifest };
     });
     const ids = new Set(plugins.map((entry) => entry.manifest.id));
-    const languages = new Set(
-      plugins.map((entry) => entry.manifest.fenceLanguage),
+    const languages = plugins.flatMap((entry) =>
+      entry.manifest.schemaVersion === 1 ? [entry.manifest.fenceLanguage] : [],
     );
-    if (ids.size !== plugins.length || languages.size !== plugins.length) {
+    if (
+      ids.size !== plugins.length ||
+      new Set(languages).size !== languages.length
+    ) {
       throw new Error(
         "saved snapshot contains duplicate ids or fence languages",
       );
@@ -116,9 +120,11 @@ function conflictFor(
   manifest: RuntimePluginManifest,
   excludingId?: string,
 ): string | null {
+  if (manifest.schemaVersion !== 1) return null;
   const languageOwner = plugins.find(
     (entry) =>
       entry.manifest.id !== excludingId &&
+      entry.manifest.schemaVersion === 1 &&
       entry.manifest.fenceLanguage === manifest.fenceLanguage,
   );
   return languageOwner
@@ -177,22 +183,31 @@ export function useRuntimePluginState(): RuntimePluginStoreState {
   );
 }
 
+function contentPlugin(
+  plugins: InstalledRuntimePlugin[],
+  language: string,
+): RuntimeContentPluginManifest | undefined {
+  for (const entry of plugins) {
+    if (
+      entry.enabled &&
+      entry.manifest.schemaVersion === 1 &&
+      entry.manifest.fenceLanguage === language
+    )
+      return entry.manifest;
+  }
+  return undefined;
+}
+
 export function useRuntimeCodeFencePlugin(
   language: string,
-): RuntimePluginManifest | undefined {
-  const snapshot = useRuntimePluginState();
-  return snapshot.plugins.find(
-    (entry) => entry.enabled && entry.manifest.fenceLanguage === language,
-  )?.manifest;
+): RuntimeContentPluginManifest | undefined {
+  return contentPlugin(useRuntimePluginState().plugins, language);
 }
 
 export function getRuntimeCodeFencePlugin(
   language: string,
-): RuntimePluginManifest | undefined {
-  ensureLoaded();
-  return state.plugins.find(
-    (entry) => entry.enabled && entry.manifest.fenceLanguage === language,
-  )?.manifest;
+): RuntimeContentPluginManifest | undefined {
+  return contentPlugin(getRuntimePluginState().plugins, language);
 }
 
 export async function installRuntimePlugin(
@@ -234,6 +249,34 @@ export async function installRuntimePlugin(
           ok: false as const,
           error: "Plugin was not installed because persistence failed",
         };
+  });
+}
+
+/** Seed a distribution's plugin only in a new store. An empty saved snapshot
+ * records an intentional uninstall and must never trigger reinstallation.
+ */
+export async function initializeBundledRuntimePlugin(
+  manifest: RuntimePluginManifest,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  ensureLoaded();
+  const parsed = normalizeManifest(manifest);
+  if (!parsed.ok) return parsed;
+  return withMutationLock(() => {
+    const durable = readSnapshot();
+    if (durable.loadError)
+      return { ok: false as const, error: durable.loadError };
+    try {
+      if (
+        globalThis.localStorage &&
+        globalThis.localStorage.getItem(RUNTIME_PLUGIN_STORAGE_KEY) !== null
+      )
+        return { ok: true as const };
+    } catch (error) {
+      return { ok: false as const, error: String(error) };
+    }
+    return persist([{ enabled: true, manifest: parsed.manifest }], durable)
+      ? { ok: true as const }
+      : { ok: false as const, error: "Could not install the bundled theme" };
   });
 }
 

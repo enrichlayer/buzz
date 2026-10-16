@@ -2,7 +2,7 @@ import {
   MAX_RUNTIME_CONTENT_BYTES,
   validateRuntimeContentData,
 } from "./schema";
-import type { RuntimePluginManifest, RuntimeValue } from "./types";
+import type { RuntimeContentPluginManifest, RuntimeValue } from "./types";
 
 const MAX_ACTION_OUTPUT_LENGTH = 16_384;
 
@@ -11,7 +11,7 @@ export type ParsedRuntimePluginContent =
   | { ok: false; error: string };
 
 export function parseRuntimePluginContent(
-  manifest: RuntimePluginManifest,
+  manifest: RuntimeContentPluginManifest,
   code: string,
 ): ParsedRuntimePluginContent {
   if (new TextEncoder().encode(code).byteLength > MAX_RUNTIME_CONTENT_BYTES) {
