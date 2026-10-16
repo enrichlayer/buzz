@@ -177,7 +177,6 @@ test("pending and huddle rows omit both copy-link surfaces", async ({
     const pending = emit({
       channelName: "general",
       content: "Pending copy-link regression",
-      id: "c".repeat(64),
       pending: true,
     });
     const huddle = emit({
@@ -185,7 +184,6 @@ test("pending and huddle rows omit both copy-link surfaces", async ({
       content: JSON.stringify({
         ephemeral_channel_id: "10000000-0000-4000-8000-000000000001",
       }),
-      id: "d".repeat(64),
       kind: huddleKind,
     });
     return { huddleId: huddle.id, pendingId: pending.id };

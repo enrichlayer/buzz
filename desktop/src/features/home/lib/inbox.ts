@@ -1,3 +1,4 @@
+import { stripPromptSuggestionFooter } from "@/features/messages/lib/promptSuggestions";
 import {
   resolveUserLabel,
   type UserProfileLookup,
@@ -177,8 +178,11 @@ function feedHeadline(item: FeedItem, groupItems: readonly FeedItem[] = []) {
   }
 }
 
-function feedPreview(item: FeedItem) {
-  const content = item.content.trim();
+function feedPreview(item: FeedItem, profiles?: UserProfileLookup) {
+  const content = stripPromptSuggestionFooter(
+    item.content,
+    profiles?.[item.pubkey.toLowerCase()]?.isAgent === true,
+  ).trim();
   if (content.length > 0) {
     return content;
   }
@@ -589,7 +593,7 @@ export function buildInboxItems({
         preferResolvedSelfLabel: true,
       });
       const subject = feedHeadline(item, group.items);
-      const preview = feedPreview(item);
+      const preview = feedPreview(item, profiles);
       const { mentionNames, mentionPubkeysByName } = resolveMentionProps(
         item.tags,
         profiles,
