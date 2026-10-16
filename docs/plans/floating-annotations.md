@@ -13,9 +13,9 @@ community changes. Mounted views register their own sources and conversation
 scopes, then unregister them during cleanup so a stale destination cannot
 survive navigation.
 `SourceAnnotation` adds provenance when the source has a stable identity; it no
-longer gates annotation availability. Unregistered content retains the exact
-selected text and its view context. Editable inputs and unsent composer drafts
-keep their existing selection behavior. Modal previews contain the editor in
+longer gates annotation availability. Unregistered content retains the selected
+text, trimmed of surrounding whitespace, and its view context. Editable inputs
+and unsent composer drafts keep their existing selection behavior. Modal previews contain the editor in
 their own focus boundary.
 
 The nearest registered conversation scope supplies the send destination.
