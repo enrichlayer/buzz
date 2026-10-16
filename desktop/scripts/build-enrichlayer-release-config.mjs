@@ -28,6 +28,32 @@ if (
 }
 const configPath = resolve("src-tauri/tauri.release.conf.json");
 const config = JSON.parse(readFileSync(configPath, "utf8"));
+for (const variable of [
+  "BUZZ_BUILD_DEMO_SLUG",
+  "BUZZ_DESKTOP_BUILD_DEMO_SLUG",
+]) {
+  if (Object.hasOwn(process.env, variable)) {
+    throw new Error(
+      `Unset ${variable}: daily builds must preserve the production account`,
+    );
+  }
+}
 config.identifier = "com.enrichlayer.buzz";
 config.bundle.macOS.signingIdentity = signingIdentity;
+if (process.env.BUZZ_EL_BRANDING === "1") {
+  const branding = JSON.parse(
+    readFileSync(
+      new URL("../src-tauri/tauri.el-buzz.conf.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  if (branding.identifier || branding.plugins || branding.bundle.externalBin) {
+    throw new Error(
+      "Branding must not replace account, updater, or sidecar configuration",
+    );
+  }
+  config.productName = branding.productName;
+  config.build = branding.build;
+  config.bundle.icon = branding.bundle.icon;
+}
 writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);

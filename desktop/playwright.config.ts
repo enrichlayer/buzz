@@ -54,6 +54,7 @@ export default defineConfig({
         "**/code-fence-plugins.spec.ts",
         "**/runtime-session-plugins.spec.ts",
         "**/el-buzz-theme.spec.ts",
+        "**/code-highlighting.spec.ts",
         "**/session-annotations.spec.ts",
         "**/agent-output-modes.spec.ts",
         "**/agent-thread-session-archive.spec.ts",

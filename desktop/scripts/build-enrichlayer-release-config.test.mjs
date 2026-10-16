@@ -53,6 +53,11 @@ test("fork release uses its own feed, identity, and signed updater artifacts", (
   });
 });
 for (const [name, overrides] of Object.entries({
+  "demo account namespace": { BUZZ_BUILD_DEMO_SLUG: "validation" },
+  "empty demo override": { BUZZ_BUILD_DEMO_SLUG: "" },
+  "direct compiled demo override": {
+    BUZZ_DESKTOP_BUILD_DEMO_SLUG: "validation",
+  },
   "upstream feed": {
     BUZZ_UPDATER_ENDPOINT:
       "https://github.com/block/buzz/releases/download/buzz-desktop-latest/latest.json",
@@ -65,6 +70,26 @@ for (const [name, overrides] of Object.entries({
 }))
   test(`rejects ${name}`, () =>
     run(overrides, (result) => assert.notEqual(result.status, 0)));
+
+test("el-buzz branding retains daily identity, authenticated updater and sidecars", () => {
+  run({ BUZZ_EL_BRANDING: "1" }, (result, cwd) => {
+    assert.equal(result.status, 0, result.stderr);
+    const config = JSON.parse(
+      readFileSync(resolve(cwd, "src-tauri/tauri.release.conf.json"), "utf8"),
+    );
+    assert.equal(config.productName, "el-buzz");
+    assert.equal(config.identifier, "com.enrichlayer.buzz");
+    assert.equal(config.build.beforeBuildCommand, "pnpm build:el-buzz");
+    assert.ok(
+      config.bundle.icon.every((icon) => icon.startsWith("icons/el-buzz/")),
+    );
+    assert.equal(config.bundle.createUpdaterArtifacts, true);
+    assert.equal(Object.hasOwn(config.bundle, "externalBin"), false);
+    assert.equal(Object.hasOwn(config.plugins, "deep-link"), false);
+    assert.deepEqual(config.plugins.updater.endpoints, [endpoint]);
+    assert.equal(config.plugins.updater.pubkey, pinnedKey);
+  });
+});
 
 for (const identity of ["-", ""]) {
   test(`supports no Apple account (identity ${JSON.stringify(identity)})`, () => {

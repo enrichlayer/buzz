@@ -114,24 +114,49 @@ and expect el-buzz to return. Choose a different built-in theme to replace the
 saved selection explicitly.
 
 
-## Native el-buzz test distribution
+## One cumulative native el-buzz application
 
-Build from this branch with `cd desktop && pnpm tauri:el-buzz --debug --bundles app`.
-The wrapper builds production frontend assets with `VITE_EL_BUZZ=1`; it validates
-and installs the bundled manifest into a fresh plugin store before rendering.
-The default is el-buzz dark. A saved empty store represents uninstall and is
-never reseeded. Failed writes remain visible in Settings and retry next launch.
+The branding overlay changes the display name, icon, and frontend build only.
+It deliberately leaves the bundle identifier, deep-link schemes, keyring and
+agent namespace to the existing daily build configuration. The recipe does not
+set `BUZZ_BUILD_DEMO_SLUG`. Confirm the actual daily profile with the existing
+consolidation owner before installing; never silently migrate identities.
 
-The overlay uses app identifier `com.enrichlayer.el-buzz` and the generated
-native bee icon. The build command uses the existing isolated-demo identity
-`el-buzz`, including `buzz-demo-el-buzz://` links and separate keyring/agent
-configuration. This local test distribution has no updater endpoint.
-Existing Buzz accounts are not copied into the new profile.
+This feature branch is based on fork main and is not the all-features build.
+The existing integration owner combines its scoped commit with the accepted
+annotations/navigation, prompt suggestions/author guard, native review and
+Linear work. Preserve peer ownership, existing CI/review gates, and their exact
+source boundaries. Build sidecars from that cumulative source using the
+existing build path; the older installed sidecars used for this branch's
+bounded compile are not a cumulative release input.
 
-Native build inputs: the six sidecars are copied from the installed Buzz.app
-(2026-10-13 build), not the empty placeholders in the original checkout. They
-are local build inputs, not committed binaries. Reproducible source builds
-should build the standard sidecars using the repository's native build recipes.
+For the base production profile, `cd desktop && pnpm tauri:el-buzz --bundles app` applies the branding overlay. For another confirmed daily
+profile, use its existing config first and apply `src-tauri/tauri.el-buzz.conf.json`
+last through the normal Tauri build wrapper. Preserve the original compile
+profile too: debug assertions select a different keyring service in
+`desktop/src-tauri/src/app_state_keyring.rs`. A matching bundle identifier alone
+does not establish account continuity. Do not create a competing daily
+app, change its account namespace, or overwrite a running bundle.
+
+The production frontend uses `VITE_EL_BUZZ=1`. A new plugin store receives the
+validated bundled theme before render and defaults to el-buzz dark. A saved
+empty store represents uninstall and is never reseeded. Existing plugin stores
+and appearance choices are preserved: in the cumulative app use Settings →
+Plugins → Load el-buzz theme → Install, then Appearance → Dark → el-buzz.
+Failed saves remain visible for recovery and retry next launch.
+
+After the final local bundle modification, use the persistent local signer
+(`~/.config/buzz/local-signing-identity` and `~/.local/bin/buzz-sign-local`) before
+launch. Verify the installed identifier, strict/deep and running signatures,
+existing daily account, and theme in that same native app. Do not overwrite
+stable signing with ad-hoc signing on installation. Local signing does not
+constitute notarization or release approval.
+
+The one-app requirement supersedes the initial isolated-profile packaging
+attempt. That attempt passed the full TypeScript check and production artifact
+matrix, then was stopped before installation or launch. No duplicate el-buzz
+profile was created. The cumulative owner retains native launch and human
+acceptance; the logo/theme author retains scoped source validation/publication.
 
 ### Delivery validation (current fork main)
 
@@ -154,3 +179,9 @@ The desktop commit hook detected a duplicate animation-helper import after
 applying the theme patch to current main. This was removed while retaining the
 upstream helper call; the desktop hook is rerun before publication (owner:
 current author, validation pending).
+
+| Finding | Disposition | Owner / next action | Evidence / validation |
+| --- | --- | --- | --- |
+| Initial branding recipe created a competing app/account namespace | Removed bundle, deep-link and demo-slug overrides; keep branding as a composable overlay | Theme author publishes correction; existing consolidation owner verifies the confirmed daily profile in the cumulative bundle | Configuration diff preserves inherited identity; superseded package stopped before install/launch |
+| Main-based feature branch lacks other accepted workstreams | Explicitly retained as a scoped integration input, not the daily delivery source | Existing consolidation owner combines exact feature checkpoints and validates all features | One-app handoff; no peer branches merged or overwritten here |
+| Duplicate animation-helper import after port to main | Fixed | This change; no further action | Desktop native commit hooks passed on retry |

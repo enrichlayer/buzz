@@ -1,3 +1,4 @@
+import { CodeText } from "@/shared/ui/markdown/CodeText";
 import { cn } from "@/shared/lib/cn";
 import type { FileEditDiff } from "../agentSessionFileEditDiff";
 import type { FileReadContent } from "../agentSessionFileRead";
@@ -108,7 +109,7 @@ function ToolCodeBlock({
             : "bg-muted/50 text-foreground",
         )}
       >
-        {formatCodeValue(value)}
+        <CodeText code={formatCodeValue(value)} />
       </pre>
     </div>
   );

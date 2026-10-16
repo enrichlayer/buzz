@@ -308,7 +308,7 @@ desktop-tauri-test-compiled-flags: _ensure-sidecar-stubs
     fi
     echo "All compiled states and the accepted/rejected demo-name boundary verified."
 
-# Build the full desktop Tauri app locally (unsigned, for testing)
+# Build the full desktop Tauri app locally (uses the configured local Mac signer)
 # Sidecar binary list must stay in sync with _ensure-sidecar-stubs above.
 # pnpm install is unconditional here: release builds must start from a clean dep tree.
 desktop-release-build target="aarch64-apple-darwin":
@@ -325,9 +325,12 @@ desktop-release-build target="aarch64-apple-darwin":
     touch "desktop/src-tauri/binaries/git-credential-nostr-$TARGET"
     touch "desktop/src-tauri/binaries/buzz-$TARGET"
     pnpm install
+    if [[ "$TARGET" == *-apple-darwin && -z "${APPLE_SIGNING_IDENTITY:-}" ]] && LOCAL_SIGNER="$(./scripts/sign-macos-local.sh --identity)"; then
+        export APPLE_SIGNING_IDENTITY="$LOCAL_SIGNER"
+    fi
     cd {{desktop_dir}} && pnpm tauri build --features mesh-llm --target {{target}}
 
-# Build an unsigned named macOS demo DMG with isolated app and runtime identities.
+# Build a named macOS demo DMG with isolated app and runtime identities.
 desktop-demo-build demo_name target="aarch64-apple-darwin":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -356,7 +359,11 @@ desktop-demo-build demo_name target="aarch64-apple-darwin":
     PLIST="$APP_PATH/Contents/Info.plist"
     /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $PRODUCT_NAME" "$PLIST"
     /usr/libexec/PlistBuddy -c "Set :CFBundleName $PRODUCT_NAME" "$PLIST"
-    codesign --force --deep --sign - "$APP_PATH"
+    if ./scripts/sign-macos-local.sh --identity >/dev/null; then
+        ./scripts/sign-macos-local.sh "$APP_PATH"
+    else
+        codesign --force --deep --sign - "$APP_PATH"
+    fi
     VOL_NAME="$DMG_VOLUME_NAME" ./desktop/scripts/package-macos-dmg.sh "$APP_PATH" "desktop/src-tauri/target/$TARGET/release/bundle/dmg/${DMG_FILE_STEM}_${VERSION}_${DMG_ARCH}.dmg"
 
 # Run desktop checks suitable for CI / pre-push

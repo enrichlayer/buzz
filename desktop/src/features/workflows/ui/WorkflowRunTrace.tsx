@@ -1,3 +1,4 @@
+import { CodeText } from "@/shared/ui/markdown/CodeText";
 import { Check, Clock, SkipForward, X } from "lucide-react";
 
 import type { WorkflowApproval, WorkflowRun } from "@/shared/api/types";
@@ -98,7 +99,10 @@ export function WorkflowRunTrace({
                   Output
                 </p>
                 <pre className="max-h-32 overflow-auto rounded-lg bg-muted/40 px-3 py-2 font-mono text-xs text-muted-foreground">
-                  {JSON.stringify(step.output, null, 2)}
+                  <CodeText
+                    code={JSON.stringify(step.output, null, 2)}
+                    language="json"
+                  />
                 </pre>
               </div>
             ) : null}

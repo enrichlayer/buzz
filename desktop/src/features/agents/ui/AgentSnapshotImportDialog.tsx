@@ -1,3 +1,4 @@
+import { CodeText } from "@/shared/ui/markdown/CodeText";
 import * as React from "react";
 import { AlertCircle, Lock, Upload } from "lucide-react";
 
@@ -295,7 +296,7 @@ export function PreviewBody({
           credentials, and source identity are not part of the snapshot format.
         </p>
         <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/60 p-3 text-xs">
-          {preview.manifestJson}
+          <CodeText code={preview.manifestJson} language="json" />
         </pre>
       </details>
     </div>

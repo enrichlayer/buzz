@@ -1,3 +1,4 @@
+import { CodeText } from "@/shared/ui/markdown/CodeText";
 import { ChevronDown, ChevronRight, Pencil, Play, X } from "lucide-react";
 import * as React from "react";
 
@@ -169,7 +170,10 @@ export function WorkflowDetailPanel({
                   Definition
                 </h4>
                 <pre className="max-h-64 overflow-auto rounded-md bg-muted/50 p-3 font-mono text-xs leading-relaxed">
-                  {JSON.stringify(workflow.definition, null, 2)}
+                  <CodeText
+                    code={JSON.stringify(workflow.definition, null, 2)}
+                    language="json"
+                  />
                 </pre>
               </div>
             ) : null}

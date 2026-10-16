@@ -1,9 +1,7 @@
 {
   "productName": "el-buzz",
-  "identifier": "com.enrichlayer.el-buzz",
-  "build": { "beforeBuildCommand": "pnpm build:el-buzz" },
-  "plugins": {
-    "deep-link": { "desktop": { "schemes": ["buzz-demo-el-buzz"] } }
+  "build": {
+    "beforeBuildCommand": "pnpm build:el-buzz"
   },
   "bundle": {
     "icon": [
