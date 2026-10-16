@@ -1,3 +1,5 @@
+import { getPluginTheme } from "@/shared/theme/plugin-themes";
+import { useRuntimePluginState } from "@/shared/plugins/runtime/store";
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
@@ -37,8 +39,8 @@ import { useCommunities } from "@/features/communities/useCommunities";
 import { Badge } from "@/shared/ui/badge";
 import { isBuzzTheme, useTheme } from "@/shared/theme/ThemeProvider";
 import {
-  LIGHT_THEMES,
-  SYNTAX_THEMES,
+  isLightTheme,
+  getThemeNames,
   type SyntaxThemeName,
   getThemePair,
 } from "@/shared/theme/theme-loader";
@@ -246,6 +248,8 @@ export const settingsSections: SettingsSectionDescriptor[] = [
 ];
 
 function formatThemeLabel(name: string): string {
+  const contribution = getPluginTheme(name);
+  if (contribution) return contribution.name;
   return name
     .split("-")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
@@ -284,6 +288,7 @@ function pairedThemeLabel(lightName: string): string {
  * (the dark member is shown alongside it as a preview).
  */
 function useThemeCategories() {
+  const pluginState = useRuntimePluginState();
   return useMemo(() => {
     const pairedLight: SyntaxThemeName[] = [];
     const lightOnly: SyntaxThemeName[] = [];
@@ -291,8 +296,8 @@ function useThemeCategories() {
 
     // Track which themes are the "dark side" of a pair so we skip them
     const darkPairMembers = new Set<string>();
-    for (const name of SYNTAX_THEMES) {
-      if (LIGHT_THEMES.has(name)) {
+    for (const name of getThemeNames(pluginState)) {
+      if (isLightTheme(name)) {
         const pair = getThemePair(name);
         if (pair) {
           darkPairMembers.add(pair);
@@ -300,11 +305,11 @@ function useThemeCategories() {
       }
     }
 
-    for (const name of SYNTAX_THEMES) {
+    for (const name of getThemeNames(pluginState)) {
       // Skip dark members of pairs — they'll be shown alongside their light counterpart
       if (darkPairMembers.has(name)) continue;
 
-      if (LIGHT_THEMES.has(name)) {
+      if (isLightTheme(name)) {
         const pair = getThemePair(name);
         if (pair) {
           pairedLight.push(name);
@@ -317,7 +322,7 @@ function useThemeCategories() {
     }
 
     return { pairedLight, lightOnly, darkOnly };
-  }, []);
+  }, [pluginState]);
 }
 
 function PairedThemeTile({
@@ -432,6 +437,8 @@ function ThemeSettingsCard() {
     setTheme,
     selectedThemeName,
     themeName,
+    unavailableTheme,
+    themeError,
     isDark,
     accentColor,
     setAccentColor,
@@ -449,7 +456,8 @@ function ThemeSettingsCard() {
   // Buzz themes pin a neutral accent (GitHub black in light, white in dark),
   // so the accent picker is hidden while a Buzz theme is active. `themeName` is
   // the effective theme, so this also covers System mode resolving to Buzz.
-  const buzzThemeSelected = isBuzzTheme(themeName);
+  const buzzThemeSelected =
+    isBuzzTheme(themeName) || Boolean(getPluginTheme(themeName));
   const accentPickerHidden = buzzThemeSelected;
   const shouldReduceMotion = useReducedMotion();
 
@@ -469,7 +477,7 @@ function ThemeSettingsCard() {
   const getVars = (name: SyntaxThemeName) =>
     withAccentPreviewVars(
       previewVarsByTheme[name] ?? getThemeFallbackPreviewVars(name),
-      accentColor,
+      getPluginTheme(name)?.colors.primary ?? accentColor,
     );
 
   // All light themes (paired light + light-only)
@@ -503,9 +511,7 @@ function ThemeSettingsCard() {
       // clicks Dark, apply the dark pair so the app immediately reflects the
       // chosen mode. For unpaired themes (no counterpart), fall back to the
       // first available theme in the target mode's list.
-      const currentIsLight = LIGHT_THEMES.has(
-        selectedThemeName as SyntaxThemeName,
-      );
+      const currentIsLight = isLightTheme(selectedThemeName);
       const needsDark = mode === "dark" && currentIsLight;
       const needsLight = mode === "light" && !currentIsLight;
       if (needsDark || needsLight) {
@@ -645,6 +651,17 @@ function ThemeSettingsCard() {
       className="flex min-h-0 flex-1 flex-col overflow-y-auto"
       data-testid="settings-theme"
     >
+      {unavailableTheme && (
+        <p role="status" className="text-sm text-muted-foreground">
+          Your selected theme is unavailable on this device. Using Buzz Dark
+          until its plugin is enabled.
+        </p>
+      )}
+      {themeError && (
+        <p role="alert" className="text-sm text-destructive">
+          {themeError}. Choose another theme to recover.
+        </p>
+      )}
       <SettingsSectionHeader
         title="Appearance"
         description="Choose how Buzz looks and feels."

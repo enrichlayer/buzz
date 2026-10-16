@@ -1,3 +1,9 @@
+import type { RuntimePluginStoreState } from "../plugins/runtime/types";
+import { applyPluginThemeColors, getPluginTheme } from "./plugin-themes";
+import {
+  getRuntimePluginState,
+  useRuntimePluginState,
+} from "../plugins/runtime/store";
 import {
   type ReactNode,
   createContext,
@@ -14,7 +20,8 @@ import { isMacPlatform } from "@/shared/lib/platform";
 import { getStorageItem } from "@/shared/lib/safeStorage";
 import { createThemeVars, hexToHsl } from "./adaptive-theme";
 import {
-  SYNTAX_THEMES,
+  isAvailableTheme,
+  isThemeSelection,
   type SyntaxThemeName,
   type ThemeInfo,
   extractThemeInfo,
@@ -61,6 +68,8 @@ type ThemeContextValue = {
   selectedThemeName: string;
   isDark: boolean;
   isLoading: boolean;
+  themeError: string | null;
+  unavailableTheme: string | null;
   accentColor: string;
   followSystem: boolean;
   glassBackground: boolean;
@@ -90,7 +99,7 @@ type ThemeProviderProps = {
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
 function isValidThemeName(name: string): name is SyntaxThemeName {
-  return (SYNTAX_THEMES as readonly string[]).includes(name);
+  return isAvailableTheme(name);
 }
 
 /** Read stored theme, migrating legacy "light"/"dark"/"system" values. */
@@ -100,12 +109,13 @@ function readStoredTheme(fallback: SyntaxThemeName): SyntaxThemeName {
   // the fallback instead of unmounting the root during first render.
   const stored = getStorageItem(THEME_STORAGE_KEY);
   if (!stored) return fallback;
+  if (stored === "el-buzz") return "plugin:enrichlayer.el-buzz:dark";
 
   // Migrate legacy values
   if (stored === "light") return "catppuccin-latte";
   if (stored === "dark" || stored === "system") return "houston";
 
-  return isValidThemeName(stored) ? stored : fallback;
+  return isThemeSelection(stored) ? stored : fallback;
 }
 
 function getContrastColor(hex: string): string {
@@ -195,7 +205,7 @@ function rgbToHex({ r, g, b }: Rgb): string {
     .join("")}`;
 }
 
-function applyAccentColor(value: string) {
+function applyAccentColor(value: string, themeName: string) {
   const root = document.documentElement;
   if (value === NEUTRAL_ACCENT) {
     const styles = window.getComputedStyle(root);
@@ -221,7 +231,10 @@ function applyAccentColor(value: string) {
 
   const hex = value;
   const accentHsl = hexToHsl(hex);
-  const fgHsl = hexToHsl(getContrastColor(hex));
+  const fgHsl = hexToHsl(
+    getPluginTheme(themeName)?.colors["primary-foreground"] ??
+      getContrastColor(hex),
+  );
   root.style.setProperty("--buzz-selected-accent", accentHsl);
   root.style.setProperty("--buzz-video-review-accent", accentHsl);
   root.style.setProperty(
@@ -249,12 +262,15 @@ export function isBuzzTheme(themeName: string): boolean {
 
 /**
  * Resolve the accent to actually apply for a theme: Buzz themes are pinned to
- * the neutral accent; every other theme uses the stored/selected accent.
+ * the neutral accent, plugin themes use their declared primary color, and
+ * other themes use the stored/selected accent.
  */
 function resolveEffectiveAccent(
   themeName: string,
   accentColor: string,
 ): string {
+  const plugin = getPluginTheme(themeName);
+  if (plugin) return plugin.colors.primary;
   return isBuzzTheme(themeName) ? NEUTRAL_ACCENT : accentColor;
 }
 
@@ -401,6 +417,12 @@ function applyCachedVars(): string | null {
     const cached = window.localStorage.getItem(CACHE_KEY);
     if (!cached) return null;
     const { themeName, vars, isDark } = JSON.parse(cached);
+    if (
+      typeof themeName !== "string" ||
+      themeName.startsWith("plugin:") ||
+      !isAvailableTheme(themeName)
+    )
+      return null;
     const root = document.documentElement;
     for (const [key, value] of Object.entries(vars)) {
       root.style.setProperty(key, value as string);
@@ -414,7 +436,7 @@ function applyCachedVars(): string | null {
     // Pin Buzz themes to the neutral accent here too, matching applyTheme.
     // Otherwise a cached Buzz theme + non-neutral stored accent flashes the
     // old accent on reload until the async applyTheme effect runs.
-    applyAccentColor(resolveEffectiveAccent(themeName, accent));
+    applyAccentColor(resolveEffectiveAccent(themeName, accent), themeName);
 
     return themeName;
   } catch {
@@ -426,20 +448,33 @@ function applyCachedVars(): string | null {
 let themeApplyRequest = 0;
 
 /** Apply a theme: load data, derive CSS vars, set them on :root. */
-async function applyTheme(name: SyntaxThemeName): Promise<{
+async function applyTheme(
+  name: SyntaxThemeName,
+  pluginSnapshot: RuntimePluginStoreState,
+): Promise<{
   isDark: boolean;
   terminalPalette: ThemeInfo["terminalPalette"];
 } | null> {
   const requestToken = ++themeApplyRequest;
   const themeData = await loadThemeData(name);
-  if (requestToken !== themeApplyRequest) return null;
+  if (
+    requestToken !== themeApplyRequest ||
+    pluginSnapshot !== getRuntimePluginState()
+  )
+    return null;
 
   const info = extractThemeInfo(name, themeData);
-  const { isDark, vars } = createThemeVars(info.bg, info.fg, info.comment, {
-    added: info.added,
-    deleted: info.deleted,
-    modified: info.modified,
-  });
+  const { isDark, vars: derivedVars } = createThemeVars(
+    info.bg,
+    info.fg,
+    info.comment,
+    {
+      added: info.added,
+      deleted: info.deleted,
+      modified: info.modified,
+    },
+  );
+  const vars = applyPluginThemeColors(name, derivedVars);
 
   const root = document.documentElement;
   for (const [key, value] of Object.entries(vars)) {
@@ -462,6 +497,7 @@ async function applyTheme(name: SyntaxThemeName): Promise<{
       name,
       getStorageItem(ACCENT_STORAGE_KEY) ?? DEFAULT_ACCENT,
     ),
+    name,
   );
 
   // Cache for FOUC prevention
@@ -481,6 +517,7 @@ export function ThemeProvider({
   children,
   defaultTheme = "buzz",
 }: ThemeProviderProps) {
+  const pluginState = useRuntimePluginState();
   const glassBackgroundSupported = isTauri() && isMacPlatform();
 
   // Apply cached vars synchronously before first render
@@ -492,6 +529,7 @@ export function ThemeProvider({
     return document.documentElement.classList.contains("dark");
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [themeError, setThemeError] = useState<string | null>(null);
   const [terminalPalette, setTerminalPalette] = useState<
     ThemeInfo["terminalPalette"] | null
   >(null);
@@ -527,7 +565,10 @@ export function ThemeProvider({
     // Fresh profiles (no saved theme) default to System mode so the Buzz
     // default tracks the OS light/dark scheme. Profiles that picked a theme
     // before this toggle existed keep their fixed theme until they opt in.
-    return getStorageItem(THEME_STORAGE_KEY) === null;
+    return (
+      !defaultTheme.startsWith("plugin:") &&
+      getStorageItem(THEME_STORAGE_KEY) === null
+    );
   });
   const [systemIsDark, setSystemIsDark] = useState<boolean>(() => {
     return window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -535,7 +576,8 @@ export function ThemeProvider({
 
   // Resolve the effective theme based on follow-system preference
   const effectiveTheme = (() => {
-    if (!followSystem || !isValidThemeName(selectedTheme)) return selectedTheme;
+    if (!isAvailableTheme(selectedTheme)) return "buzz-dark";
+    if (!followSystem) return selectedTheme;
     return resolveSystemTheme(selectedTheme as SyntaxThemeName, systemIsDark);
   })();
 
@@ -548,22 +590,38 @@ export function ThemeProvider({
     if (!isValidThemeName(effectiveTheme)) return;
 
     // Track which theme we're loading to avoid race conditions
+    setThemeError(null);
     const thisTheme = effectiveTheme;
     loadingRef.current = thisTheme;
     setIsLoading(true);
 
-    applyTheme(effectiveTheme as SyntaxThemeName).then((result) => {
-      if (!result) return;
-      // Only update if this is still the theme we want. The accent is applied
-      // inside applyTheme (synchronously with the theme vars), so there's no
-      // separate re-application here — that avoided the switch-time flicker.
-      if (loadingRef.current === thisTheme) {
-        setIsDark(result.isDark);
-        setTerminalPalette(result.terminalPalette);
-        setIsLoading(false);
-      }
-    });
-  }, [effectiveTheme]);
+    let canceled = false;
+    applyTheme(effectiveTheme as SyntaxThemeName, pluginState)
+      .then((result) => {
+        if (canceled) return;
+        if (!result) return;
+        // Only update if this is still the theme we want. The accent is applied
+        // inside applyTheme (synchronously with the theme vars), so there's no
+        // separate re-application here — that avoided the switch-time flicker.
+        if (loadingRef.current === thisTheme) {
+          setIsDark(result.isDark);
+          setTerminalPalette(result.terminalPalette);
+          setIsLoading(false);
+        }
+      })
+      .catch((error) => {
+        if (!canceled) {
+          setThemeError(
+            error instanceof Error ? error.message : "Theme could not load",
+          );
+          setIsLoading(false);
+        }
+      });
+    return () => {
+      canceled = true;
+      ++themeApplyRequest;
+    };
+  }, [effectiveTheme, pluginState]);
 
   useEffect(() => {
     // `initial-render-ready` fires from a layout effect, so it is already
@@ -630,7 +688,10 @@ export function ThemeProvider({
   // same synchronous batch as the theme vars — the flicker fix — so this effect
   // is idempotent on theme changes and simply covers accent-only changes.
   useEffect(() => {
-    applyAccentColor(resolveEffectiveAccent(effectiveTheme, accentColor));
+    applyAccentColor(
+      resolveEffectiveAccent(effectiveTheme, accentColor),
+      effectiveTheme,
+    );
   }, [accentColor, effectiveTheme]);
 
   const setTheme = useCallback((name: string) => {
@@ -716,6 +777,8 @@ export function ThemeProvider({
     selectedThemeName: selectedTheme,
     isDark,
     isLoading,
+    themeError,
+    unavailableTheme: isAvailableTheme(selectedTheme) ? null : selectedTheme,
     accentColor,
     followSystem,
     glassBackground,
@@ -744,4 +807,9 @@ export function useTheme() {
     throw new Error("useTheme must be used within a ThemeProvider");
   }
   return context;
+}
+
+/** Syntax previews also work outside the app shell, using the default light palette. */
+export function useSyntaxThemeName(): string {
+  return useContext(ThemeContext)?.themeName ?? "github-light";
 }

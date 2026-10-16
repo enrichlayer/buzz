@@ -42,7 +42,7 @@ export type RuntimePluginBlock =
       submit: RuntimePluginAction;
     };
 
-export type RuntimePluginManifest = {
+export type RuntimeContentPluginManifest = {
   schemaVersion: 1;
   id: string;
   name: string;
@@ -68,3 +68,26 @@ export type RuntimePluginStoreState = {
   persistenceError: string | null;
   plugins: InstalledRuntimePlugin[];
 };
+
+/** Data-only theme plugins share the installer and atomic snapshot with content plugins. */
+export type RuntimeThemePluginManifest = {
+  schemaVersion: 2;
+  kind: "theme";
+  id: string;
+  name: string;
+  version: string;
+  description?: string;
+  themes: RuntimeThemeContribution[];
+};
+
+export type RuntimeThemeContribution = {
+  id: string;
+  name: string;
+  mode: "light" | "dark";
+  syntaxTheme: import("../../theme/theme-catalog").BuiltinThemeName;
+  colors: Record<string, string>;
+};
+
+export type RuntimePluginManifest =
+  | RuntimeContentPluginManifest
+  | RuntimeThemePluginManifest;
