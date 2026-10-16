@@ -71,4 +71,11 @@ The source/outbox tests also run there, including killed-process recovery.
 These tests do not establish live Linear credentials, Buzz membership, deployed
 sync, or installed-app acceptance.
 
+The worker CI also runs `deploy.test.py` with `BUZZ_LINEAR_PODMAN_TEST_IMAGE`
+set to a Node image on Linux. This exercises the actual rendered user and tmpfs
+options in Podman and checks private home ownership, writable scratch space and
+the read-only root filesystem. Render-only assertions cannot catch unsupported
+Podman mount options. The home tmpfs uses `U` to inherit the container user's
+ownership; raw `uid=` and `gid=` options are rejected by the pilot's Podman.
+
 Reference: [Temporal TypeScript guide](https://docs.temporal.io/develop/typescript).

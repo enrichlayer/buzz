@@ -1,12 +1,44 @@
 """Render the actual Quadlet template and verify private non-root runtime inputs."""
 from pathlib import Path
+import os
 import re
+import subprocess
 import unittest
 
 import jinja2
 import yaml
 
 ROOT = Path(__file__).parent / ".deploy"
+
+
+def runtime_command(rendered, image):
+    """Exercise the rendered worker's user and tmpfs options with real Podman."""
+    command = ["podman", "run", "--rm", "--network=none"]
+    for line in rendered.splitlines():
+        if line.startswith("User="):
+            command.extend(["--user", line.removeprefix("User=")])
+        elif line.startswith("Tmpfs="):
+            command.extend(["--tmpfs", line.removeprefix("Tmpfs=")])
+        elif line == "ReadOnly=true":
+            command.append("--read-only")
+    command.extend(["--entrypoint=node", image, "-e", r"""
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+assert.equal(process.getuid(), 1000);
+const home = fs.statSync('/home/node');
+assert.equal(home.uid, 1000);
+assert.equal(home.gid, 1000);
+assert.equal(home.mode & 0o777, 0o700);
+fs.writeFileSync('/home/node/probe', 'private', {mode: 0o600});
+assert.equal(fs.readFileSync('/home/node/probe', 'utf8'), 'private');
+fs.writeFileSync('/tmp/probe', 'temporary');
+const root = fs.readFileSync('/proc/self/mountinfo', 'utf8')
+  .split('\n').find(line => line.split(' ')[4] === '/');
+assert.ok(root.split(' ')[5].split(',').includes('ro'));
+assert.throws(() => fs.writeFileSync('/rootfs-write-probe', 'no'));
+console.log('worker tmpfs runtime passed');
+"""])
+    return command
 
 
 def render(image):
@@ -23,6 +55,16 @@ def render(image):
 
 
 class DeploymentContract(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get("BUZZ_LINEAR_PODMAN_TEST_IMAGE"), "requires Linux Podman")
+    def test_non_root_private_home_is_writable_in_podman(self):
+        image = os.environ["BUZZ_LINEAR_PODMAN_TEST_IMAGE"]
+        rendered = render("ghcr.io/enrichlayer/buzz-linear-sync@sha256:" + "a" * 64)
+        result = subprocess.run(
+            runtime_command(rendered, image), capture_output=True, text=True, timeout=120
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("worker tmpfs runtime passed", result.stdout)
+
     def test_only_immutable_owned_images_can_render(self):
         for bad in ["", "ghcr.io/enrichlayer/buzz-linear-sync:latest", "example.test/worker@sha256:" + "a" * 64]:
             with self.assertRaises(jinja2.UndefinedError):
