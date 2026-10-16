@@ -76,8 +76,8 @@ importers:
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.8)
       '@el/buzz-ui':
-        specifier: file:../vendor/el-buzz-ui-0.1.0-d7625ff2232c.tgz
-        version: file:vendor/el-buzz-ui-0.1.0-d7625ff2232c.tgz(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: file:../vendor/el-buzz-ui-0.2.0-3f6709e4bbf1.tgz
+        version: file:vendor/el-buzz-ui-0.2.0-3f6709e4bbf1.tgz(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@emoji-mart/data':
         specifier: ^1.2.1
         version: 1.2.1
@@ -654,9 +654,9 @@ packages:
     peerDependencies:
       react: '>=16.8.0'
 
-  '@el/buzz-ui@file:vendor/el-buzz-ui-0.1.0-d7625ff2232c.tgz':
-    resolution: {integrity: sha512-MwroclDmdxmAtI6Y3OkYJ3dz+hxKFjksIOn/7Zf1Oa8pHyMnn2cFtOFX7yxRihwJ00MUgduVY1wDYZ/Ca7v08Q==, tarball: file:vendor/el-buzz-ui-0.1.0-d7625ff2232c.tgz}
-    version: 0.1.0
+  '@el/buzz-ui@file:vendor/el-buzz-ui-0.2.0-3f6709e4bbf1.tgz':
+    resolution: {integrity: sha512-jS0UdWQQBN/nx9UdsMqnZ1vhdHNhn/EElDplakeVQdO+E7VKI5pv1XE3+4rO4BtanwWc0GzVl+T66DZi9UPSiA==, tarball: file:vendor/el-buzz-ui-0.2.0-3f6709e4bbf1.tgz}
+    version: 0.2.0
     peerDependencies:
       react: ^19.0.0
       react-dom: ^19.0.0
@@ -4406,7 +4406,7 @@ snapshots:
       react: 19.2.8
       tslib: 2.8.1
 
-  '@el/buzz-ui@file:vendor/el-buzz-ui-0.1.0-d7625ff2232c.tgz(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@el/buzz-ui@file:vendor/el-buzz-ui-0.2.0-3f6709e4bbf1.tgz(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)

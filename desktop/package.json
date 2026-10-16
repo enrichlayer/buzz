@@ -31,7 +31,7 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@el/buzz-ui": "file:../vendor/el-buzz-ui-0.1.0-d7625ff2232c.tgz",
+    "@el/buzz-ui": "file:../vendor/el-buzz-ui-0.2.0-3f6709e4bbf1.tgz",
     "@emoji-mart/data": "^1.2.1",
     "@emoji-mart/react": "^1.1.1",
     "@fontsource-variable/inter": "^5.2.8",

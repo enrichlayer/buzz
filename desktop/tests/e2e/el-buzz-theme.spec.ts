@@ -70,6 +70,10 @@ test("theme plugin installs, persists, updates and falls back when disabled or r
   await waitForAnimations(page);
   await page.screenshot({ path: "test-results/el-buzz/conversation.png" });
   await page.reload();
+  // Theme CSS restores before the channel route finishes mounting. Wait for
+  // its composer before opening a popover that route autofocus would dismiss.
+  await expect(page.getByTestId("message-composer")).toBeVisible();
+  await waitForAnimations(page);
   await expect.poll(() => variable(page, "--background")).toBe("0 0% 15.7%");
   await openSettings(page);
   await page.getByTestId("settings-nav-plugins").click();

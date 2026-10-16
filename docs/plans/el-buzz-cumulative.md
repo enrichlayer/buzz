@@ -14,6 +14,7 @@ icon does not require a new identity. Never export or combine identity keys.
 | Floating annotations and source navigation | `6a1258b9ca1edc40dc6f01bdc5b28c18f56fc76a` |
 | Prompt suggestions, author and recipient guards | `c217d2b7618c12e52993254b449ec629075c2bd0` |
 | Logo, icons and runtime theme package | `d1ab0a32ffdc410a2ae857ffc17f880cc1534435`, with the author's profile-preserving correction |
+| Internal icons and loading animations | `5aae9355cb7b4c828135e4c470e80d6fae057d7e`, using the verified `@el/buzz-ui` 0.2.0 archive from canonical library commit `04ef10f16f83c9bf30a0158ec4e6caccb1974ceb` |
 | Code highlighting | Scoped existing changes from the original annotations checkout, including code/diff renderers and regression tests |
 | Stable local signing and canonical installer | This cumulative branch; see [local signing](../local-macos-signing.md) |
 
@@ -40,6 +41,8 @@ unchanged identity and communities, and the following in that same native app:
 
 - Install/select the el-buzz theme; inspect the native icon and conversation.
   Verify theme disable/re-enable and persistence after restart.
+- Inspect the project, agent, workflow and plugin icons; exercise page,
+  reconnect and import activity with reduced motion and background pausing.
 - Exercise an existing runtime/session plugin.
 - Select text/code, submit an annotation, and navigate to its exact source.
 - Enable Prompt suggestions in Experiments, insert a valid agent suggestion,
@@ -63,7 +66,7 @@ separate requirements before marking a PR ready.
 | Features split between different apps | Cumulative integration owner combines the pinned sources above | Source assembled; combined native acceptance pending |
 | Initial branding recipe creates another account namespace | Removed identifier, demo-slug and deep-link overrides; production config rejects demo variables | Configuration regression tests pass |
 | Ad-hoc rebuilds invalidate remembered Keychain authorization | Stable local signer and canonical installer; cumulative integration owner | Two different synthetic signed executables read the same test item; ad-hoc negative control denied; daily candidate continuity pending |
-| Local highlighting changes omitted from published feature heads | Preserved scoped source and production-renderer tests | Focused tests and cumulative build validation in progress |
+| Local highlighting changes omitted from published feature heads | Preserved scoped source and production-renderer tests | Integration at `a4a9738c` passed 7,241 desktop tests and 29 combined browser workflows; native acceptance pending |
 | Private Linear mirror is not yet admitted for the daily identity | Existing review/Linear and pilot owners continue PR42 service/relay work | Native daily-account onboarding recorded privately; live task-to-review acceptance pending |
 | In-app updates do not apply the local signing certificate | Local candidate updates use the canonical signer/installer; release owner retains durable distribution signing | No claim that a remote ad-hoc updater preserves local Keychain approval |
 | Duplicate daily apps remain installed | Integration owner retires them reversibly after the acceptance matrix passes | Pending; no profile data deletion authorized or required |
