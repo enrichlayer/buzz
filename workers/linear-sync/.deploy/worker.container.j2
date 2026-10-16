@@ -22,7 +22,7 @@ Environment=BUZZ_LINEAR_SCHEDULE_ID={{ buzz_linear_sync_task_queue }}
 PodmanArgs=--authfile=/etc/buzz-linear-sync-private/registry-auth.json
 ReadOnly=true
 Tmpfs=/tmp:rw,nosuid,nodev,size=128m
-Tmpfs=/home/node:rw,nosuid,nodev,uid=1000,gid=1000,mode=0700,size=64m
+Tmpfs=/home/node:rw,nosuid,nodev,U,mode=0700,size=64m
 StopTimeout=120
 
 [Service]
