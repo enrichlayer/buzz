@@ -628,7 +628,7 @@ fn probe_codex_acp_version_parses_full_semver_output() {
     .expect("write script");
     std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).expect("chmod script");
 
-    let version = probe_codex_acp_version(&bin);
+    let version = codex_version::probe_fresh_script(&bin);
     let _ = std::fs::remove_dir_all(dir);
 
     assert_eq!(
@@ -825,7 +825,7 @@ fn probe_codex_acp_version_returns_version_when_descendant_holds_pipe_open() {
     std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).expect("chmod script");
 
     let start = Instant::now();
-    let version = probe_codex_acp_version(&bin);
+    let version = codex_version::probe_fresh_script(&bin);
     let elapsed = start.elapsed();
     let _ = std::fs::remove_dir_all(dir);
 

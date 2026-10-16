@@ -24,10 +24,18 @@ export type AnnotationAnchor = AnnotationDestination & {
   sourceRevision: string;
   originalSourceText: string;
   selectedText: string;
+  /** Offset in rendered source text, disambiguating repeated selections. */
+  textOffset?: number;
+  /** Digest of rendered text; offsets are trusted only for this layout. */
+  renderedRevision?: string;
+  /** DOM Range text when browser selection adds paragraph separators. */
+  selectedDomText?: string;
   codeRange?: AnnotationCodeRange;
 };
 
 export type AnnotationSubmitRequest = {
+  /** Captured send destination, separate from the quoted source provenance. */
+  destination?: AnnotationDestination;
   anchor: AnnotationAnchor;
   /** Ready-to-send user text containing both the quote and feedback. */
   message: string;
@@ -62,8 +70,8 @@ export function formatAnnotationMessage(
   const range = anchor.codeRange;
   const block = range?.blockId.match(/:code:(\d+)$/)?.[1];
   const location = range
-    ? `Response · code block ${block ?? "selected"} · ${range.startLine === range.endLine ? `line ${range.startLine}` : `lines ${range.startLine}–${range.endLine}`}`
-    : "Response · selected text";
+    ? `Selection · code block ${block ?? "selected"} · ${range.startLine === range.endLine ? `line ${range.startLine}` : `lines ${range.startLine}–${range.endLine}`}`
+    : "Selection · selected text";
   return [
     location,
     "",
@@ -83,6 +91,9 @@ export function annotationMetadata(anchor: AnnotationAnchor) {
     sourceId: anchor.sourceId,
     sourceRevision: anchor.sourceRevision,
     selectedText: anchor.selectedText,
+    textOffset: anchor.textOffset,
+    renderedRevision: anchor.renderedRevision,
+    selectedDomText: anchor.selectedDomText,
     codeRange: anchor.codeRange,
     channelId: anchor.channelId,
     sessionId: anchor.sessionId,
@@ -93,7 +104,7 @@ export function annotationMetadata(anchor: AnnotationAnchor) {
 /** Recognize our complete annotation envelope; arbitrary Markdown stays untouched. */
 export function parseAnnotationMessage(message: string) {
   const match = message.match(
-    /^(Response · (?:selected text|code block [^\n]+)|Reply to selection)\n\n([\s\S]*?)\n\n```buzz-annotation\n([^\n]+)\n```\s*$/,
+    /^((?:Response|Selection) · (?:selected text|code block [^\n]+)|Reply to selection)\n\n([\s\S]*?)\n\n```buzz-annotation\n([^\n]+)\n```\s*$/,
   );
   if (!match) return null;
   try {

@@ -659,7 +659,7 @@ export const MessageRow = React.memo(
     const messageBodyNode = (
       <>
         <SentFromThreadLine channelId={channelId} tags={message.tags} />
-        {isAuthorAgent && !message.pending ? (
+        {!message.pending ? (
           <SourceAnnotation
             key={message.id}
             source={{ sourceId: message.id, text: message.body, channelId }}

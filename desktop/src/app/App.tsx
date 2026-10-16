@@ -1,3 +1,4 @@
+import { AnnotationWorkspace } from "@/shared/ui/annotations";
 import { isTauri } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -353,7 +354,9 @@ function AppReady({
       }
     >
       <KnownAgentPubkeysProvider>
-        <RouterProvider router={router} />
+        <AnnotationWorkspace>
+          <RouterProvider router={router} />
+        </AnnotationWorkspace>
       </KnownAgentPubkeysProvider>
     </EncryptedBackupProvider>
   );
