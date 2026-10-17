@@ -1,3 +1,10 @@
+// These integration cases sign and verify over 1,000 real events per test.
+// The channel retry case takes 17 s alone and exceeded the default 30 s under
+// concurrent native builds (DEV-11597). Keep a finite bound with load headroom;
+// production retry, FIFO, signature and isolate assertions remain unchanged.
+@Timeout(Duration(minutes: 2))
+library;
+
 import 'dart:async';
 import 'dart:isolate';
 

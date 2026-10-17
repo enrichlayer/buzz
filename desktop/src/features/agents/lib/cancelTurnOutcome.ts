@@ -4,12 +4,14 @@ import type { ControlResultFrame } from "@/shared/api/types";
 export async function awaitCancelTurnOutcome({
   requestId,
   channelId,
+  threadRootEventId,
   subscribe,
   sendCancel,
   scheduleTimeout,
 }: {
   requestId: string;
   channelId: string;
+  threadRootEventId?: string;
   subscribe: (listener: (frame: ControlResultFrame) => void) => () => void;
   sendCancel: () => Promise<void>;
   scheduleTimeout: (onTimeout: () => void) => () => void;
@@ -44,7 +46,11 @@ export async function awaitCancelTurnOutcome({
 
   unsubscribe = subscribe((frame) => {
     if (
-      frame.type !== "cancel_turn" ||
+      frame.type !==
+        (threadRootEventId === undefined
+          ? "cancel_turn"
+          : "cancel_thread_turn") ||
+      frame.threadRootEventId !== threadRootEventId ||
       frame.requestId !== requestId ||
       frame.channelId !== channelId
     ) {

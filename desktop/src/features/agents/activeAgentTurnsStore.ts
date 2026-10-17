@@ -64,6 +64,11 @@ export type ActiveTurnSummary = {
   anchorAt: number;
 };
 
+/** Exact observer turn identity for thread-scoped controls and liveness. */
+export type ActiveAgentTurn = ActiveTurnSummary & {
+  turnId: string;
+};
+
 /** One channel with active agent work, aggregated across agents. */
 export type ActiveChannelTurnSummary = {
   channelId: string;
@@ -97,6 +102,7 @@ const clockOffsetByAgent = new Map<string, number>();
 // Cached snapshots for useSyncExternalStore reference stability.
 // Only regenerated when the underlying turn map for an agent actually changes.
 const cachedTurnSummaries = new Map<string, ActiveTurnSummary[]>();
+const cachedExactTurnSummaries = new Map<string, ActiveAgentTurn[]>();
 let cachedChannelTurnSummaries: ActiveChannelTurnSummary[] | null = null;
 
 // Composite watermark per (agent, channel): the newest observer event
@@ -143,6 +149,7 @@ let unsubscribePruneVisibility: (() => void) | null = null;
 
 function invalidateCache(agentKey: string) {
   cachedTurnSummaries.delete(agentKey);
+  cachedExactTurnSummaries.delete(agentKey);
   cachedChannelTurnSummaries = null;
 }
 
@@ -527,6 +534,7 @@ export function getActiveTurnsForAgent(
 }
 
 const EMPTY_TURNS: ActiveTurnSummary[] = [];
+const EMPTY_EXACT_TURNS: ActiveAgentTurn[] = [];
 const EMPTY_CHANNEL_TURNS: ActiveChannelTurnSummary[] = [];
 
 /**
@@ -602,6 +610,48 @@ export function useActiveAgentTurns(
     [agentPubkey],
   );
 
+  return React.useSyncExternalStore(subscribeActiveAgentTurns, getSnapshot);
+}
+
+/**
+ * Returns every live observer turn for an agent without collapsing turns that
+ * share a channel. Thread surfaces use this stricter view so another thread in
+ * the same channel cannot light up their Stop control or liveness indicator.
+ */
+export function getExactActiveTurnsForAgent(
+  agentPubkey: string | null | undefined,
+): ActiveAgentTurn[] {
+  if (!agentPubkey) return EMPTY_EXACT_TURNS;
+  const key = normalizePubkey(agentPubkey);
+  const turns = activeTurnsByAgent.get(key);
+  if (!turns || turns.size === 0) return EMPTY_EXACT_TURNS;
+
+  const cached = cachedExactTurnSummaries.get(key);
+  if (cached) return cached;
+
+  const offset = clockOffsetByAgent.get(key) ?? 0;
+  const result = [...turns.values()]
+    .map((turn) => ({
+      channelId: turn.channelId,
+      turnId: turn.turnId,
+      anchorAt: turn.startedAt + offset,
+    }))
+    .sort(
+      (left, right) =>
+        left.channelId.localeCompare(right.channelId) ||
+        left.turnId.localeCompare(right.turnId),
+    );
+  cachedExactTurnSummaries.set(key, result);
+  return result;
+}
+
+export function useExactActiveAgentTurns(
+  agentPubkey: string | null | undefined,
+): ActiveAgentTurn[] {
+  const getSnapshot = React.useCallback(
+    () => getExactActiveTurnsForAgent(agentPubkey),
+    [agentPubkey],
+  );
   return React.useSyncExternalStore(subscribeActiveAgentTurns, getSnapshot);
 }
 
@@ -709,6 +759,7 @@ export function resetActiveAgentTurnsStore() {
   lastProcessed.clear();
   clockOffsetByAgent.clear();
   cachedTurnSummaries.clear();
+  cachedExactTurnSummaries.clear();
   cachedChannelTurnSummaries = null;
   terminalAtByAgent.clear();
   notifyListeners();
@@ -825,6 +876,7 @@ export function restoreActiveAgentTurnsForCommunity(communityId: string): void {
   }
 
   cachedTurnSummaries.clear();
+  cachedExactTurnSummaries.clear();
   cachedChannelTurnSummaries = null;
   notifyListeners();
 }

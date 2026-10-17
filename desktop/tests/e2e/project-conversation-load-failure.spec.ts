@@ -103,7 +103,10 @@ test.describe("project conversation load failure", () => {
       .toBe(true);
     const rootId = await page.evaluate(
       ({ author, rootContent, replyContent }) => {
-        const now = Math.floor(Date.now() / 1000);
+        // Keep the fixture outside the live subscription replay window.
+        // Opening the panel starts a subscription which replays recent events,
+        // even when these were seeded before the subscription existed.
+        const now = Math.floor(Date.now() / 1000) - 120;
         const emit = (
           window as typeof window & {
             __BUZZ_E2E_EMIT_MOCK_MESSAGE__: (input: {

@@ -51,7 +51,7 @@ export function getSentMessageLink(
 function getMessageSendResultRecord(
   result: string,
 ): Record<string, unknown> | null {
-  const parsed = parseToolResultValue(result);
+  const parsed = parsePublicationResult(result);
   const directRecord = asRecord(parsed);
   if (getMessageEventId(directRecord)) {
     return directRecord;
@@ -62,7 +62,7 @@ function getMessageSendResultRecord(
     return null;
   }
 
-  const stdoutRecord = asRecord(parseToolResultValue(stdout));
+  const stdoutRecord = asRecord(parsePublicationResult(stdout));
   return getMessageEventId(stdoutRecord) ? stdoutRecord : null;
 }
 
@@ -73,4 +73,13 @@ function getMessageEventId(record: Record<string, unknown>) {
     "message_id",
     "messageId",
   ]);
+}
+
+// Claude ACP can deliver stdout as one console fence. Unwrap only the whole
+// result, never hunt for success JSON inside arbitrary logs or error prose.
+function parsePublicationResult(result: string): unknown {
+  const fence = result
+    .trim()
+    .match(/^```(?:console|json)?\r?\n([\s\S]*?)\r?\n```$/);
+  return parseToolResultValue(fence ? fence[1] : result);
 }

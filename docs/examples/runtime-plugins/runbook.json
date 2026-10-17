@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "example.runbook",
+  "name": "Runbook",
+  "version": "1.0.0",
+  "description": "Renders plain-text runbook content with a safe copy action.",
+  "fenceLanguage": "buzz-runbook",
+  "contentType": "text",
+  "blocks": [
+    { "type": "heading", "text": "Runbook", "level": 2 },
+    { "type": "code", "value": { "path": "text" }, "language": "text" },
+    {
+      "type": "action",
+      "action": {
+        "kind": "copy",
+        "label": "Copy runbook",
+        "template": "{{data.text}}"
+      }
+    }
+  ]
+}
