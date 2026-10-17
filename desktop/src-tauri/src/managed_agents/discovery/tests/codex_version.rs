@@ -73,3 +73,22 @@ fn codex_adapter_availability_outdated_for_older_1x_binary() {
         assert!(codex_adapter_is_outdated(&bin));
     }
 }
+
+/// Probes a script the test has just written, retrying briefly when the probe
+/// yields nothing.
+///
+/// On Linux, exec of a freshly written file can fail with ETXTBSY while a
+/// parallel test thread's fork still holds the write descriptor between fork
+/// and exec. The probe maps any spawn error to `None`, so a success-expecting
+/// test retries a few times; a genuine regression still returns `None` on
+/// every attempt.
+#[cfg(unix)]
+pub(super) fn probe_fresh_script(bin: &std::path::Path) -> Option<(u64, u64, u64)> {
+    for _ in 0..5 {
+        if let Some(version) = super::super::probe_codex_acp_version(bin) {
+            return Some(version);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    None
+}

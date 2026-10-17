@@ -626,21 +626,36 @@ export const MessageRow = React.memo(
         </div>
       ) : null;
 
+    const authorContent = message.pubkey ? (
+      <MessageAuthorWithIndicators
+        authorName={message.author}
+        ownerPubkey={message.ownerPubkey}
+        pubkey={message.pubkey}
+        role={profilePopoverRole}
+      >
+        {authorNode}
+      </MessageAuthorWithIndicators>
+    ) : (
+      authorNode
+    );
     const headerNode = isDisplayedAsContinuation ? null : (
       // pe reserves the measured action-rail footprint (0px until measured) so
       // header content ends before the rail's left edge in every rail state.
-      <MessageHeaderRow className="pe-[var(--message-action-rail-width,0px)]">
-        {message.pubkey ? (
-          <MessageAuthorWithIndicators
-            authorName={message.author}
-            ownerPubkey={message.ownerPubkey}
-            pubkey={message.pubkey}
-            role={profilePopoverRole}
-          >
-            {authorNode}
-          </MessageAuthorWithIndicators>
+      // In narrow threads, reserve the rail beside the author only; owner and
+      // timestamp metadata can use the full width below it.
+      <MessageHeaderRow
+        className={
+          layoutVariant === "thread-reply"
+            ? undefined
+            : "pe-[var(--message-action-rail-width,0px)]"
+        }
+      >
+        {layoutVariant === "thread-reply" ? (
+          <span className="inline-flex min-w-0 basis-full pe-[var(--message-action-rail-width,0px)]">
+            {authorContent}
+          </span>
         ) : (
-          authorNode
+          authorContent
         )}
         {/* Author is not a segment: "Alice 9:53 AM" needs no divider. */}
         <MessageMetaSegments
@@ -659,7 +674,7 @@ export const MessageRow = React.memo(
     const messageBodyNode = (
       <>
         <SentFromThreadLine channelId={channelId} tags={message.tags} />
-        {isAuthorAgent && !message.pending ? (
+        {!message.pending ? (
           <SourceAnnotation
             key={message.id}
             source={{ sourceId: message.id, text: message.body, channelId }}

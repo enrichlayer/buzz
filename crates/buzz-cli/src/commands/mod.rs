@@ -15,6 +15,7 @@ pub mod notes;
 pub mod pack;
 pub mod patches;
 pub mod pr;
+mod pr_session;
 pub mod project_channel;
 pub mod projects;
 pub mod prompts;

@@ -1,3 +1,7 @@
+import {
+  projectRepositorySnapshotLoading,
+  useResolvedProjectRepository,
+} from "../useResolvedProjectRepository";
 import * as React from "react";
 import { toast } from "sonner";
 
@@ -21,6 +25,7 @@ import {
 import { useProjectBranchActions } from "@/features/projects/branchMutations";
 import { useOptimisticProjectBranches } from "@/features/projects/useOptimisticProjectBranches";
 import { useProjectRepositoryRefSelection } from "@/features/projects/useProjectRepositoryRefSelection";
+import { useReconcileProjectRepositorySource } from "@/features/projects/useReconcileProjectRepositorySource";
 import { useUpdateProjectPullRequestMutation } from "@/features/projects/pullRequestMutations";
 import { useCreateProjectIssueMutation } from "@/features/projects/issueMutations";
 import { UserProfilePanel } from "@/features/profile/ui/UserProfilePanel";
@@ -106,7 +111,9 @@ export function ProjectDetailScreen(props: ProjectDetailScreenProps) {
     if (!projectId.startsWith(kindStr)) return undefined;
     return projectId.slice(kindStr.length);
   }, [projectId, repositoryId]);
-  const repository = selectProjectRepository(project, routeRepositoryId);
+  const repository = useResolvedProjectRepository(
+    selectProjectRepository(project, routeRepositoryId),
+  );
   const repoRemote = useProjectRepoPresentation(repository);
   const { applyPatch: applyRepositorySearch } = useHistorySearchState(
     PROJECT_REPOSITORY_SEARCH_KEYS,
@@ -230,7 +237,7 @@ export function ProjectDetailScreen(props: ProjectDetailScreenProps) {
   const memberChannelIds = useMemberChannelIds();
   const remoteUnavailableReason =
     repoRemote.host.kind === "buzz" &&
-    !repoSnapshotQuery.isLoading &&
+    !repoSnapshotQuery.isPending &&
     !displayedRepoSnapshot
       ? refineRepoUnavailableReason({
           reason: projectRepoUnavailableReason(repoSnapshotQuery.error),
@@ -452,30 +459,15 @@ export function ProjectDetailScreen(props: ProjectDetailScreenProps) {
       setSelectedCommitHash(null);
     }
   }, [projectPending, repository]);
-  React.useEffect(() => {
-    if (selectedTag) {
-      if (repoSource !== "remote") setRepoSource("remote");
-      return;
-    }
-    if (repoSource === "local" && !hasLocalCheckout) {
-      setRepoSource("remote");
-      return;
-    }
-    if (
-      !selectedPullRequestId &&
-      repoSource === "remote" &&
-      !snapshotHasContent(displayedRepoSnapshot) &&
-      hasLocalCheckout
-    ) {
-      setRepoSource("local");
-    }
-  }, [
-    displayedRepoSnapshot,
+  useReconcileProjectRepositorySource({
+    checkoutQueries: [localRepoSnapshotQuery, repoSyncStatusQuery],
     hasLocalCheckout,
-    repoSource,
+    remoteHasContent: snapshotHasContent(displayedRepoSnapshot),
     selectedPullRequestId,
     selectedTag,
-  ]);
+    setSource: setRepoSource,
+    source: repoSource,
+  });
   const {
     contributorActivityCounts,
     contributorPubkeys,
@@ -956,7 +948,10 @@ export function ProjectDetailScreen(props: ProjectDetailScreenProps) {
                     snapshot={displayedRepoSnapshot}
                     snapshotError={repoSnapshotQuery.error}
                     snapshotLoading={
-                      repoSnapshotQuery.isLoading && !displayedRepoSnapshot
+                      projectRepositorySnapshotLoading(
+                        repoRemote.host,
+                        repoSnapshotQuery.isPending,
+                      ) && !displayedRepoSnapshot
                     }
                     sourceControls={filesSourceControls}
                     viewerGitIdentity={viewerGitIdentity}

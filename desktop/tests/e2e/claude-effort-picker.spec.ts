@@ -135,6 +135,16 @@ async function payloadsFor(page: Page, command: string) {
   );
 }
 
+/** The open menu this trigger controls, so a closing sibling menu can't leak in. */
+async function menuOf(page: Page, trigger: Locator) {
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  const id = await trigger.getAttribute("aria-controls");
+  if (!id) throw new Error("menu trigger has no aria-controls");
+  const menu = page.locator(`[id="${id}"]`);
+  await expect(menu.getByRole("menuitemradio").first()).toBeVisible();
+  return menu;
+}
+
 // A choice field renders as a segmented radio group when its options fit the
 // dialog width, and as a menu otherwise, so the helpers accept either form.
 async function isSegmented(control: Locator) {
@@ -147,8 +157,10 @@ async function menuValues(page: Page, trigger: Locator) {
     return trigger.getByRole("radio").allTextContents();
   }
   await trigger.click();
-  const rows = await page.getByRole("menuitemradio").allTextContents();
+  const menu = await menuOf(page, trigger);
+  const rows = await menu.getByRole("menuitemradio").allTextContents();
   await page.keyboard.press("Escape");
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
   return rows;
 }
 
@@ -160,7 +172,8 @@ async function pick(page: Page, trigger: Locator, name: string) {
     return;
   }
   await trigger.press("Enter");
-  const option = page.getByRole("menuitemradio", { name, exact: true });
+  const menu = await menuOf(page, trigger);
+  const option = menu.getByRole("menuitemradio", { name, exact: true });
   await expect(option).toBeVisible();
   // Keyboard selection avoids racing the menu's open animation.
   await option.press("Enter");

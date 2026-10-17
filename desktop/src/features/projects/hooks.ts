@@ -54,8 +54,8 @@ import {
   normalizeProjectPullRequestCommentAnchor,
   PR_CHANGES_REQUESTED_LABEL,
   PR_INLINE_COMMENT_LABEL,
-  projectPullRequestEventsToPullRequests,
 } from "./projectPullRequests.mjs";
+import { fetchProjectPullRequests } from "./projectReviewFetch";
 import { fetchProjectsWorkItems } from "./projectWorkItems";
 import {
   projectDeletionMutationOptions,
@@ -73,6 +73,7 @@ import {
   PROJECT_QUERY_STRUCTURAL_SHARING,
 } from "./projectSnapshot";
 import { projectMatchesRouteId } from "./projectRoutes";
+import { useRefreshingReviewQuery } from "./useRefreshingReviewQuery";
 
 export { fetchProjects } from "./projectFetch";
 export { projectsQueryKey };
@@ -242,46 +243,6 @@ async function fetchProjectIssues(
   );
 }
 
-async function fetchProjectPullRequests(
-  project: Repository,
-): Promise<ProjectPullRequest[]> {
-  const [pullRequestEvents, updateEvents, commentEvents, statusEvents] =
-    await Promise.all([
-      relayClient.fetchEvents({
-        kinds: [KIND_GIT_PULL_REQUEST],
-        "#a": [project.repoAddress],
-        limit: 200,
-      }),
-      relayClient.fetchEvents({
-        kinds: [KIND_GIT_PR_UPDATE],
-        "#a": [project.repoAddress],
-        limit: 500,
-      }),
-      relayClient.fetchEvents({
-        kinds: [KIND_TEXT_NOTE],
-        "#a": [project.repoAddress],
-        limit: 500,
-      }),
-      relayClient.fetchEvents({
-        kinds: [
-          KIND_GIT_STATUS_OPEN,
-          KIND_GIT_STATUS_MERGED,
-          KIND_GIT_STATUS_CLOSED,
-          KIND_GIT_STATUS_DRAFT,
-        ],
-        "#a": [project.repoAddress],
-        limit: 500,
-      }),
-    ]);
-
-  return projectPullRequestEventsToPullRequests(
-    pullRequestEvents,
-    updateEvents,
-    commentEvents,
-    statusEvents,
-  );
-}
-
 // Issue/PR comments are published as kind:1 text notes because the relay
 // does not register NIP-22 kind 1111 (current NIP-34 reply convention).
 // Pulse feeds filter these out via the repo-address `a` tag (see
@@ -439,7 +400,8 @@ async function fetchProjectRepoSnapshot(
   });
 }
 
-async function fetchProjectRepoDiff(
+/** Fetch the complete review against its target branch from the remote. */
+export async function fetchProjectRepoDiff(
   project: Repository,
   branchName?: string | null,
   pullRequest?: ProjectPullRequest | null,
@@ -450,13 +412,14 @@ async function fetchProjectRepoDiff(
   return getProjectRepoDiff({
     cloneUrl,
     defaultBranch: branchName ?? project.defaultBranch,
-    baseBranch: project.defaultBranch,
+    baseBranch: pullRequest?.targetBranch ?? project.defaultBranch,
     targetCommit: pullRequest?.commit ?? null,
     targetRef: pullRequest ? `refs/nostr/${pullRequest.id}` : null,
   });
 }
 
-async function fetchProjectLocalRepoDiff(
+/** Fetch the same complete review comparison from an existing local checkout. */
+export async function fetchProjectLocalRepoDiff(
   project: Repository,
   reposDir?: string | null,
   branchName?: string | null,
@@ -467,12 +430,8 @@ async function fetchProjectLocalRepoDiff(
     projectDtag: project.dtag,
     cloneUrl: project.cloneUrls[0] ?? null,
     defaultBranch: branchName ?? project.defaultBranch,
-    baseBranch: project.defaultBranch,
-    baseCommit:
-      pullRequest?.initialCommit &&
-      pullRequest.initialCommit !== pullRequest.commit
-        ? pullRequest.initialCommit
-        : null,
+    baseBranch: pullRequest?.targetBranch ?? project.defaultBranch,
+    baseCommit: null,
     targetCommit: pullRequest?.commit ?? null,
   });
 }
@@ -818,12 +777,12 @@ export function useProjectIssuesQuery(project: Repository | null | undefined) {
 export function useProjectPullRequestsQuery(
   project: Repository | null | undefined,
 ) {
-  return useQuery({
+  return useRefreshingReviewQuery({
     enabled: Boolean(project),
     queryKey: ["project", project?.id ?? "none", "pull-requests"],
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       if (!project) throw new Error("No project selected.");
-      return fetchProjectPullRequests(project);
+      return fetchProjectPullRequests(project, undefined, signal);
     },
     staleTime: 30_000,
   });

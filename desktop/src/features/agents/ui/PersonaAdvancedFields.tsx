@@ -172,7 +172,7 @@ export function PersonaAdvancedFields({
             Conversation context
           </label>
           <PersonaChoiceField
-            ariaDescribedBy="persona-session-policy-description"
+            ariaDescribedBy="persona-session-policy-description persona-steering-description"
             disabled={disabled}
             id="persona-session-policy"
             label="Conversation context"
@@ -196,6 +196,14 @@ export function PersonaAdvancedFields({
             {behaviorDraft.sessionPolicy === "thread"
               ? "Keeps a separate conversation for each channel thread. Direct messages remain shared."
               : "Shares one conversation across every thread in a channel."}
+          </p>
+          <p
+            className="text-xs text-muted-foreground"
+            id="persona-steering-description"
+          >
+            With default settings, @mention the agent in a channel to steer its
+            current work. Plain thread replies do not steer the current turn;
+            recent replies may be included as context on the next mention.
           </p>
         </div>
 

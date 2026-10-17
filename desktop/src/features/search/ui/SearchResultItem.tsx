@@ -1,3 +1,8 @@
+import { useKnownAgentPubkeys } from "@/features/agents/useKnownAgentPubkeys";
+import {
+  isKnownAgentAuthor,
+  stripPromptSuggestionFooter,
+} from "@/features/messages/lib/promptSuggestions";
 import type * as React from "react";
 import {
   ArrowRight,
@@ -176,8 +181,8 @@ function describeSearchHit(hit: SearchHit) {
   }
 }
 
-function truncateContent(content: string) {
-  const trimmed = content.trim();
+function truncateContent(content: string, authorIsAgent: boolean) {
+  const trimmed = stripPromptSuggestionFooter(content, authorIsAgent).trim();
   if (trimmed.length === 0) {
     return "No message body.";
   }
@@ -233,8 +238,11 @@ export function MessageResultBody({
   });
   const avatarUrl =
     resultProfiles?.[hit.pubkey.toLowerCase()]?.avatarUrl ?? null;
-  const authorIsAgent =
-    resultProfiles?.[hit.pubkey.toLowerCase()]?.isAgent === true;
+  const knownAgentPubkeys = useKnownAgentPubkeys();
+  const authorIsAgent = isKnownAgentAuthor(hit.pubkey, {
+    agentPubkeys: knownAgentPubkeys,
+    profiles: resultProfiles,
+  });
 
   return (
     <div className="min-w-0 flex-1">
@@ -262,7 +270,7 @@ export function MessageResultBody({
         </p>
       ) : null}
       <p className="mt-2 text-sm leading-6 text-foreground">
-        {truncateContent(hit.content)}
+        {truncateContent(hit.content, authorIsAgent)}
       </p>
     </div>
   );

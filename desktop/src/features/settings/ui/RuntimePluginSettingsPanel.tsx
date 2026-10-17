@@ -1,3 +1,4 @@
+import { DemoPluginChecklist } from "./DemoPluginChecklist";
 import * as React from "react";
 import { FileJson, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
@@ -87,6 +88,7 @@ export function RuntimePluginSettingsPanel() {
         description="Install versioned, data-only renderers for namespaced Markdown code fences. Plugins cannot run scripts, access the network, or send messages."
         title="Content plugins"
       />
+      <DemoPluginChecklist />
       <SettingsOptionGroupList>
         {(state.loadError || state.persistenceError) && (
           <div

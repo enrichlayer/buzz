@@ -205,6 +205,14 @@ export function FocusThreadDrawer({
     function handleEscape(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
       const target = event.target;
+      // Portalled annotation editors sit above the drawer and own the first
+      // Escape. Let Radix dismiss the editor before this drawer can close.
+      if (
+        target instanceof Element &&
+        target.closest("[data-annotation-editor]")
+      ) {
+        return;
+      }
       if (
         hasActiveEdit &&
         target instanceof Node &&

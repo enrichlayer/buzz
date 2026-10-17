@@ -197,7 +197,14 @@ export function AgentThreadSessionActivity({
             afterMessageId,
             timestamp: item.timestamp,
             content: (
-              <AnnotationSubmitProvider onSubmit={handleAnnotationSubmit}>
+              <AnnotationSubmitProvider
+                onSubmit={handleAnnotationSubmit}
+                scope={{
+                  id: `agent-thread:${channelId}:${threadRootId}:${agent.pubkey}:${item.id}`,
+                  channelId,
+                  label: `${agent.name} in this thread`,
+                }}
+              >
                 <div
                   data-session-event={item.id}
                   data-session-supporting={
@@ -234,6 +241,7 @@ export function AgentThreadSessionActivity({
       agent.pubkey,
       agent.name,
       handleAnnotationSubmit,
+      threadRootId,
     ],
   );
   useThreadActivityFragments(agent.pubkey, fragments);
@@ -401,7 +409,7 @@ export function AgentThreadSessionActivity({
       />
       <SessionChanges items={selection.items} />
       <p className="text-xs text-muted-foreground">
-        Activity appears between messages. Select response text to comment;
+        Activity appears between messages. Select any text or code to comment;
         Command/Ctrl+Shift+M opens feedback.
       </p>
 

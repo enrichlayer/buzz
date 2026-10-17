@@ -90,6 +90,7 @@ async function seedSnapshot(
   options: {
     channels?: ReturnType<typeof makeSnapshotChannel>[];
     hash: string;
+    integrityHash?: string;
     keyOwnerPubkey?: string;
     ownerPubkey?: string;
     relayUrl?: string;
@@ -114,7 +115,11 @@ async function seedSnapshot(
     {
       channels,
       hash: options.hash,
-      integrity: snapshotIntegrity(ownerPubkey, options.hash, channels),
+      integrity: snapshotIntegrity(
+        ownerPubkey,
+        options.integrityHash ?? options.hash,
+        channels,
+      ),
       key: snapshotKey(
         options.relayUrl ?? RELAY_URL,
         options.keyOwnerPubkey ?? ownerPubkey,
@@ -436,16 +441,11 @@ test("display-only community pubkey cannot expose another identity's snapshot", 
 });
 
 test("partial hash/list write fails toward a full fetch", async ({ page }) => {
-  await seedSnapshot(page, { hash: MATCHING_HASH });
-  await page.addInitScript((key) => {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return;
-    const snapshot = JSON.parse(raw) as { hash: string };
-    window.localStorage.setItem(
-      key,
-      JSON.stringify({ ...snapshot, hash: "newer-partial-hash" }),
-    );
-  }, snapshotKey(RELAY_URL));
+  // Seed the inconsistent document atomically: init-script order is unspecified.
+  await seedSnapshot(page, {
+    hash: "newer-partial-hash",
+    integrityHash: MATCHING_HASH,
+  });
   await installMockBridge(page, {
     channelsReadDelayMs: READ_DELAY_MS,
     honorChannelsKnownHash: true,

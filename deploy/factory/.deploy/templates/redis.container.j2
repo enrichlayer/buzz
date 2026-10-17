@@ -1,0 +1,25 @@
+[Unit]
+Description=Buzz pilot private Redis
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Container]
+ContainerName=buzz-relay-pilot-redis
+Image={{ buzz_pilot_redis_image }}
+Pull=never
+Network=buzz-relay-pilot.network
+Volume=buzz-relay-pilot-redis.volume:/data:U
+Volume=/etc/buzz-relay-pilot/redis.conf:/usr/local/etc/redis/redis.conf:ro,Z
+# Read the root-group config without running the Redis process as root.
+User=999:0
+Exec=redis-server /usr/local/etc/redis/redis.conf
+PodmanArgs=--memory=384m --cpus=0.5 --pids-limit=128 --network-alias=buzz-relay-pilot-redis
+
+[Service]
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=120
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target
