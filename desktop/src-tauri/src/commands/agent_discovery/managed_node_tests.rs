@@ -72,6 +72,30 @@ fn make_zip_with_entries(entry_names: &[&str]) -> tempfile::NamedTempFile {
 }
 
 #[test]
+fn test_validate_zip_accepts_legacy_encoded_name() {
+    let name = "evil.txt";
+    let tmp = make_zip_with_entries(&[name]);
+    let mut bytes = std::fs::read(tmp.path()).unwrap();
+    let offsets: Vec<_> = bytes
+        .windows(name.len())
+        .enumerate()
+        .filter_map(|(offset, candidate)| (candidate == name.as_bytes()).then_some(offset))
+        .collect();
+    assert_eq!(
+        offsets.len(),
+        2,
+        "local and central names must both be changed"
+    );
+    for offset in offsets {
+        bytes[offset] = 0xff;
+    }
+    std::fs::write(tmp.path(), bytes).unwrap();
+    let archive = zip::ZipArchive::new(std::fs::File::open(tmp.path()).unwrap()).unwrap();
+    assert_eq!(archive.name_for_index(0).unwrap().unwrap(), "\u{a0}vil.txt");
+    assert!(validate_managed_node_zip_entries(&archive).is_ok());
+}
+
+#[test]
 fn test_validate_zip_accepts_normal_entries() {
     let tmp = make_zip_with_entries(&[
         "node-v24.18.0-win-x64/node.exe",
