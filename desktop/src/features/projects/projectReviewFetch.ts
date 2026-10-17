@@ -63,7 +63,8 @@ export function fetchTrustedReviewUpdates(
   );
 }
 
-async function fetchCompleteReviewEvents(
+/** Walk SQL-pushed filters to exhaustion; post-LIMIT tag filters cannot prove completeness. */
+export async function fetchCompleteReviewEvents(
   filter: { kinds: number[]; "#e"?: string[]; authors?: string[] },
   fetchEvents: FetchEvents,
   signal?: AbortSignal,

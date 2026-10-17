@@ -7,6 +7,7 @@ pub mod emoji;
 pub mod feed;
 pub mod gifs;
 pub mod issues;
+pub mod linear;
 pub mod mem;
 pub mod message_transport;
 pub mod messages;

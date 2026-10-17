@@ -642,6 +642,11 @@ pub const KIND_GIT_STATUS_DRAFT: u32 = 1633;
 /// announcement, never a project. See `docs/nips/NIP-MP.md`.
 pub const KIND_PROJECT: u32 = 30621;
 
+/// Channel-scoped, replaceable mirror of an external Linear project.
+pub const KIND_LINEAR_PROJECT: u32 = 30623;
+/// Channel-scoped, replaceable mirror of an external Linear issue, without a repository requirement.
+pub const KIND_LINEAR_TASK: u32 = 30624;
+
 /// All registered kind constants — used for duplicate detection and iteration.
 pub const ALL_KINDS: &[u32] = &[
     KIND_PROFILE,
@@ -779,6 +784,8 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_GIT_STATUS_CLOSED,
     KIND_GIT_STATUS_DRAFT,
     KIND_PROJECT,
+    KIND_LINEAR_PROJECT,
+    KIND_LINEAR_TASK,
 ];
 
 /// Returns `true` if `kind` is in the ephemeral range (20000–29999).

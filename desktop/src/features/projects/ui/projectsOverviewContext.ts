@@ -1,3 +1,4 @@
+import { linearWorkIsActive, type LinearWorkRecord } from "../linearWorkModels";
 import type {
   Project,
   ProjectActivitySummary,
@@ -53,6 +54,7 @@ export type OverviewContextPresentation = {
 };
 
 type OverviewContextInput = {
+  linearWork?: LinearWorkRecord[];
   filter: ProjectsFilter;
   issues: ProjectIssue[];
   projectReadModels?: Project[];
@@ -231,6 +233,20 @@ export function projectsOverviewContext(
   const readModels = projectReadModels ?? projects;
   const summaryCounts = summaryWorkItemCounts(projects, summaries);
   const tasks = resolvedTaskActivity(issues, summaryCounts.issues);
+  const linearTasks =
+    input.linearWork?.filter(
+      (item) => item.type === "issue" && !item.retired,
+    ) ?? [];
+  tasks.total += linearTasks.length;
+  tasks.active += linearTasks.filter(linearWorkIsActive).length;
+  tasks.completed += linearTasks.filter(
+    (item) => item.state?.type === "completed",
+  ).length;
+  const projectCount =
+    projects.length +
+    (input.linearWork?.filter(
+      (item) => item.type === "project" && !item.retired && !item.archived,
+    ).length ?? 0);
   const reviews = resolvedReviewActivity(pullRequests, summaryCounts.prs);
   const channelCount = uniqueProjectRelatedChannelCount(readModels);
   const repositories = repositoryCount(readModels);
@@ -286,7 +302,7 @@ export function projectsOverviewContext(
           section: "channels",
         },
         {
-          count: projects.length,
+          count: projectCount,
           icon: "projects",
           label: "Projects",
           section: "projects",
@@ -375,7 +391,7 @@ export function projectsOverviewContext(
       people,
       stats: [
         {
-          count: projects.length,
+          count: projectCount,
           icon: "projects",
           label: "Projects",
           section: "projects",
@@ -415,7 +431,7 @@ export function projectsOverviewContext(
     people,
     stats: [
       {
-        count: projects.length,
+        count: projectCount,
         icon: "projects",
         label: "Projects",
         section: "projects",

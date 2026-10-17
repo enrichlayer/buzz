@@ -92,7 +92,7 @@ pub(crate) fn context_tags(
 /// Require an existing canonical thread in the selected channel before publication.
 pub(crate) async fn verify_thread(
     client: &BuzzClient,
-    tags: &[Tag],
+    tags: &mut Vec<Tag>,
     channel: &str,
 ) -> Result<(), CliError> {
     let Some(thread) = tags.iter().find_map(|tag| {
@@ -109,22 +109,97 @@ pub(crate) async fn verify_thread(
         .await?;
     let events: Vec<nostr::Event> = serde_json::from_str(&response)
         .map_err(|error| CliError::Other(format!("invalid thread response: {error}")))?;
-    if !events.iter().any(|event| {
-        event.id.to_hex() == *thread
-            && matches!(event.kind.as_u16(), 9 | 11)
-            && event.tags.iter().any(|tag| {
-                tag.as_slice().first().map(String::as_str) == Some("h")
-                    && tag.as_slice().get(1).map(String::as_str) == Some(channel)
-            })
-            && buzz_core::nip10::parse_thread_markers(&event.tags)
-                .resolve()
-                .is_none()
-    }) {
+    let root = events
+        .iter()
+        .find(|event| {
+            event.id.to_hex() == *thread
+                && matches!(event.kind.as_u16(), 9 | 11)
+                && event.tags.iter().any(|tag| {
+                    tag.as_slice().first().map(String::as_str) == Some("h")
+                        && tag.as_slice().get(1).map(String::as_str) == Some(channel)
+                })
+                && buzz_core::nip10::parse_thread_markers(&event.tags)
+                    .resolve()
+                    .is_none()
+        })
+        .ok_or_else(|| {
+            CliError::Usage(
+                "coding session thread root was not found in this channel; no review was published"
+                    .into(),
+            )
+        })?;
+    inherit_task_context(tags, &root.tags, channel)?;
+    Ok(())
+}
+
+fn inherit_task_context(
+    tags: &mut Vec<Tag>,
+    root_tags: &nostr::Tags,
+    channel: &str,
+) -> Result<(), CliError> {
+    let tasks: Vec<_> = root_tags
+        .iter()
+        .filter(|tag| {
+            let parts = tag.as_slice();
+            parts.first().map(String::as_str) == Some("a")
+                && parts.get(3).map(String::as_str) == Some("buzz-task")
+        })
+        .collect();
+    if tasks.is_empty() {
+        return Ok(());
+    }
+    let issues: Vec<_> = root_tags
+        .iter()
+        .filter(|tag| {
+            let parts = tag.as_slice();
+            parts.first().map(String::as_str) == Some("r")
+                && parts.get(2).map(String::as_str) == Some("linear-issue")
+        })
+        .collect();
+    if tasks.len() != 1
+        || tasks[0].as_slice().len() != 4
+        || issues.len() != 1
+        || issues[0].as_slice().len() != 3
+    {
         return Err(CliError::Usage(
-            "coding session thread root was not found in this channel; no review was published"
-                .into(),
+            "ambiguous coding-thread task association".into(),
         ));
     }
+    let context = buzz_core::linear::LinearTaskContext {
+        address: tasks[0].as_slice()[1].clone(),
+        url: issues[0].as_slice()[1].clone(),
+    };
+    let inherited = context.tags(channel).map_err(CliError::Usage)?;
+    // An explicit source link may differ only in its cosmetic title slug.
+    for tag in tags.iter() {
+        let parts = tag.as_slice();
+        if parts.first().map(String::as_str) == Some("r")
+            && parts.get(2).map(String::as_str) == Some("linear-issue")
+        {
+            let identity = |value: &str| -> Option<String> {
+                let url = url::Url::parse(value).ok()?;
+                Some(
+                    url.path()
+                        .split('/')
+                        .take(4)
+                        .collect::<Vec<_>>()
+                        .join("/")
+                        .to_ascii_lowercase(),
+                )
+            };
+            if parts.get(1).and_then(|value| identity(value)) != identity(&context.url) {
+                return Err(CliError::Usage(
+                    "--linear-issue conflicts with the coding thread's task".into(),
+                ));
+            }
+        }
+    }
+    tags.retain(|tag| {
+        let parts = tag.as_slice();
+        !(parts.first().map(String::as_str) == Some("r")
+            && parts.get(2).map(String::as_str) == Some("linear-issue"))
+    });
+    tags.extend(inherited);
     Ok(())
 }
 
@@ -174,6 +249,62 @@ pub(crate) async fn list_thread_reviews(
 mod tests {
     use super::*;
     const CHANNEL: &str = "4978b750-109a-4aa4-8bbb-c9402217813c";
+
+    #[tokio::test]
+    async fn verified_thread_automatically_inherits_task_and_rejects_conflicting_source() {
+        use axum::{routing::post, Json, Router};
+        use nostr::{EventBuilder, Keys, Kind};
+        let keys = Keys::generate();
+        let address = format!("30624:{}:linear:{CHANNEL}:22222222-2222-4222-8222-222222222222:33333333-3333-4333-8333-333333333333", "a".repeat(64));
+        let context = buzz_core::linear::LinearTaskContext {
+            address: address.clone(),
+            url: "https://linear.app/acme/issue/DEV-42/task".into(),
+        };
+        let root = EventBuilder::new(Kind::from(9), "Work on task")
+            .tag(Tag::parse(["h", CHANNEL]).unwrap())
+            .tags(context.tags(CHANNEL).unwrap())
+            .sign_with_keys(&keys)
+            .unwrap();
+        let id = root.id.to_hex();
+        let app = Router::new().route(
+            "/query",
+            post(move || {
+                let event = root.clone();
+                async move { Json(vec![event]) }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let client = BuzzClient::new(
+            format!("http://{}", listener.local_addr().unwrap()),
+            keys,
+            None,
+            None,
+        )
+        .unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut tags = context_tags(Some(&id), None, Some(CHANNEL), None, None).unwrap();
+        verify_thread(&client, &mut tags, CHANNEL).await.unwrap();
+        assert!(tags
+            .iter()
+            .any(|tag| tag.as_slice() == ["a", address.as_str(), "", "buzz-task"]));
+        assert!(tags
+            .iter()
+            .any(|tag| tag.as_slice() == ["r", context.url.as_str(), "linear-issue"]));
+        let mut conflicting = context_tags(
+            Some(&id),
+            None,
+            Some(CHANNEL),
+            None,
+            Some("https://linear.app/acme/issue/DEV-99"),
+        )
+        .unwrap();
+        assert!(verify_thread(&client, &mut conflicting, CHANNEL)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("conflicts"));
+        server.abort();
+    }
 
     #[tokio::test]
     async fn thread_list_filters_actual_relay_response_and_rejects_saturation() {

@@ -39,7 +39,11 @@ import {
   projectBranchOptionsFromSync,
   resolveProjectDefaultBranch,
 } from "@/features/projects/lib/projectBranches";
-import { workspaceTabForShareTab } from "@/features/projects/lib/projectShareLinks";
+import {
+  issueShareLink,
+  pullRequestShareLink,
+  workspaceTabForShareTab,
+} from "@/features/projects/lib/projectShareLinks";
 import {
   buildProjectDetailAgentContext,
   type ProjectDetailAgentContext,
@@ -754,6 +758,11 @@ export function ProjectDetailScreen(props: ProjectDetailScreenProps) {
     repository,
     source: repoSource,
     workItems: [selectedCommit, selectedIssue, selectedPullRequest],
+    workItemLink: selectedPullRequest
+      ? pullRequestShareLink(selectedPullRequest)
+      : selectedIssue
+        ? issueShareLink(selectedIssue)
+        : null,
   });
   const selectionChat = repositoryPanel.openSelectionChatFor(agentPageContext);
   const repositoryPanelAction = (
