@@ -1,0 +1,196 @@
+name: Enrich Layer Native Source Validation
+on:
+  workflow_call:
+    inputs:
+      source_request:
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    environment: desktop-candidate
+    timeout-minutes: 15
+    steps:
+      - name: Require private artifact custody
+        env:
+          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          test "$REPOSITORY_PRIVATE" = "true" || {
+            echo "Unpublished native inputs require private artifact custody" >&2
+            exit 1
+          }
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Verify admitted source
+        env:
+          SOURCE_REQUEST: ${{ inputs.source_request }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.BUZZ_BUILD_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BUZZ_BUILD_R2_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/buzz-transfer"
+          "$RUNNER_TEMP/buzz-transfer/bin/pip" install -r scripts/buzz-r2-requirements.txt
+          "$RUNNER_TEMP/buzz-transfer/bin/python" scripts/buzz-native-source.py prepare "$SOURCE_REQUEST" --inputs "$RUNNER_TEMP/admitted-source"
+      - name: Retain admitted input
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: admitted-source
+          path: ${{ runner.temp }}/admitted-source
+          if-no-files-found: error
+          retention-days: 2
+  native:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    # No environment, R2 secrets or credential-bearing post-source steps here.
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: admitted-source
+          path: ${{ runner.temp }}/admitted-source
+      - name: Hydrate admitted source
+        id: hydrate
+        env:
+          SOURCE_REQUEST: ${{ inputs.source_request }}
+        run: python3 scripts/buzz-native-source.py install "$SOURCE_REQUEST" --inputs "$RUNNER_TEMP/admitted-source"
+      - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Install JavaScript pnpm for Intel macOS
+        id: intel_pnpm
+        if: matrix.runner == 'macos-15-intel'
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          standalone: false
+      - name: Expose JavaScript pnpm to Hermit subprocesses
+        if: matrix.runner == 'macos-15-intel'
+        env:
+          PNPM_BIN: ${{ steps.intel_pnpm.outputs.bin_dest }}
+        run: |
+          rm bin/pnpm
+          printf '#!/bin/sh\nexec "%s/pnpm" "$@"\n' "$PNPM_BIN" > bin/pnpm
+          chmod +x bin/pnpm
+          EXPECTED=$(node -p 'require("./package.json").packageManager.replace(/^pnpm@/, "").split("+")[0]')
+          test "$(just --command pnpm --version)" = "$EXPECTED"
+      - name: Validate publisher
+        run: |
+          node --test desktop/scripts/build-enrichlayer-release-config.test.mjs
+          python3 scripts/test-enrichlayer-updater.py
+          python3 scripts/test-buzz-r2.py
+          python3 scripts/test-enrichlayer-minisign.py
+      - name: Build and test native desktop
+        env:
+          CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+        run: |
+          set -euo pipefail
+          mkdir -p staged
+          just desktop-install-ci
+          just desktop-build desktop-tauri-fmt-check desktop-tauri-clippy desktop-tauri-check desktop-tauri-test 2>&1 | tee staged/native-validation.log
+          cargo build --locked --release -p buzz-acp -p buzz-agent -p buzz-backend-kubernetes -p buzz-dev-mcp -p git-credential-nostr -p buzz-cli
+          scripts/bundle-sidecars.sh
+          tar -czf staged/buzz-cli-macos.tar.gz -C target/release buzz
+      - name: Package private unsigned validation app
+        env:
+          BUZZ_BUILD_DEMO_SLUG: validation
+          BUZZ_TEST_EXPECTED_DEMO_SLUG: validation
+          CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+          MACOSX_DEPLOYMENT_TARGET: '10.15'
+          CMAKE_OSX_DEPLOYMENT_TARGET: '10.15'
+        run: |
+          set -euo pipefail
+          cat > desktop/src-tauri/tauri.validation.conf.json <<'JSON'
+          {"identifier":"com.enrichlayer.buzz.validation","bundle":{"createUpdaterArtifacts":false},"plugins":{"updater":{"endpoints":[]},"deep-link":{"desktop":{"schemes":["buzz-demo-validation"]}}}}
+          JSON
+          cargo test --manifest-path desktop/src-tauri/Cargo.toml --lib build_identity::tests::compiled_demo_slug_matches_expected -- --ignored --exact
+          (cd desktop && pnpm tauri build --no-sign --bundles app --config src-tauri/tauri.validation.conf.json) 2>&1 | tee staged/native-packaging.log
+          tar -czf staged/Buzz-validation.app.tar.gz -C desktop/src-tauri/target/release/bundle/macos Buzz.app
+      - name: Retain native result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: source-result-${{ matrix.runner }}
+          path: staged
+          if-no-files-found: error
+          retention-days: 2
+      - name: Cleanup admitted source
+        if: always() && steps.hydrate.outcome == 'success'
+        run: |
+          set -euo pipefail
+          test ! -L "$RUNNER_TEMP/buzz-native-control"
+          test -d "$RUNNER_TEMP/buzz-native-control/.git"
+          test ! -L "$GITHUB_WORKSPACE"
+          rm -rf -- "$GITHUB_WORKSPACE"
+          mv -- "$RUNNER_TEMP/buzz-native-control" "$GITHUB_WORKSPACE"
+          test "$(/usr/bin/git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" = "$GITHUB_SHA"
+  mobile:
+    needs: prepare
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: admitted-source
+          path: ${{ runner.temp }}/admitted-source
+      - name: Hydrate admitted source
+        id: hydrate
+        env:
+          SOURCE_REQUEST: ${{ inputs.source_request }}
+        run: python3 scripts/buzz-native-source.py install "$SOURCE_REQUEST" --inputs "$RUNNER_TEMP/admitted-source"
+      - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Validate mobile
+        run: |
+          set -euo pipefail
+          mkdir -p staged
+          just mobile-install mobile-check mobile-test 2>&1 | tee staged/mobile-validation.log
+      - name: Retain mobile result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: source-result-mobile
+          path: staged
+          if-no-files-found: error
+          retention-days: 2
+      - name: Cleanup admitted source
+        if: always() && steps.hydrate.outcome == 'success'
+        run: |
+          set -euo pipefail
+          test ! -L "$RUNNER_TEMP/buzz-native-control"
+          test -d "$RUNNER_TEMP/buzz-native-control/.git"
+          test ! -L "$GITHUB_WORKSPACE"
+          rm -rf -- "$GITHUB_WORKSPACE"
+          mv -- "$RUNNER_TEMP/buzz-native-control" "$GITHUB_WORKSPACE"
+          test "$(/usr/bin/git -C "$GITHUB_WORKSPACE" rev-parse HEAD)" = "$GITHUB_SHA"
+  publish:
+    needs: [native, mobile]
+    runs-on: ubuntu-latest
+    environment: desktop-candidate
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: source-result-*
+          path: results
+      - name: Verify private R2 artifact round trip
+        env:
+          SOURCE_REQUEST: ${{ inputs.source_request }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.BUZZ_BUILD_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BUZZ_BUILD_R2_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/buzz-transfer"
+          "$RUNNER_TEMP/buzz-transfer/bin/pip" install -r scripts/buzz-r2-requirements.txt
+          "$RUNNER_TEMP/buzz-transfer/bin/python" "$GITHUB_WORKSPACE/scripts/buzz-native-source.py" publish "$SOURCE_REQUEST" --inputs "$GITHUB_WORKSPACE/results"
