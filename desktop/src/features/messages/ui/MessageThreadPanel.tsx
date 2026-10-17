@@ -134,6 +134,8 @@ type MessageThreadPanelProps = ThreadPanelLayoutProps & {
   videoReviewPresentation?: VideoReviewPresentation;
   activityAccessoryContent?: React.ReactNode;
   activityAccessoryVisible: boolean;
+  /** Durable reviews, independent of whether an agent transcript is loaded. */
+  sessionReviewContent?: React.ReactNode;
   /** Exact thread-scoped agent activity rendered alongside published replies. */
   sessionActivityContent?: React.ReactNode;
   widthPx: number;
@@ -226,6 +228,7 @@ function MessageThreadPanelContent({
   threadTypingPubkeys,
   activityAccessoryContent,
   activityAccessoryVisible,
+  sessionReviewContent,
   sessionActivityContent,
   canResetWidth,
   splitPaneClamp,
@@ -677,6 +680,7 @@ function MessageThreadPanelContent({
           </div>
         )}
 
+        {!isHuddleTranscript ? sessionReviewContent : null}
         <ThreadSessionVisibleMessages
           value={[
             threadHead.id,

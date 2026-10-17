@@ -4,6 +4,7 @@ import {
   getImetaTags,
   getTag,
 } from "./projectIssues.mjs";
+import { sessionReviewContext } from "./sessionReviewContext.ts";
 
 // Updates and status changes rewrite the PR's tip commit, clone URLs, and
 // lifecycle state, so they are only honored when signed by the PR author or
@@ -40,10 +41,17 @@ function latestStatusForPullRequest(pullRequest, statusEvents) {
 
 function eventsForPullRequest(pullRequestId, events) {
   return events
-    .filter((event) =>
-      event.tags.some(
-        (tag) => (tag[0] === "e" || tag[0] === "E") && tag[1] === pullRequestId,
-      ),
+    .filter(
+      (event) =>
+        (!event.tags.some((tag) => tag[0] === "e" && tag[3] === "reply") ||
+          event.tags.some(
+            (tag) =>
+              tag[0] === "e" && tag[3] === "root" && tag[1] === pullRequestId,
+          )) &&
+        event.tags.some(
+          (tag) =>
+            (tag[0] === "e" || tag[0] === "E") && tag[1] === pullRequestId,
+        ),
     )
     .sort((left, right) => left.created_at - right.created_at);
 }
@@ -179,9 +187,22 @@ export function normalizeProjectPullRequestCommentAnchor(anchor) {
 
 function eventToPullRequestComment(event) {
   const labels = getAllTags(event, "t").map((label) => label.toLowerCase());
-  const isReviewRequest = labels.includes(PR_REVIEW_REQUEST_LABEL);
-  const isApproval = labels.includes(PR_APPROVAL_LABEL);
-  const isChangeRequest = labels.includes(PR_CHANGES_REQUESTED_LABEL);
+  // One signed note has one authoritative semantic role. Mixed labels remain
+  // readable comments but cannot change either discussion or review state.
+  const roles = [
+    PR_REVIEW_REQUEST_LABEL,
+    PR_APPROVAL_LABEL,
+    PR_CHANGES_REQUESTED_LABEL,
+    "review-thread-resolve",
+    "review-thread-reopen",
+  ];
+  const unambiguous =
+    roles.filter((role) => labels.includes(role)).length === 1;
+  const isReviewRequest =
+    unambiguous && labels.includes(PR_REVIEW_REQUEST_LABEL);
+  const isApproval = unambiguous && labels.includes(PR_APPROVAL_LABEL);
+  const isChangeRequest =
+    unambiguous && labels.includes(PR_CHANGES_REQUESTED_LABEL);
   const lineTag = getTag(event, "line");
   const parsedLine =
     lineTag && /^[1-9]\d*$/.test(lineTag) ? Number(lineTag) : Number.NaN;
@@ -201,6 +222,18 @@ function eventToPullRequestComment(event) {
     createdAt: event.created_at,
     commit: getTag(event, "c") ?? null,
     anchor,
+    repoAddress: getTag(event, "a") ?? null,
+    replyTo:
+      event.tags.find((tag) => tag[0] === "e" && tag[3] === "reply")?.[1] ??
+      null,
+    threadAction:
+      unambiguous &&
+      (labels.includes("review-thread-resolve") ||
+        labels.includes("review-thread-reopen"))
+        ? labels.includes("review-thread-resolve")
+          ? "resolve"
+          : "reopen"
+        : null,
     isInlineComment:
       Boolean(anchor) || labels.includes(PR_INLINE_COMMENT_LABEL),
     isApproval,
@@ -364,6 +397,7 @@ export function eventToProjectPullRequest(
     createdAt: pullRequest.created_at,
     repoAddress: getTag(pullRequest, "a") ?? null,
     channelId: getTag(pullRequest, "h") ?? null,
+    sessionContext: sessionReviewContext(pullRequest),
     originAgentName: getTag(pullRequest, "buzz-origin-agent") ?? null,
     labels: getAllTags(pullRequest, "t"),
     recipients: getAllTags(pullRequest, "p"),

@@ -28,6 +28,7 @@ import { buildVideoReviewPresentationByMessageId } from "@/features/messages/lib
 import { useComposerHeightPadding } from "@/features/messages/ui/useComposerHeightPadding";
 import { UserProfilePanel } from "@/features/profile/ui/UserProfilePanel";
 import { AgentSessionThreadPanel } from "@/features/channels/ui/AgentSessionThreadPanel";
+import { ThreadReviews } from "@/features/projects/ui/ThreadReviews";
 import { AgentThreadSessionActivity } from "@/features/channels/ui/AgentThreadSessionActivity";
 import { ChannelManagementAuxiliaryPanel } from "@/features/channels/ui/ChannelManagementAuxiliaryPanel";
 import { IdleAuxiliaryPanel } from "@/features/channels/ui/IdleAuxiliaryPanel";
@@ -957,6 +958,14 @@ export const ChannelPane = React.memo(function ChannelPane({
                       profiles={profiles}
                       workingBotPubkeys={threadComposerBotTypingPubkeys}
                       variant="inline"
+                    />
+                  ) : null
+                }
+                sessionReviewContent={
+                  activeChannel && activeChannel.channelType !== "dm" ? (
+                    <ThreadReviews
+                      channelId={activeChannel.id}
+                      threadRootId={threadHeadMessage.id}
                     />
                   ) : null
                 }
