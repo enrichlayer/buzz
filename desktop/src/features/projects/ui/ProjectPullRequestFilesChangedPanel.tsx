@@ -1,4 +1,14 @@
+import { useCommunities } from "@/features/communities/useCommunities";
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
+import { diffRows, searchDiff } from "../lib/projectDiffRows";
+import { useViewedReviewFiles } from "../useViewedReviewFiles";
+import { projectReviewThreads, canResolveReviewThread } from "../reviewThreads";
+import { useReviewThreadMutation } from "../reviewThreadMutations";
+import { ReviewDiscussion, type DiscussionControls } from "./ReviewDiscussion";
+import { DiffPreview, type InlineCommentControls } from "./ProjectDiffPreview";
 import {
+  Check,
   Braces,
   CodeXml,
   Database,
@@ -17,7 +27,6 @@ import {
   FileVideo,
   FolderGit2,
   GitCommitHorizontal,
-  MessageSquarePlus,
   Package,
   Search,
   Settings,
@@ -34,14 +43,12 @@ import {
   useCreateProjectPullRequestCommentMutation,
 } from "@/features/projects/hooks";
 import { canReviewProjectPullRequest } from "@/features/projects/pullRequestReviews";
-import type { ProjectPullRequestComment } from "@/features/projects/projectPullRequests.mjs";
 import type { UserProfileLookup } from "@/features/profile/lib/identity";
 import { useIdentityQuery } from "@/shared/api/hooks";
 import { cn } from "@/shared/lib/cn";
 import type { ProjectRepoDiff, ProjectRepoDiffFile } from "@/shared/api/types";
 import { BuzzLoadingState } from "@/shared/ui/BuzzLoadingState";
 import { PROJECT_DETAIL_PANEL_CLASS } from "./projectPanelStyles";
-import { ProjectPullRequestInlineCommentThread } from "./ProjectPullRequestInlineComments";
 
 function fileName(path: string) {
   return path.split("/").pop() || path;
@@ -52,31 +59,6 @@ function directoryName(path: string) {
   segments.pop();
   return segments.join("/");
 }
-
-type DiffRow = {
-  content: string;
-  key: string;
-  newLine: number | null;
-  oldLine: number | null;
-  type: "add" | "context" | "delete" | "hunk";
-};
-
-type InlineCommentControls = {
-  activeAnchor: ProjectPullRequestCommentAnchor | null;
-  canRequestChanges: boolean;
-  comments: ProjectPullRequestComment[];
-  isSending: boolean;
-  onCancel: () => void;
-  onStart: (anchor: ProjectPullRequestCommentAnchor) => void;
-  onSubmit: (
-    anchor: ProjectPullRequestCommentAnchor,
-    content: string,
-    mentionPubkeys: string[],
-    mediaTags?: string[][],
-    decision?: "request-changes",
-  ) => Promise<unknown>;
-  profiles?: UserProfileLookup;
-};
 
 type FileTreeNode = {
   children: Map<string, FileTreeNode>;
@@ -329,97 +311,6 @@ function ChangedFolderTreeIcon() {
   );
 }
 
-function parseHunkHeader(line: string) {
-  const match = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
-  if (!match) return null;
-  return { oldLine: Number(match[1]), newLine: Number(match[2]) };
-}
-
-function diffRows(file: ProjectRepoDiffFile): DiffRow[] {
-  let oldLine = 0;
-  let newLine = 0;
-  return file.patch
-    .trimEnd()
-    .split("\n")
-    .filter(
-      (line) =>
-        !line.startsWith("diff --git ") &&
-        !line.startsWith("index ") &&
-        !line.startsWith("--- ") &&
-        !line.startsWith("+++ "),
-    )
-    .map((line, index) => {
-      const hunk = parseHunkHeader(line);
-      let row: Omit<DiffRow, "key">;
-      if (hunk) {
-        oldLine = hunk.oldLine;
-        newLine = hunk.newLine;
-        row = { content: line, oldLine: null, newLine: null, type: "hunk" };
-      } else if (line.startsWith("+")) {
-        row = {
-          content: line.slice(1),
-          oldLine: null,
-          newLine: newLine++,
-          type: "add",
-        };
-      } else if (line.startsWith("-")) {
-        row = {
-          content: line.slice(1),
-          oldLine: oldLine++,
-          newLine: null,
-          type: "delete",
-        };
-      } else {
-        row = {
-          content: line.startsWith(" ") ? line.slice(1) : line,
-          oldLine: oldLine++,
-          newLine: newLine++,
-          type: "context",
-        };
-      }
-      // Rows are computed once per patch in source order, so a positional
-      // index is a stable, cheap key.
-      return { ...row, key: `${file.path}:${index}` };
-    });
-}
-
-function diffLineClassName(type: DiffRow["type"]) {
-  if (type === "add") return "border-green-500/10 border-l-2 bg-green-500/10";
-  if (type === "delete")
-    return "border-destructive/10 border-l-2 bg-destructive/10";
-  if (type === "hunk") return "bg-sky-500/10 text-sky-500";
-  return "border-transparent border-l-2";
-}
-
-function linePrefix(type: DiffRow["type"]) {
-  if (type === "add") return "+";
-  if (type === "delete") return "-";
-  return " ";
-}
-
-function commentAnchorForRow(
-  file: ProjectRepoDiffFile,
-  row: DiffRow,
-): ProjectPullRequestCommentAnchor | null {
-  if (row.type === "hunk") return null;
-  const side = row.type === "delete" ? "old" : "new";
-  const line = side === "old" ? row.oldLine : row.newLine;
-  return line ? { line, path: file.path, side } : null;
-}
-
-function anchorsEqual(
-  left: ProjectPullRequestCommentAnchor | null,
-  right: ProjectPullRequestCommentAnchor | null,
-) {
-  return Boolean(
-    left &&
-      right &&
-      left.line === right.line &&
-      left.path === right.path &&
-      left.side === right.side,
-  );
-}
-
 function fileAdditions(file: ProjectRepoDiffFile) {
   return file.additions;
 }
@@ -444,175 +335,18 @@ function errorMessage(error: unknown) {
   return message.replace(/(^|[\s'"`])(?:[A-Za-z]:)?[\\/][^\s'"`]+/g, "$1…");
 }
 
-function DiffPreview({
-  file,
-  focusedAnchor,
-  inlineComments,
-}: {
-  file: ProjectRepoDiffFile;
-  focusedAnchor?: ProjectPullRequestCommentAnchor | null;
-  inlineComments?: InlineCommentControls;
-}) {
-  const rows = diffRows(file);
-  const focusedRowRef = React.useRef<HTMLDivElement | null>(null);
-  const [highlightedAnchor, setHighlightedAnchor] =
-    React.useState<ProjectPullRequestCommentAnchor | null>(null);
-
-  React.useEffect(() => {
-    if (!focusedAnchor || focusedAnchor.path !== file.path) {
-      setHighlightedAnchor(null);
-      return;
-    }
-
-    setHighlightedAnchor(focusedAnchor);
-    let isListeningForInteraction = false;
-    const clearHighlight = () => setHighlightedAnchor(null);
-    const clearHighlightOnKeyDown = (event: KeyboardEvent) => {
-      if (["Alt", "Control", "Meta", "Shift"].includes(event.key)) return;
-      clearHighlight();
-    };
-    const frame = window.requestAnimationFrame(() => {
-      focusedRowRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-      focusedRowRef.current?.focus({ preventScroll: true });
-      window.addEventListener("pointerdown", clearHighlight, true);
-      window.addEventListener("keydown", clearHighlightOnKeyDown, true);
-      isListeningForInteraction = true;
-    });
-    return () => {
-      window.cancelAnimationFrame(frame);
-      if (isListeningForInteraction) {
-        window.removeEventListener("pointerdown", clearHighlight, true);
-        window.removeEventListener("keydown", clearHighlightOnKeyDown, true);
-      }
-    };
-  }, [file.path, focusedAnchor]);
-
-  if (rows.length === 0) {
-    return (
-      <div className="bg-muted/20 px-4 py-4 text-sm text-muted-foreground">
-        No textual diff is available for this file.
-      </div>
-    );
-  }
-
-  return (
-    <div className="overflow-x-auto bg-background/70 font-mono text-xs leading-5">
-      {file.truncated ? (
-        <div className="border-border/40 border-b bg-amber-500/10 px-4 py-2 text-amber-600 dark:text-amber-400">
-          Large diff truncated — showing the first {rows.length} lines. Use a
-          local checkout to review the full change.
-        </div>
-      ) : null}
-      {rows.map((row) => {
-        const anchor = commentAnchorForRow(file, row);
-        const comments =
-          anchor && inlineComments
-            ? inlineComments.comments.filter(
-                (comment) =>
-                  comment.anchor && anchorsEqual(comment.anchor, anchor),
-              )
-            : [];
-        const isActive = anchorsEqual(
-          inlineComments?.activeAnchor ?? null,
-          anchor,
-        );
-        const isFocused = anchorsEqual(highlightedAnchor, anchor);
-        return (
-          <React.Fragment key={row.key}>
-            <div
-              className={cn(
-                "group grid min-h-5 grid-cols-[3rem_3rem_2rem_1.5rem_minmax(0,1fr)]",
-                diffLineClassName(row.type),
-                isFocused && "bg-primary/10 ring-1 ring-primary/40 ring-inset",
-              )}
-              data-line={anchor?.line}
-              data-path={anchor?.path}
-              data-side={anchor?.side}
-              data-testid={
-                isFocused
-                  ? "project-diff-focused-line"
-                  : anchor
-                    ? "project-diff-line"
-                    : undefined
-              }
-              ref={isFocused ? focusedRowRef : undefined}
-              tabIndex={isFocused ? -1 : undefined}
-            >
-              <span className="select-none border-border/40 border-r px-2 text-right text-muted-foreground/70">
-                {row.oldLine ?? " "}
-              </span>
-              <span className="select-none border-border/40 border-r px-2 text-right text-muted-foreground/70">
-                {row.newLine ?? " "}
-              </span>
-              <span className="flex select-none items-center justify-center">
-                {anchor && inlineComments ? (
-                  <button
-                    aria-label={`Comment on ${anchor.path} ${anchor.side} line ${anchor.line}`}
-                    className={cn(
-                      "flex h-5 w-5 items-center justify-center rounded text-muted-foreground opacity-0 hover:bg-primary hover:text-primary-foreground focus-visible:opacity-100 focus-visible:outline-hidden group-hover:opacity-100",
-                      (comments.length > 0 || isActive) && "opacity-100",
-                    )}
-                    data-testid="project-diff-add-comment"
-                    onClick={() => inlineComments.onStart(anchor)}
-                    title="Add line comment"
-                    type="button"
-                  >
-                    <MessageSquarePlus className="h-3.5 w-3.5" />
-                  </button>
-                ) : null}
-              </span>
-              <span
-                className={cn(
-                  "select-none px-2",
-                  row.type === "add" && "text-green-500",
-                  row.type === "delete" && "text-destructive",
-                )}
-              >
-                {linePrefix(row.type)}
-              </span>
-              <code className="min-w-0 whitespace-pre pr-3 text-foreground">
-                {row.content || " "}
-              </code>
-            </div>
-            {anchor && inlineComments ? (
-              <ProjectPullRequestInlineCommentThread
-                activeAnchor={isActive ? anchor : null}
-                canRequestChanges={inlineComments.canRequestChanges}
-                comments={comments}
-                isSending={inlineComments.isSending}
-                onCancel={inlineComments.onCancel}
-                onSubmit={(content, mentionPubkeys, mediaTags, decision) =>
-                  inlineComments.onSubmit(
-                    anchor,
-                    content,
-                    mentionPubkeys,
-                    mediaTags,
-                    decision,
-                  )
-                }
-                profiles={inlineComments.profiles}
-              />
-            ) : null}
-          </React.Fragment>
-        );
-      })}
-    </div>
-  );
-}
-
 function FileTreeItems({
   node,
   onSelect,
   selectedPath,
   depth = 0,
+  viewedPaths,
 }: {
   node: FileTreeNode;
   onSelect: (path: string) => void;
   selectedPath: string | null;
   depth?: number;
+  viewedPaths: Set<string>;
 }) {
   return sortedFileTreeChildren(node).map((child) => {
     if (child.file) {
@@ -629,6 +363,9 @@ function FileTreeItems({
         >
           <ChangedFileTreeIcon path={child.file.path} />
           <span className="min-w-0 flex-1 truncate">{child.name}</span>
+          {viewedPaths.has(child.path) ? (
+            <Check aria-label="Viewed" className="h-3.5 w-3.5" />
+          ) : null}
         </button>
       );
     }
@@ -641,8 +378,12 @@ function FileTreeItems({
         >
           <ChangedFolderTreeIcon />
           <span className="min-w-0 flex-1 truncate">{child.name}</span>
+          {viewedPaths.has(child.path) ? (
+            <Check aria-label="Viewed" className="h-3.5 w-3.5" />
+          ) : null}
         </div>
         <FileTreeItems
+          viewedPaths={viewedPaths}
           depth={depth + 1}
           node={child}
           onSelect={onSelect}
@@ -653,15 +394,7 @@ function FileTreeItems({
   });
 }
 
-export function ProjectPullRequestFilesChangedPanel({
-  error,
-  diff,
-  focusedAnchor,
-  isLoading,
-  profiles,
-  project,
-  pullRequest,
-}: {
+type ReviewFilesProps = {
   error: unknown;
   diff: ProjectRepoDiff | null | undefined;
   focusedAnchor?: ProjectPullRequestCommentAnchor | null;
@@ -669,7 +402,37 @@ export function ProjectPullRequestFilesChangedPanel({
   profiles?: UserProfileLookup;
   project: Project;
   pullRequest: ProjectPullRequest | null;
-}) {
+};
+
+export function ProjectPullRequestFilesChangedPanel(props: ReviewFilesProps) {
+  const { activeCommunity } = useCommunities();
+  const identity = useIdentityQuery();
+  const scope = JSON.stringify([
+    activeCommunity?.relayUrl,
+    identity.data?.pubkey,
+    props.project.repoAddress,
+    props.pullRequest?.id,
+    props.pullRequest?.commit,
+  ]);
+  return (
+    <ReviewFiles
+      key={scope}
+      {...props}
+      reviewScope={activeCommunity && identity.data ? scope : undefined}
+    />
+  );
+}
+
+function ReviewFiles({
+  error,
+  diff,
+  focusedAnchor,
+  isLoading,
+  profiles,
+  project,
+  pullRequest,
+  reviewScope,
+}: ReviewFilesProps & { reviewScope?: string }) {
   const identityQuery = useIdentityQuery();
   const [activeAnchor, setActiveAnchor] =
     React.useState<ProjectPullRequestCommentAnchor | null>(null);
@@ -683,6 +446,52 @@ export function ProjectPullRequestFilesChangedPanel({
       ) ?? [],
     [pullRequest],
   );
+  const { mutateAsync: updateThread } = useReviewThreadMutation(project);
+  const threads = React.useMemo(
+    () => (pullRequest ? projectReviewThreads(pullRequest, project.owner) : []),
+    [pullRequest, project.owner],
+  );
+  const unattachedThreads = React.useMemo(() => {
+    const locations = new Set(
+      (diff?.files ?? []).flatMap((file) =>
+        diffRows(file).flatMap((row) => [
+          ...(row.oldLine
+            ? [JSON.stringify([file.path, "old", row.oldLine])]
+            : []),
+          ...(row.newLine
+            ? [JSON.stringify([file.path, "new", row.newLine])]
+            : []),
+        ]),
+      ),
+    );
+    return threads.filter((thread) => {
+      const anchor = thread.root.anchor;
+      return (
+        thread.root.inlineCommentStatus === "outdated" ||
+        !anchor ||
+        !locations.has(JSON.stringify([anchor.path, anchor.side, anchor.line]))
+      );
+    });
+  }, [diff, threads]);
+  const discussions: DiscussionControls = {
+    threads,
+    canReply: Boolean(identityQuery.data?.pubkey),
+    canResolve: (thread) =>
+      canResolveReviewThread(
+        identityQuery.data?.pubkey,
+        project.owner,
+        pullRequest?.author ?? "",
+        thread.root,
+      ),
+    onReply: (threadId, content) => {
+      if (!pullRequest) return Promise.reject(new Error("No review selected."));
+      return updateThread({ pullRequest, threadId, content });
+    },
+    onResolve: (threadId, action) => {
+      if (!pullRequest) return Promise.reject(new Error("No review selected."));
+      return updateThread({ pullRequest, threadId, action });
+    },
+  };
   const handleSubmit = React.useCallback(
     async (
       anchor: ProjectPullRequestCommentAnchor,
@@ -720,37 +529,57 @@ export function ProjectPullRequestFilesChangedPanel({
   );
 
   return (
-    <ProjectDiffFilesPanel
-      diff={pullRequest ? diff : null}
-      embedded
-      error={error}
-      focusedAnchor={focusedAnchor}
-      headerLabel={
-        pullRequest
-          ? `${pullRequest.title} · ${pullRequest.commit?.slice(0, 7) ?? "Review"}`
-          : ""
-      }
-      inlineComments={
-        pullRequest
-          ? {
-              activeAnchor,
-              canRequestChanges: canReviewProjectPullRequest(
-                project,
-                pullRequest,
-                identityQuery.data?.pubkey,
-              ),
-              comments: inlineComments,
-              isSending: isPostingComment,
-              onCancel: () => setActiveAnchor(null),
-              onStart: setActiveAnchor,
-              onSubmit: handleSubmit,
-              profiles,
-            }
-          : undefined
-      }
-      isLoading={isLoading}
-      subjectLabel="review"
-    />
+    <>
+      <ProjectDiffFilesPanel
+        reviewScope={reviewScope}
+        diff={pullRequest ? diff : null}
+        embedded
+        error={error}
+        focusedAnchor={focusedAnchor}
+        headerLabel={
+          pullRequest
+            ? `${pullRequest.title} · ${pullRequest.commit?.slice(0, 7) ?? "Review"}`
+            : ""
+        }
+        inlineComments={
+          pullRequest
+            ? {
+                activeAnchor,
+                canRequestChanges: canReviewProjectPullRequest(
+                  project,
+                  pullRequest,
+                  identityQuery.data?.pubkey,
+                ),
+                discussions,
+                comments: inlineComments,
+                isSending: isPostingComment,
+                onCancel: () => setActiveAnchor(null),
+                onStart: setActiveAnchor,
+                onSubmit: handleSubmit,
+                profiles,
+              }
+            : undefined
+        }
+        isLoading={isLoading}
+        subjectLabel="review"
+      />
+      {unattachedThreads.length > 0 ? (
+        <section
+          className="space-y-3 py-4"
+          aria-label="Other review discussions"
+        >
+          <h4 className="text-sm font-medium">Other discussions</h4>
+          {unattachedThreads.map((thread) => (
+            <ReviewDiscussion
+              key={thread.root.id}
+              thread={thread}
+              controls={discussions}
+              profiles={profiles}
+            />
+          ))}
+        </section>
+      ) : null}
+    </>
   );
 }
 
@@ -765,6 +594,7 @@ export function ProjectDiffFilesPanel({
   headerLabel,
   inlineComments,
   subjectLabel,
+  reviewScope,
 }: {
   /** Extra classes for the file-tree/diff grid container. */
   className?: string;
@@ -779,10 +609,16 @@ export function ProjectDiffFilesPanel({
   headerLabel: string;
   inlineComments?: InlineCommentControls;
   subjectLabel: string;
+  reviewScope?: string;
 }) {
   const outerBorderClass = embedded ? "" : PROJECT_DETAIL_PANEL_CLASS;
   const [query, setQuery] = React.useState("");
   const [selectedPath, setSelectedPath] = React.useState<string | null>(null);
+  const [layout, setLayout] = React.useState<"unified" | "split">("unified");
+  const [search, setSearch] = React.useState("");
+  const [showFiles, setShowFiles] = React.useState(true);
+  const [matchIndex, setMatchIndex] = React.useState(0);
+  const viewed = useViewedReviewFiles(reviewScope, diff);
   const files = diff?.files ?? [];
   const filteredFiles = React.useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -791,19 +627,34 @@ export function ProjectDiffFilesPanel({
       file.path.toLowerCase().includes(normalizedQuery),
     );
   }, [files, query]);
+  const matches = React.useMemo(
+    () => searchDiff(filteredFiles, search),
+    [filteredFiles, search],
+  );
+  const activeMatch = matches.length
+    ? matches[matchIndex % matches.length]
+    : undefined;
+  const moveMatch = (direction: number) =>
+    setMatchIndex(
+      (index) =>
+        (index + direction + matches.length) % Math.max(matches.length, 1),
+    );
   const stats = React.useMemo(() => changedFileStats(diff), [diff]);
   const fileTree = React.useMemo(
     () => buildFileTree(filteredFiles),
     [filteredFiles],
   );
   const selectedFile =
-    filteredFiles.find((file) => file.path === selectedPath) ??
+    filteredFiles.find(
+      (file) => file.path === (activeMatch?.path ?? selectedPath),
+    ) ??
     filteredFiles[0] ??
     null;
 
   React.useEffect(() => {
     if (!focusedAnchor) return;
     setQuery("");
+    setSearch("");
     setSelectedPath(focusedAnchor.path);
   }, [focusedAnchor]);
 
@@ -816,9 +667,14 @@ export function ProjectDiffFilesPanel({
       !selectedPath ||
       !filteredFiles.some((file) => file.path === selectedPath)
     ) {
-      setSelectedPath(filteredFiles[0].path);
+      // An anchor can arrive before the diff. Reconciliation must not replace
+      // that requested file with the first file when the snapshot loads.
+      setSelectedPath(
+        filteredFiles.find((file) => file.path === focusedAnchor?.path)?.path ??
+          filteredFiles[0].path,
+      );
     }
-  }, [filteredFiles, selectedPath]);
+  }, [filteredFiles, selectedPath, focusedAnchor]);
 
   if (isLoading && !diff) {
     return <BuzzLoadingState label="Loading changed files" />;
@@ -861,23 +717,36 @@ export function ProjectDiffFilesPanel({
   return (
     <div
       className={cn(
-        "grid min-h-0 overflow-hidden lg:grid-cols-[17rem_minmax(0,1fr)]",
+        "grid min-h-0 overflow-hidden",
+        showFiles && "lg:grid-cols-[17rem_minmax(0,1fr)]",
         outerBorderClass,
         className,
       )}
       data-project-detail-panel={embedded ? undefined : true}
     >
-      <aside className="border-border/50 border-b bg-background/30 lg:border-r lg:border-b-0">
+      <aside
+        hidden={!showFiles}
+        className="border-border/50 border-b bg-background/30 lg:border-r lg:border-b-0"
+      >
         <div className="space-y-3 p-3">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Files className="h-3.5 w-3.5" />
-            <span>{files.length} changed files</span>
+            <span>
+              {files.length} changed files
+              {reviewScope
+                ? ` · ${files.filter((file) => viewed.paths.has(file.path)).length} viewed`
+                : ""}
+            </span>
           </div>
           <label className="flex h-8 items-center gap-2 border border-border/60 bg-background/70 px-2 text-xs text-muted-foreground">
             <Search className="h-3.5 w-3.5" />
             <input
               className="min-w-0 flex-1 bg-transparent text-foreground outline-hidden placeholder:text-muted-foreground"
-              onChange={(event) => setQuery(event.currentTarget.value)}
+              onChange={(event) => {
+                setQuery(event.currentTarget.value);
+                setMatchIndex(0);
+              }}
+              aria-label="Filter changed files"
               placeholder="Filter files…"
               value={query}
             />
@@ -891,7 +760,11 @@ export function ProjectDiffFilesPanel({
         >
           <FileTreeItems
             node={fileTree}
-            onSelect={setSelectedPath}
+            onSelect={(path) => {
+              setSelectedPath(path);
+              setSearch("");
+            }}
+            viewedPaths={viewed.paths}
             selectedPath={selectedPath}
           />
         </nav>
@@ -910,6 +783,115 @@ export function ProjectDiffFilesPanel({
           </div>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2 border-b border-border/50 p-3">
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-expanded={showFiles}
+            onClick={() => setShowFiles(!showFiles)}
+          >
+            {showFiles ? "Hide file tree" : "Show file tree"}
+          </Button>
+          <fieldset aria-label="Diff layout" className="flex gap-1">
+            <Button
+              size="sm"
+              variant={layout === "unified" ? "secondary" : "ghost"}
+              aria-pressed={layout === "unified"}
+              onClick={() => setLayout("unified")}
+            >
+              Unified
+            </Button>
+            <Button
+              size="sm"
+              variant={layout === "split" ? "secondary" : "ghost"}
+              aria-pressed={layout === "split"}
+              onClick={() => {
+                setLayout("split");
+                setShowFiles(false);
+              }}
+            >
+              Split
+            </Button>
+          </fieldset>
+          <Input
+            className="h-8 min-w-32 flex-1"
+            aria-label="Search diff"
+            placeholder="Search diff…"
+            value={search}
+            onChange={(event) => {
+              setSearch(event.currentTarget.value);
+              setMatchIndex(0);
+            }}
+            onKeyDown={(event) => {
+              if (
+                event.key === "Enter" &&
+                !event.nativeEvent.isComposing &&
+                !event.metaKey &&
+                !event.ctrlKey &&
+                !event.altKey
+              ) {
+                event.preventDefault();
+                moveMatch(event.shiftKey ? -1 : 1);
+              }
+              if (event.key === "Escape") setSearch("");
+            }}
+          />
+          {search ? (
+            <>
+              <span className="text-xs text-muted-foreground" role="status">
+                {matches.length
+                  ? `${(matchIndex % matches.length) + 1} of ${matches.length} matching lines`
+                  : "No matches"}
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label="Previous diff match"
+                disabled={!matches.length}
+                onClick={() => moveMatch(-1)}
+              >
+                Previous
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label="Next diff match"
+                disabled={!matches.length}
+                onClick={() => moveMatch(1)}
+              >
+                Next
+              </Button>
+            </>
+          ) : null}
+        </div>
+        {!showFiles ? (
+          <div className="border-b border-border/50 px-3 py-2">
+            <select
+              aria-label="Changed file"
+              className="w-full min-w-0 bg-background text-xs text-foreground"
+              value={selectedFile?.path ?? ""}
+              onChange={(event) => {
+                setSelectedPath(event.currentTarget.value);
+                setSearch("");
+              }}
+            >
+              {filteredFiles.map((file) => (
+                <option key={file.path} value={file.path}>
+                  {file.path}
+                  {viewed.paths.has(file.path) ? " (viewed)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+        {viewed.error ? (
+          <div role="alert" className="p-3 text-xs text-destructive">
+            {viewed.error}
+            <Button size="sm" variant="ghost" onClick={viewed.clear}>
+              Clear saved progress
+            </Button>
+          </div>
+        ) : null}
         <div className="p-3">
           {selectedFile ? (
             <article className="overflow-hidden border border-border/60 bg-background/45">
@@ -926,6 +908,23 @@ export function ProjectDiffFilesPanel({
                   ) : null}
                 </div>
                 <div className="flex shrink-0 items-center gap-2 text-muted-foreground">
+                  {reviewScope ? (
+                    <label className="flex items-center gap-1.5">
+                      <input
+                        type="checkbox"
+                        aria-label={`Mark ${selectedFile.path} viewed`}
+                        checked={viewed.paths.has(selectedFile.path)}
+                        disabled={!viewed.enabled}
+                        onChange={(event) =>
+                          viewed.toggle(
+                            selectedFile.path,
+                            event.currentTarget.checked,
+                          )
+                        }
+                      />
+                      Viewed
+                    </label>
+                  ) : null}
                   <span
                     className={cn(
                       fileAdditions(selectedFile) > 0 && "text-green-500",
@@ -939,6 +938,9 @@ export function ProjectDiffFilesPanel({
                 </div>
               </header>
               <DiffPreview
+                layout={layout}
+                searchQuery={search}
+                searchRowKey={activeMatch?.rowKey}
                 file={selectedFile}
                 focusedAnchor={focusedAnchor}
                 inlineComments={inlineComments}

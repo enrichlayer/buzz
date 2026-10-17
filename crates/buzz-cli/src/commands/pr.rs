@@ -34,10 +34,29 @@ pub async fn cmd_open_pr(
     to: &[String],
     channel: Option<&str>,
     revision_of: Option<&str>,
+    thread: Option<&str>,
+    linear_issue: Option<&str>,
 ) -> Result<(), CliError> {
     validate_hex64(repo_owner)?;
     validate_repo_id(repo_id)?;
     let content = read_optional_body(body, body_file)?;
+    let inherited_thread = std::env::var(super::pr_session::THREAD_ENV).ok();
+    let inherited_channel = std::env::var(super::GIT_ORIGIN_CHANNEL_ENV).ok();
+    let session_tags = super::pr_session::context_tags(
+        thread,
+        inherited_thread.as_deref(),
+        channel,
+        inherited_channel.as_deref(),
+        linear_issue,
+    )?;
+    if !session_tags.is_empty() {
+        super::pr_session::verify_thread(
+            client,
+            &session_tags,
+            channel.or(inherited_channel.as_deref()).unwrap_or_default(),
+        )
+        .await?;
+    }
 
     let repo = GitRepoCoord {
         owner: repo_owner.to_string(),
@@ -57,7 +76,9 @@ pub async fn cmd_open_pr(
     };
 
     let builder = with_git_provenance(
-        buzz_sdk::build_git_pull_request(&repo, &content, &meta).map_err(sdk_err)?,
+        buzz_sdk::build_git_pull_request(&repo, &content, &meta)
+            .map_err(sdk_err)?
+            .tags(session_tags),
     )?;
     let event = client.sign_event(builder)?;
     let event_id = event.id.to_hex();
@@ -124,11 +145,13 @@ pub async fn cmd_get_pr(client: &BuzzClient, event: &str) -> Result<(), CliError
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn cmd_list_prs(
     client: &BuzzClient,
     repo_owner: &str,
     repo_id: &str,
     author: Option<&str>,
+    thread: Option<&str>,
     label: Option<&str>,
     limit: Option<u32>,
 ) -> Result<(), CliError> {
@@ -141,6 +164,10 @@ pub async fn cmd_list_prs(
         "#a": [a_value]
     });
 
+    if let Some(thread) = thread {
+        validate_hex64(thread)?;
+        filter["#e"] = serde_json::json!([thread.to_ascii_lowercase()]);
+    }
     if let Some(pk) = author {
         validate_hex64(pk)?;
         filter["authors"] = serde_json::json!([pk]);
@@ -152,7 +179,11 @@ pub async fn cmd_list_prs(
         filter["limit"] = serde_json::json!(n);
     }
 
-    let resp = client.query(&filter).await?;
+    let resp = if let Some(thread) = thread {
+        super::pr_session::list_thread_reviews(client, filter, thread, limit).await?
+    } else {
+        client.query(&filter).await?
+    };
     println!("{resp}");
     Ok(())
 }
@@ -241,6 +272,8 @@ pub async fn dispatch(cmd: crate::PrCmd, client: &BuzzClient) -> Result<(), CliE
             to,
             channel,
             revision_of,
+            thread,
+            linear_issue,
         } => {
             cmd_open_pr(
                 client,
@@ -258,6 +291,8 @@ pub async fn dispatch(cmd: crate::PrCmd, client: &BuzzClient) -> Result<(), CliE
                 &to,
                 channel.as_deref(),
                 revision_of.as_deref(),
+                thread.as_deref(),
+                linear_issue.as_deref(),
             )
             .await
         }
@@ -295,6 +330,7 @@ pub async fn dispatch(cmd: crate::PrCmd, client: &BuzzClient) -> Result<(), CliE
             repo_owner,
             repo_id,
             author,
+            thread,
             label,
             limit,
         } => {
@@ -303,6 +339,7 @@ pub async fn dispatch(cmd: crate::PrCmd, client: &BuzzClient) -> Result<(), CliE
                 &repo_owner,
                 &repo_id,
                 author.as_deref(),
+                thread.as_deref(),
                 label.as_deref(),
                 limit,
             )

@@ -372,6 +372,7 @@ export function HomeView({
   // biome-ignore lint/correctness/useExhaustiveDependencies: readStateVersion invalidates the stable getChannelReadAt callback
   const inboxItems = React.useMemo(() => {
     const items = buildInboxItems({
+      agentPubkeys: inboxAgentPubkeys,
       channels,
       currentPubkey,
       feed,
@@ -382,6 +383,7 @@ export function HomeView({
     });
     return filterInboxItems(items);
   }, [
+    inboxAgentPubkeys,
     channels,
     currentPubkey,
     feed,

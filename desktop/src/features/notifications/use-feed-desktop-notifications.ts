@@ -1,4 +1,6 @@
 import * as React from "react";
+import { useKnownAgentPubkeys } from "@/features/agents/useKnownAgentPubkeys";
+import { isKnownAgentAuthor } from "@/features/messages/lib/promptSuggestions";
 
 import { truncateNpub } from "@/shared/lib/pubkey";
 import {
@@ -85,6 +87,7 @@ export function useFeedDesktopNotifications(
   );
   const hasInitializedFeedRef = React.useRef(false);
   const hasAutoRequestedRef = React.useRef(false);
+  const knownAgentPubkeys = useKnownAgentPubkeys();
 
   React.useEffect(() => {
     seenItemIdsRef.current = new Set(readStoredSeenFeedIds(normalizedPubkey));
@@ -111,7 +114,14 @@ export function useFeedDesktopNotifications(
 
   const deliverFeedNotification = React.useEffectEvent(
     async (item: FeedItem, senderName?: string) => {
-      const { title, body } = formatFeedNotification(item, senderName);
+      const { title, body } = formatFeedNotification(
+        item,
+        senderName,
+        isKnownAgentAuthor(item.pubkey, {
+          agentPubkeys: knownAgentPubkeys,
+          profiles,
+        }),
+      );
       const didSend = await sendDesktopNotification({
         body,
         target: buildFeedItemNotificationTarget(item),

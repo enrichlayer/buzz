@@ -9,6 +9,7 @@ use crate::managed_agents::{
 };
 mod auth_status_cache;
 mod bounded_command;
+pub(crate) use bounded_command::output_with_timeout_and_limit as bounded_process_output_with_limit;
 mod codex_version_probe;
 pub(crate) mod command_search;
 mod login_shell;
