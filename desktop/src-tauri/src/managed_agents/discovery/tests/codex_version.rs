@@ -101,10 +101,21 @@ fn probe_codex_acp_version_returns_version_when_descendant_holds_pipe_open() {
     std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).expect("chmod script");
 
     let start = Instant::now();
-    let version = super::super::codex_version_probe::probe_codex_acp_version_result(
-        &bin,
-        crate::managed_agents::readiness::cli_probe::augmented_path().as_deref(),
-    );
+    let path = crate::managed_agents::readiness::cli_probe::augmented_path();
+    // Retry like `probe_fresh_script`: a parallel fork can briefly hold the
+    // fresh script's write descriptor, so exec fails with ETXTBSY.
+    let mut version =
+        super::super::codex_version_probe::probe_codex_acp_version_result(&bin, path.as_deref());
+    for _ in 0..4 {
+        if version.is_ok() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        version = super::super::codex_version_probe::probe_codex_acp_version_result(
+            &bin,
+            path.as_deref(),
+        );
+    }
     let elapsed = start.elapsed();
     let _ = std::fs::remove_dir_all(dir);
 
@@ -119,4 +130,23 @@ fn probe_codex_acp_version_returns_version_when_descendant_holds_pipe_open() {
         Ok((1, 1, 2)),
         "version must be parsed even when descendant holds pipe open"
     );
+}
+
+/// Probes a script the test has just written, retrying briefly when the probe
+/// yields nothing.
+///
+/// On Linux, exec of a freshly written file can fail with ETXTBSY while a
+/// parallel test thread's fork still holds the write descriptor between fork
+/// and exec. The probe maps any spawn error to `None`, so a success-expecting
+/// test retries a few times; a genuine regression still returns `None` on
+/// every attempt.
+#[cfg(unix)]
+pub(super) fn probe_fresh_script(bin: &std::path::Path) -> Option<(u64, u64, u64)> {
+    for _ in 0..5 {
+        if let Some(version) = super::super::probe_codex_acp_version(bin) {
+            return Some(version);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    None
 }

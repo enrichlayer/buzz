@@ -1,0 +1,93 @@
+name: buzz-relay-pilot
+hosts: ovh-us-east-vin-1b
+deploy:
+  timeout: 600
+services:
+  - buzz-relay-pilot.service
+  - buzz-relay-pilot-postgres.service
+  - buzz-relay-pilot-redis.service
+contents:
+  - dst: /etc/buzz-relay-pilot
+    type: dir
+    file_info: {mode: "0700", owner: root, group: root}
+  - dst: /etc/buzz-relay-pilot/runtime.env
+    src: templates/runtime.env.j2
+    type: file
+    template: true
+    file_info: {mode: "0600", owner: root, group: root}
+  - dst: /etc/buzz-relay-pilot/registry-auth.json
+    type: file
+    content: "{{ buzz_pilot_registry_auth }}"
+    template: true
+    file_info: {mode: "0600", owner: root, group: root}
+  - dst: /etc/buzz-relay-pilot/postgres.env
+    src: templates/postgres.env.j2
+    type: file
+    template: true
+    file_info: {mode: "0600", owner: root, group: root}
+  - dst: /etc/buzz-relay-pilot/redis.conf
+    src: templates/redis.conf.j2
+    type: file
+    template: true
+    file_info: {mode: "0640", owner: root, group: root}
+  - dst: /etc/buzz-relay-pilot/expected.json
+    src: templates/expected.json.j2
+    type: file
+    template: true
+    file_info: {mode: "0600", owner: root, group: root}
+  - dst: /usr/local/libexec/buzz-relay-pilot
+    src: ../pilot.py
+    type: file
+    file_info: {mode: "0755", owner: root, group: root}
+  - dst: /etc/containers/systemd/buzz-relay-pilot.network
+    type: file
+    content: |
+      [Network]
+      NetworkName=buzz-relay-pilot
+  - dst: /etc/containers/systemd/buzz-relay-pilot-postgres.volume
+    type: file
+    content: |
+      [Volume]
+      VolumeName=buzz-relay-pilot-postgres
+  - dst: /etc/containers/systemd/buzz-relay-pilot-redis.volume
+    type: file
+    content: |
+      [Volume]
+      VolumeName=buzz-relay-pilot-redis
+  - dst: /etc/containers/systemd/buzz-relay-pilot-git.volume
+    type: file
+    content: |
+      [Volume]
+      VolumeName=buzz-relay-pilot-git
+  - dst: /etc/containers/systemd/buzz-relay-pilot-postgres.container
+    src: templates/postgres.container.j2
+    type: file
+    template: true
+  - dst: /etc/containers/systemd/buzz-relay-pilot-redis.container
+    src: templates/redis.container.j2
+    type: file
+    template: true
+  - dst: /etc/containers/systemd/buzz-relay-pilot.container
+    src: templates/relay.container.j2
+    type: file
+    template: true
+scripts:
+  post_install:
+    - cmd: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        /usr/local/libexec/buzz-relay-pilot apply
+      timeout: 540
+  pre_delete:
+    - cmd: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        systemctl stop buzz-relay-pilot.service buzz-relay-pilot-redis.service buzz-relay-pilot-postgres.service
+        # Durable Podman volumes are deliberately retained on package removal.
+      timeout: 120
+  post_delete:
+    - cmd: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        systemctl daemon-reload
+      timeout: 15

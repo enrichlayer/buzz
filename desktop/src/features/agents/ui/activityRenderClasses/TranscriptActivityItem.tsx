@@ -1,3 +1,4 @@
+import { SourceAnnotation } from "@/shared/ui/annotations";
 import type { AgentActivityRenderClass } from "../agentSessionTypes";
 import { LifecycleActivity } from "./LifecycleActivity";
 import { MessageActivity } from "./MessageActivity";
@@ -33,5 +34,28 @@ export const ACTIVITY_RENDER_CLASS_PRESENTERS = {
 
 export function TranscriptActivityItem(props: ActivityRenderClassItemProps) {
   const Presenter = ACTIVITY_RENDER_CLASS_PRESENTERS[props.item.renderClass];
-  return <Presenter {...props} />;
+  const { item } = props;
+  if (item.type === "message" && item.role === "assistant")
+    return <Presenter {...props} />;
+  const text =
+    item.type === "tool"
+      ? [item.title, JSON.stringify(item.args), item.result].join("\n")
+      : item.type === "metadata"
+        ? item.sections
+            .map((section) => `${section.title}\n${section.body}`)
+            .join("\n")
+        : item.text;
+  return (
+    <SourceAnnotation
+      source={{
+        sourceId: item.type === "message" ? item.messageId || item.id : item.id,
+        text,
+        channelId: item.channelId,
+        sessionId: item.sessionId,
+        turnId: item.turnId,
+      }}
+    >
+      <Presenter {...props} />
+    </SourceAnnotation>
+  );
 }

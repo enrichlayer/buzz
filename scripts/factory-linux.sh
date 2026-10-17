@@ -8,28 +8,73 @@ set -euo pipefail
 . ./bin/activate-hermit
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
 export RUST_TEST_THREADS="${RUST_TEST_THREADS:-4}"
+# Ephemeral validation has no later incremental build to reuse. Debug symbols
+# and incremental objects exhausted the guest before the test verdict could be
+# retained; assertions and the existing dev/test optimization levels stay intact.
+export CARGO_INCREMENTAL=0
+export CARGO_PROFILE_DEV_DEBUG=0
+export CARGO_PROFILE_TEST_DEBUG=0
+report_storage() {
+  df -Pk "$PWD"
+  # Keep diagnostics bounded even if a filesystem walk stalls. These are
+  # read-only sizes; only this run's unique target is ever cleaned below.
+  timeout 10 du -sk "$CARGO_TARGET_DIR" "$HOME/.cargo" "$HOME/.cache/hermit" 2>/dev/null ||
+    echo 'Some cache size diagnostics unavailable'
+}
+report_failure() {
+  local status="$1"
+  if (( status != 0 )); then
+    # Factory retains a bounded stderr tail separately from the build stream.
+    # Put the actual Rust assertions there after later passing test output.
+    python3 scripts/factory-failure-summary.py .tmp/factory-artifacts/validation.log >&2 ||
+      echo 'Factory failure summary unavailable; original exit status retained' >&2
+    report_storage >&2 || true
+  fi
+  exit "$status"
+}
 case "${1:-}" in
   setup)
-    for tool in cc pkg-config cmake python3; do
+    for tool in cc pkg-config cmake python3 git; do
       command -v "$tool" >/dev/null || { echo "Factory image missing $tool" >&2; exit 1; }
     done
+    # Buzz's Nostr helper needs Git's credential authtype protocol (Git >=2.46).
+    # Check the actual binary before allocating dependency/compiler caches.
+    if ! git credential capability | grep -Fxq 'capability authtype'; then
+      git --version >&2
+      echo 'Factory Git lacks credential authtype; rebuild the sandbox image with Git >=2.46' >&2
+      exit 1
+    fi
     pkg-config --exists openssl
     just desktop-install-ci
     ;;
   check)
-    # DEV-13542: disposable incremental units exhausted the 20 GB workspace.
-    # Keep every check, but do not retain a cache this validation never reuses.
-    export CARGO_INCREMENTAL=0
     mkdir -p .tmp/factory-artifacts
+    # Own this target directory exclusively: never clean a caller/shared cache.
+    CARGO_TARGET_DIR="$(mktemp -d "$PWD/.tmp/factory-target.XXXXXX")"
+    export CARGO_TARGET_DIR
+    trap 'report_failure $?' EXIT
     # Pipefail preserves the first failing check in the remote exit receipt.
     {
-      python3 scripts/test-factory-linux.py
+      report_storage
       node --test desktop/scripts/build-enrichlayer-release-config.test.mjs
       python3 scripts/test-enrichlayer-updater.py
       python3 scripts/test-buzz-r2.py
-      just fmt-check clippy test-unit desktop-check desktop-test desktop-build web-build
+      python3 scripts/test-factory-linux.py
+      just fmt-check clippy
+      report_storage
+      # Clippy metadata need not coexist with every unit-test binary. Retire
+      # only this run's completed lint phase before allocating the test phase.
+      cargo clean --target-dir "$CARGO_TARGET_DIR"
+      report_storage
+      just test-unit desktop-check desktop-test desktop-build web-build
+      report_storage
+      # Release compilation uses another profile. Retire this run's completed
+      # check/test objects before allocating release objects in the same guest.
+      cargo clean --target-dir "$CARGO_TARGET_DIR"
+      report_storage
       cargo build --locked --release -p buzz-relay -p buzz-cli
-      tar -czf .tmp/factory-artifacts/buzz-linux.tar.gz -C target/release buzz-relay buzz
+      tar -czf .tmp/factory-artifacts/buzz-linux.tar.gz -C "$CARGO_TARGET_DIR/release" buzz-relay buzz
+      report_storage
     } 2>&1 | tee .tmp/factory-artifacts/validation.log
     ;;
   *) echo 'Usage: scripts/factory-linux.sh setup|check' >&2; exit 2 ;;

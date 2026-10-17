@@ -1228,6 +1228,19 @@ test("renders agent profile ingress subviews from the Playwright mock bridge", a
   expect(headerActionOrder.at(-1)).toBe("auxiliary-panel-close");
   await headerEditAgent.click();
   await expect(page.getByTestId("persona-dialog")).toBeVisible();
+  const personaDialog = page.getByTestId("persona-dialog");
+  await personaDialog
+    .getByRole("button", { name: "Advanced", exact: true })
+    .click();
+  await expect(
+    personaDialog.locator("#persona-steering-description"),
+  ).toContainText("Plain thread replies do not steer the current turn");
+  await expect(
+    personaDialog.locator("#persona-session-policy"),
+  ).toHaveAttribute(
+    "aria-describedby",
+    "persona-session-policy-description persona-steering-description",
+  );
   await page
     .getByTestId("persona-dialog")
     .getByRole("button", { name: "Cancel" })
