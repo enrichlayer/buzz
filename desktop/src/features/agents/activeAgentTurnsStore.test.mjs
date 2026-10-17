@@ -5,6 +5,7 @@ import {
   syncAgentTurnsFromEvents,
   syncActiveAgentTurnsFromObserver,
   getActiveTurnsForAgent,
+  getExactActiveTurnsForAgent,
   getActiveTurnsByChannel,
   resetActiveAgentTurnsStore,
   subscribeActiveAgentTurns,
@@ -836,6 +837,19 @@ describe("activeAgentTurnsStore", () => {
         firstAnchor,
         "earliest start's anchor must be surfaced",
       );
+    });
+
+    it("retains exact turn ids for thread-scoped liveness in one channel", () => {
+      syncAgentTurnsFromEvents(AGENT, [
+        makeEvent({ seq: 1, turnId: "thread-a", channelId: "c1" }),
+        makeEvent({ seq: 2, turnId: "thread-b", channelId: "c1" }),
+      ]);
+
+      assert.deepEqual(
+        getExactActiveTurnsForAgent(AGENT).map((turn) => turn.turnId),
+        ["thread-a", "thread-b"],
+      );
+      assert.equal(getActiveTurnsForAgent(AGENT).length, 1);
     });
 
     it("advances to the surviving turn's anchor after the earliest ends", () => {

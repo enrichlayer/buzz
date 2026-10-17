@@ -2,6 +2,11 @@
 
 ## Automated Tests
 
+When another worktree is running the desktop smoke server, choose an unused
+port: `cd desktop && BUZZ_E2E_PORT=4189 pnpm test:e2e:smoke`. An explicit port
+starts this checkout's server and refuses to reuse an existing one, so the
+test cannot silently exercise another worktree's build.
+
 ```bash
 just test-unit          # unit tests — no infrastructure needed
 just test               # unit + integration (starts Docker if needed)

@@ -1,7 +1,7 @@
 // Persona (agent definition) wire types, split out of `types.ts` to keep that
 // file inside the repo-wide size ratchet. Consumers import these through
 // `@/shared/api/types`, which re-exports everything here.
-import type { AcpSessionPolicy, RespondToMode } from "./types";
+import type { AcpSessionPolicy, AgentOutputMode, RespondToMode } from "./types";
 
 export type AgentPersona = {
   id: string;
@@ -42,6 +42,8 @@ export type AgentPersona = {
   parallelism: number | null;
   /** Whether ACP context is shared by the channel or isolated per thread. */
   sessionPolicy?: AcpSessionPolicy;
+  /** Preferred transcript density. Absence is the legacy full view. */
+  outputMode?: AgentOutputMode;
   createdAt: string;
   updatedAt: string;
 };
@@ -65,6 +67,7 @@ export type PersonaBehaviorInput = {
   respondToAllowlist?: string[];
   parallelism?: number;
   sessionPolicy?: AcpSessionPolicy;
+  outputMode?: AgentOutputMode;
 };
 
 export type CreatePersonaInput = {

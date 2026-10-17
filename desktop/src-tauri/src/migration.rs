@@ -1145,14 +1145,17 @@ fn reconcile_legacy_persona_runtimes_in_file(path: &Path) {
 
 fn rewrite_legacy_persona_md_runtime(content: &str) -> Option<String> {
     let (frontmatter, body) = buzz_persona_pkg::persona::split_frontmatter(content).ok()?;
-    let mut value = serde_yaml::from_str::<serde_yaml::Value>(frontmatter).ok()?;
-    let mapping = value.as_mapping_mut()?;
-    let runtime = mapping.get_mut(serde_yaml::Value::String("runtime".to_string()))?;
-    if runtime.as_str()? != "sprout-agent" {
+    // Preserve arbitrary YAML mapping keys and numeric values in unrelated fields.
+    let mut value = serde_saphyr::from_str_with_options::<serde_value::Value>(frontmatter, serde_saphyr::options! { strict_booleans: true, merge_keys: serde_saphyr::options::MergeKeyPolicy::AsOrdinary }).ok()?;
+    let serde_value::Value::Map(mapping) = &mut value else {
+        return None;
+    };
+    let runtime = mapping.get_mut(&serde_value::Value::String("runtime".to_string()))?;
+    if *runtime != serde_value::Value::String("sprout-agent".to_string()) {
         return None;
     }
-    *runtime = serde_yaml::Value::String("buzz-agent".to_string());
-    let frontmatter = serde_yaml::to_string(&value).ok()?;
+    *runtime = serde_value::Value::String("buzz-agent".to_string());
+    let frontmatter = serde_saphyr::to_string(&value).ok()?;
     Some(format!("---\n{frontmatter}---\n{body}"))
 }
 

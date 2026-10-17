@@ -16,8 +16,8 @@ fn read_config_from_path(path: &std::path::Path) -> Option<RuntimeFileConfig> {
 fn parse_goose_config(yaml_str: &str) -> Option<RuntimeFileConfig> {
     // TODO: replace hardcoded field extraction with schema_walker once goose publishes
     // a JSON Schema. Tracked separately.
-    let map: std::collections::HashMap<String, serde_yaml::Value> =
-        serde_yaml::from_str(yaml_str).ok()?;
+    let map: std::collections::HashMap<String, serde_value::Value> =
+        serde_saphyr::from_str_with_options(yaml_str, serde_saphyr::options! { strict_booleans: true, merge_keys: serde_saphyr::options::MergeKeyPolicy::AsOrdinary }).ok()?;
 
     let active_provider = yaml_string(&map, "active_provider");
 
@@ -89,13 +89,13 @@ struct NestedProviderFields {
 }
 
 fn nested_provider_fields(
-    map: &std::collections::HashMap<String, serde_yaml::Value>,
+    map: &std::collections::HashMap<String, serde_value::Value>,
     active_provider: &str,
 ) -> Option<NestedProviderFields> {
-    let providers = map.get("providers").and_then(|v| v.as_mapping())?;
+    let providers = map.get("providers").and_then(yaml_mapping)?;
     let entry = providers
-        .get(serde_yaml::Value::String(active_provider.to_owned()))?
-        .as_mapping()?;
+        .get(&serde_value::Value::String(active_provider.to_owned()))
+        .and_then(yaml_mapping)?;
 
     let model = mapping_string(entry, "model");
     let host = mapping_string(entry, "host");
@@ -104,9 +104,9 @@ fn nested_provider_fields(
 }
 
 fn parse_extensions(
-    map: &std::collections::HashMap<String, serde_yaml::Value>,
+    map: &std::collections::HashMap<String, serde_value::Value>,
 ) -> Vec<ExtensionEntry> {
-    let extensions = match map.get("extensions").and_then(|v| v.as_mapping()) {
+    let extensions = match map.get("extensions").and_then(yaml_mapping) {
         Some(m) => m,
         None => return Vec::new(),
     };
@@ -114,16 +114,15 @@ fn parse_extensions(
     extensions
         .iter()
         .filter_map(|(k, v)| {
-            let name = k.as_str()?.to_string();
-            let kind = v
-                .as_mapping()
+            let name = yaml_value_string(k)?.to_string();
+            let kind = yaml_mapping(v)
                 .and_then(|m| mapping_string(m, "type"))
                 .unwrap_or_else(|| "unknown".to_string());
-            let enabled = v
-                .as_mapping()
-                .and_then(|m| {
-                    m.get(serde_yaml::Value::String("enabled".to_owned()))
-                        .and_then(|v| v.as_bool())
+            let enabled = yaml_mapping(v)
+                .and_then(|m| m.get(&serde_value::Value::String("enabled".into())))
+                .and_then(|v| match v {
+                    serde_value::Value::Bool(enabled) => Some(*enabled),
+                    _ => None,
                 })
                 .unwrap_or(true);
             Some(ExtensionEntry {
@@ -136,22 +135,41 @@ fn parse_extensions(
 }
 
 fn yaml_string(
-    map: &std::collections::HashMap<String, serde_yaml::Value>,
+    map: &std::collections::HashMap<String, serde_value::Value>,
     key: &str,
 ) -> Option<String> {
-    map.get(key)?
-        .as_str()
+    map.get(key)
+        .and_then(yaml_value_string)
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
 }
 
-fn mapping_string(map: &serde_yaml::Mapping, key: &str) -> Option<String> {
-    map.get(serde_yaml::Value::String(key.to_owned()))
-        .and_then(|v| v.as_str())
+fn mapping_string(
+    map: &BTreeMap<serde_value::Value, serde_value::Value>,
+    key: &str,
+) -> Option<String> {
+    map.get(&serde_value::Value::String(key.to_owned()))
+        .and_then(yaml_value_string)
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
+}
+
+fn yaml_value_string(value: &serde_value::Value) -> Option<&str> {
+    match value {
+        serde_value::Value::String(value) => Some(value),
+        _ => None,
+    }
+}
+
+fn yaml_mapping(
+    value: &serde_value::Value,
+) -> Option<&BTreeMap<serde_value::Value, serde_value::Value>> {
+    match value {
+        serde_value::Value::Map(value) => Some(value),
+        _ => None,
+    }
 }
 
 pub(crate) fn goose_config_path() -> Option<PathBuf> {
@@ -251,6 +269,13 @@ extensions:
             .extensions
             .iter()
             .any(|e| e.name == "my-mcp" && !e.enabled));
+    }
+
+    #[test]
+    fn yaml_metadata_does_not_discard_valid_provider_settings() {
+        let cfg = parse_goose_config("GOOSE_PROVIDER: &provider anthropic\nGOOSE_MODEL: off\nmetadata:\n  7: [true, null]\n  alias: *provider\n").unwrap();
+        assert_eq!(cfg.provider.as_deref(), Some("anthropic"));
+        assert_eq!(cfg.model.as_deref(), Some("off"));
     }
 
     #[test]

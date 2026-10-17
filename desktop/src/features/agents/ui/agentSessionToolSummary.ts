@@ -79,17 +79,20 @@ export function buildCompactToolSummary(item: ToolItem): CompactToolSummary {
   const failed = item.isError || item.status === "failed";
   const running = item.status === "executing" || item.status === "pending";
   return {
-    action: descriptor.action ?? null,
+    action: failed || running ? null : (descriptor.action ?? null),
     kind: descriptor.renderClass,
     label: labelForStatus(descriptor, item.status, failed, running),
     preview: fileEditSummary?.filename ?? descriptor.preview,
-    fileEditSummary,
+    fileEditSummary: failed ? null : fileEditSummary,
     fileEditDiff,
     fileReadContent,
     imageContent,
     shellContent,
     thumbnailSrc,
-    presentation: descriptor.renderClass === "message" ? "message" : "inline",
+    presentation:
+      descriptor.renderClass === "message" && !running && !failed
+        ? "message"
+        : "inline",
     descriptor,
   };
 }
@@ -101,15 +104,20 @@ function labelForStatus(
   running: boolean,
 ) {
   const label = descriptor.label;
+  if (descriptor.renderClass === "message" && running)
+    return status === "pending" ? "Waiting to post reply" : "Posting reply";
+  if (descriptor.renderClass === "shell" && running)
+    return status === "pending" ? "Waiting to run" : "Running";
   if (descriptor.groupKey === "file-edit:str_replace") {
     if (failed) return "Edit failed";
     if (running) return "Editing file";
     return "Edited file";
   }
+  if (failed && descriptor.renderClass === "shell") return "Command failed";
   if (failed) {
     return label.endsWith("failed") ? label : `${label} failed`;
   }
-  if (running) return label;
+  if (running) return status === "pending" ? "Waiting" : "Working";
   if (status === "completed") return label;
   return label;
 }

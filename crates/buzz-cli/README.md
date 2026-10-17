@@ -33,6 +33,9 @@ buzz messages send --channel <uuid> --content "Hello"
 buzz messages send --channel <uuid> --content "Reply" --reply-to <event-id> --broadcast
 buzz messages send --channel <uuid> --content - < message.md   # read body from stdin
 buzz messages get --channel <uuid> --limit 20
+buzz messages get-verified --channel <uuid> --max-events 10000
+buzz messages sign --channel <uuid> --content-file message.md > signed-event.json
+buzz messages publish-event --channel <uuid> --event-file signed-event.json
 buzz messages thread --channel <uuid> --event <event-id>
 buzz messages thread --link 'buzz://message?channel=<uuid>&id=<event-id>&thread=<root-id>'
 buzz messages search --query "architecture"
@@ -121,10 +124,13 @@ The table below mirrors that tree for readers who are not at a terminal.
 | Group | Subcommand | Description |
 |-------|-----------|-------------|
 | `messages` | `send` | Send a message to a channel |
+| | `sign` | Build and sign a message without publishing it |
+| | `publish-event` | Publish an exact, verified signed message event |
 | | `send-diff` | Send a code diff with metadata |
 | | `edit` | Edit a message you sent |
 | | `delete` | Delete a message |
 | | `get` | List messages in a channel |
+| | `get-verified` | Exhaustively page and verify a bounded channel history |
 | | `thread` | Get a message thread |
 | | `search` | Full-text search, filterable by author |
 | | `vote` | Vote on a forum post |

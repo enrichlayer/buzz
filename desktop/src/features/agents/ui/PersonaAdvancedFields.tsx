@@ -30,8 +30,9 @@ import {
 import type {
   AcpRuntimeCatalogEntry,
   AcpSessionPolicy,
+  AgentOutputMode,
 } from "@/shared/api/types";
-import { PersonaDropdownField } from "./PersonaDropdownField";
+import { PersonaChoiceField } from "./PersonaChoiceField";
 import {
   deriveNumericDescriptors,
   structuredEnvKeys,
@@ -170,10 +171,11 @@ export function PersonaAdvancedFields({
           >
             Conversation context
           </label>
-          <PersonaDropdownField
+          <PersonaChoiceField
             ariaDescribedBy="persona-session-policy-description persona-steering-description"
             disabled={disabled}
             id="persona-session-policy"
+            label="Conversation context"
             onValueChange={(value) =>
               onBehaviorDraftChange({
                 ...behaviorDraft,
@@ -202,6 +204,41 @@ export function PersonaAdvancedFields({
             With default settings, @mention the agent in a channel to steer its
             current work. Plain thread replies do not steer the current turn;
             recent replies may be included as context on the next mention.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <label
+            className="text-sm font-medium text-foreground"
+            htmlFor="persona-output-mode"
+          >
+            Agent output
+          </label>
+          <PersonaChoiceField
+            ariaDescribedBy="persona-output-mode-description"
+            disabled={disabled}
+            id="persona-output-mode"
+            label="Agent output"
+            onValueChange={(value) =>
+              onBehaviorDraftChange({
+                ...behaviorDraft,
+                outputMode: value as AgentOutputMode,
+              })
+            }
+            options={[
+              { label: "Full output", value: "full" },
+              { label: "Summary", value: "summary" },
+            ]}
+            placeholder="Full output"
+            value={behaviorDraft.outputMode}
+          />
+          <p
+            className="text-xs text-muted-foreground"
+            id="persona-output-mode-description"
+          >
+            {behaviorDraft.outputMode === "summary"
+              ? "Requests concise replies and hides routine tool activity. Questions and failures remain visible; Show details reveals captured activity."
+              : "Shows available replies and captured tool and progress activity."}
           </p>
         </div>
 
