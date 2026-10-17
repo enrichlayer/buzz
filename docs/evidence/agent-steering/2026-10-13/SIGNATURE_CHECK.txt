@@ -1,0 +1,4 @@
+nostr-tools signature and canonical ID PASS 904ee5b29d8348768fae70ea7374e0197ca4126a40d9095c81580348c612e70b
+nostr-tools signature and canonical ID PASS 9a8662b10d63d83acc33c47a44e61baa39bbf5c3ad73523bff45366030198894
+nostr-tools signature and canonical ID PASS f1f1232530bb9e6e3599ff008aefad968d62d163ee15017f4485998b29bdb26d
+nostr-tools signature and canonical ID PASS 544fbd651ccc1e9bba49edaae04cc22b6284f6f4ede81619aa39157f5c707d57
