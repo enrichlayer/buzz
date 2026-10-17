@@ -404,29 +404,31 @@ fn advisory_check_skill_names(
             None => continue,
         };
 
-        let yaml_val: serde_yaml::Value = match serde_yaml::from_str(fm_str) {
+        let yaml_val: serde_value::Value = match serde_saphyr::from_str_with_options(
+            fm_str,
+            serde_saphyr::options! { strict_booleans: true, merge_keys: serde_saphyr::options::MergeKeyPolicy::AsOrdinary },
+        ) {
             Ok(v) => v,
             Err(_) => continue,
         };
 
-        let mapping = match yaml_val.as_mapping() {
-            Some(m) => m,
-            None => continue,
+        let serde_value::Value::Map(mapping) = yaml_val else {
+            continue;
         };
 
-        if let Some(name_val) = mapping.get(serde_yaml::Value::String("name".into())) {
-            if let Some(name_str) = name_val.as_str() {
-                if let Some(dir_name) = skill_dir.file_name().and_then(|n| n.to_str()) {
-                    if name_str != dir_name {
-                        let label = skill_dir
-                            .strip_prefix(pack_dir)
-                            .unwrap_or(skill_dir)
-                            .display()
-                            .to_string();
-                        report.warn(format!(
+        if let Some(serde_value::Value::String(name_str)) =
+            mapping.get(&serde_value::Value::String("name".into()))
+        {
+            if let Some(dir_name) = skill_dir.file_name().and_then(|n| n.to_str()) {
+                if name_str != dir_name {
+                    let label = skill_dir
+                        .strip_prefix(pack_dir)
+                        .unwrap_or(skill_dir)
+                        .display()
+                        .to_string();
+                    report.warn(format!(
                             "skill {label}: name \"{name_str}\" differs from directory name \"{dir_name}\""
                         ));
-                    }
                 }
             }
         }

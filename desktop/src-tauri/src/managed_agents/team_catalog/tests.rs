@@ -7,6 +7,7 @@ mod reuse_hint; // built-in reuse-hint projection-hash boundary gate (Carl r9 P1
 fn member(id: &str, display_name: &str) -> AgentDefinition {
     AgentDefinition {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         id: id.to_string(),
         display_name: display_name.to_string(),
         description: None,
@@ -73,6 +74,21 @@ fn test_projection_omits_local_only_team_fields() {
             "local-only field '{local_only}' must never be projected"
         );
     }
+}
+
+#[test]
+fn output_mode_is_retained_in_team_catalog_projection() {
+    let mut summary = member("m1", "One");
+    summary.output_mode = crate::managed_agents::AgentOutputMode::Summary;
+    let content = build_team_catalog_content(&team(), &[summary]).unwrap();
+
+    assert_eq!(
+        content.members[0].output_mode,
+        crate::managed_agents::AgentOutputMode::Summary
+    );
+    assert!(team_catalog_content_json(&content)
+        .unwrap()
+        .contains("\"output_mode\":\"summary\""));
 }
 
 #[test]

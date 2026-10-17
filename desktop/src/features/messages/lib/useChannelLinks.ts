@@ -124,6 +124,24 @@ export function useChannelLinks() {
         clearTimeout(debounceTimerRef.current);
       }
 
+      // Invalidating an old suggestion cannot wait for the query debounce:
+      // Enter could otherwise replace newly authored text at its old range.
+      const activeQuery = detectPrefixQuery(
+        "#",
+        value,
+        cursorPosition,
+        knownNamesLowerRef.current,
+      );
+      setChannelQuery((current) =>
+        activeQuery?.query === current ? current : null,
+      );
+      if (!activeQuery) {
+        debounceTimerRef.current = null;
+        setChannelSelectedIndex(0);
+        return;
+      }
+      setChannelStartIndex(activeQuery.startIndex);
+
       debounceTimerRef.current = setTimeout(() => {
         debounceTimerRef.current = null;
         const channel = detectPrefixQuery(

@@ -387,6 +387,16 @@ impl QuestionRelay for FakeRelay {
             Ok(Some(answered))
         })
     }
+
+    fn revisions<'a>(&'a self, _: Uuid, d: &'a str) -> BoxFuture<'a, Result<Vec<Event>, String>> {
+        Box::pin(async move {
+            Ok(self
+                .submitted()
+                .into_iter()
+                .filter(|e| e.kind.as_u16() == KIND_ARTIFACT && tag(e, "d") == Some(d))
+                .collect())
+        })
+    }
 }
 
 /// Hold the create request after it starts, as a slow HTTP bridge can do.
@@ -413,6 +423,14 @@ impl QuestionRelay for DelayedCreateRelay {
         d: &'a str,
     ) -> BoxFuture<'a, Result<Option<Event>, String>> {
         self.inner.head(channel, d)
+    }
+
+    fn revisions<'a>(
+        &'a self,
+        channel: Uuid,
+        d: &'a str,
+    ) -> BoxFuture<'a, Result<Vec<Event>, String>> {
+        self.inner.revisions(channel, d)
     }
 }
 
@@ -483,6 +501,10 @@ impl QuestionRelay for ForgedAnswers {
                     .expect("sign")
             }))
         })
+    }
+
+    fn revisions<'a>(&'a self, c: Uuid, d: &'a str) -> BoxFuture<'a, Result<Vec<Event>, String>> {
+        self.0.revisions(c, d)
     }
 }
 
@@ -622,4 +644,101 @@ async fn a_card_withdrawn_elsewhere_resolves_as_withdrawn() {
         .expect("resolved")
         .expect("outcome");
     assert_eq!(outcome, QuestionOutcome::Withdrawn);
+}
+
+#[test]
+fn permission_decision_is_bound_to_original_content_owner_and_chain() {
+    let owner = Keys::generate();
+    let other = Keys::generate();
+    let original_id = EventId::from_hex(&"11".repeat(32)).unwrap();
+    let channel = Uuid::parse_str(CHANNEL).unwrap();
+    let d = Uuid::new_v4().to_string();
+    let card = |command: &str, state: &str| {
+        let prompt = ask_prompt_from_request(&single_question_request()).expect("card");
+        let mut content: serde_json::Map<String, Value> =
+            serde_json::from_str(&prompt.content).expect("content");
+        content.insert("permission".into(), json!({"command": command}));
+        content.insert("state".into(), state.into());
+        content
+    };
+    let original = Value::Object(card("pwd", "open")).to_string();
+    let build = |keys: &Keys, command: &str, state: &str, prev: EventId| {
+        let mut content = card(command, state);
+        if state == "answered" {
+            content.insert("answer".into(), json!({"question_0": ["OAuth"]}));
+            content.insert("answeredBy".into(), keys.public_key().to_hex().into());
+        }
+        EventBuilder::new(
+            Kind::Custom(KIND_ARTIFACT),
+            Value::Object(content).to_string(),
+        )
+        .tags(build_prompt_update_tags(&d, CHANNEL, "t", None, &prev.to_hex()).unwrap())
+        .sign_with_keys(keys)
+        .unwrap()
+    };
+    let decide = |head: &Event, revisions: &[Event]| {
+        owner_permission_decision(
+            &original,
+            head,
+            revisions,
+            Some(owner.public_key()),
+            original_id,
+            channel,
+            &d,
+        )
+        .map(|e| e.id)
+    };
+    let answer = build(&owner, "pwd", "answered", original_id);
+    assert_eq!(decide(&answer, &[]), Some(answer.id));
+    assert_eq!(
+        decide(&build(&other, "pwd", "answered", original_id), &[]),
+        None
+    );
+    assert_eq!(
+        decide(
+            &build(&owner, "rm -rf project", "answered", original_id),
+            &[]
+        ),
+        None
+    );
+    assert_eq!(
+        decide(&build(&owner, "pwd", "open", original_id), &[]),
+        None
+    );
+    assert_eq!(
+        decide(
+            &build(
+                &owner,
+                "pwd",
+                "answered",
+                EventId::from_hex(&"22".repeat(32)).unwrap()
+            ),
+            &[]
+        ),
+        None,
+        "a revision that does not descend from the original card"
+    );
+
+    // A member's revision ahead of the owner cannot displace the decision.
+    let squat = build(&other, "pwd", "open", original_id);
+    let after_squat = build(&owner, "pwd", "answered", squat.id);
+    assert_eq!(
+        decide(&after_squat, std::slice::from_ref(&squat)),
+        Some(after_squat.id)
+    );
+    // Nor can one appended after it.
+    let trailing = build(&other, "pwd", "answered", answer.id);
+    assert_eq!(
+        decide(&trailing, std::slice::from_ref(&answer)),
+        Some(answer.id)
+    );
+    // The first owner decision nearest the original wins.
+    let later = build(&owner, "pwd", "answered", answer.id);
+    assert_eq!(
+        decide(&later, std::slice::from_ref(&answer)),
+        Some(answer.id)
+    );
+    // Missing links never authorize.
+    assert_eq!(decide(&after_squat, &[]), None);
+    assert_eq!(decide(&trailing, &[]), None);
 }

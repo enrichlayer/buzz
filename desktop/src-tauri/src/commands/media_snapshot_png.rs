@@ -158,6 +158,7 @@ mod tests {
             version: 1,
             definition: AgentSnapshotDefinition {
                 session_policy: Default::default(),
+                output_mode: Default::default(),
                 acp_command: None,
                 name: "Tree Trunks".to_string(),
                 source_is_builtin: false,

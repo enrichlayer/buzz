@@ -78,9 +78,28 @@ async fn fetch_event(client: &BuzzClient, event_id: &str) -> Result<serde_json::
 async fn resolve_thread_ref(
     client: &BuzzClient,
     parent_event_id: &str,
+    expected_channel_id: Uuid,
 ) -> Result<ThreadRef, CliError> {
-    let event = fetch_event(client, parent_event_id).await?;
-    thread_ref_from_event(parent_event_id, &event)
+    let raw = fetch_event(client, parent_event_id).await?;
+    let event = crate::commands::message_transport::verify_raw_event(raw.clone()).await?;
+    if !event.id.to_hex().eq_ignore_ascii_case(parent_event_id) {
+        return Err(CliError::Other(format!(
+            "relay returned event {} for requested parent {parent_event_id}",
+            event.id.to_hex()
+        )));
+    }
+    if crate::commands::message_transport::channel_tag(&event)? != expected_channel_id {
+        return Err(CliError::Usage(format!(
+            "reply parent {parent_event_id} does not belong to channel {expected_channel_id}"
+        )));
+    }
+    thread_ref_from_parent_tags(
+        event.id,
+        parent_event_id,
+        &serde_json::to_value(&event.tags).map_err(|error| {
+            CliError::Other(format!("event tags serialization failed: {error}"))
+        })?,
+    )
 }
 
 fn thread_ref_from_event(event_id: &str, event: &serde_json::Value) -> Result<ThreadRef, CliError> {
@@ -608,15 +627,18 @@ pub struct SendMessageParams {
     pub mentions: Vec<String>,
 }
 
-pub async fn cmd_send_message(
+pub(crate) async fn build_signed_message_event(
     client: &BuzzClient,
     mut p: SendMessageParams,
-) -> Result<(), CliError> {
+    read_content_input: bool,
+) -> Result<nostr::Event, CliError> {
     // Allow '-' to read content from stdin. This keeps callers from having to
     // jam shell-metacharacter-heavy text (backticks, $vars, etc.) through argv
     // quoting — the source of countless self-inflicted command-substitution
     // bugs for agent and human users alike.
-    p.content = read_or_stdin(&p.content)?;
+    if read_content_input {
+        p.content = read_or_stdin(&p.content)?;
+    }
     validate_content_size(&p.content)?;
     if let Some(ref r) = p.reply_to {
         validate_hex64(r)?;
@@ -673,7 +695,7 @@ pub async fn cmd_send_message(
     // Build thread ref if replying. `--reply-to` is the immediate parent; the
     // thread root is derived from the parent's NIP-10 tags via the relay.
     let thread_ref = if let Some(ref r) = p.reply_to {
-        Some(resolve_thread_ref(client, r).await?)
+        Some(resolve_thread_ref(client, r, channel_uuid).await?)
     } else {
         None
     };
@@ -742,7 +764,11 @@ pub async fn cmd_send_message(
         }
     };
 
-    let event = client.sign_event(builder)?;
+    client.sign_event(builder)
+}
+
+pub async fn cmd_send_message(client: &BuzzClient, p: SendMessageParams) -> Result<(), CliError> {
+    let event = build_signed_message_event(client, p, true).await?;
     let emitted_mentions = event_mention_pubkeys(&event);
     let resp = client.submit_event(event).await?;
     let mut output: serde_json::Value = serde_json::from_str(&normalize_write_response(&resp))
@@ -811,7 +837,7 @@ pub async fn cmd_send_diff_message(client: &BuzzClient, p: SendDiffParams) -> Re
     // `--reply-to` is the immediate parent; the thread root is derived from
     // the parent's NIP-10 tags via the relay.
     let thread_ref = if let Some(r) = &p.reply_to {
-        Some(resolve_thread_ref(client, r).await?)
+        Some(resolve_thread_ref(client, r, channel_uuid).await?)
     } else {
         None
     };
@@ -960,6 +986,42 @@ pub async fn dispatch(
             )
             .await
         }
+        MessagesCmd::Sign {
+            channel,
+            content,
+            content_file,
+            kind,
+            reply_to,
+            broadcast,
+            mentions,
+        } => {
+            crate::commands::message_transport::cmd_sign_message(
+                client,
+                crate::commands::message_transport::SignMessageParams {
+                    channel_id: channel,
+                    content,
+                    content_file,
+                    kind,
+                    reply_to,
+                    broadcast,
+                    mentions,
+                },
+            )
+            .await
+        }
+        MessagesCmd::PublishEvent {
+            channel,
+            reply_to,
+            event_file,
+        } => {
+            crate::commands::message_transport::cmd_publish_event(
+                client,
+                &channel,
+                reply_to.as_deref(),
+                &event_file,
+            )
+            .await
+        }
         MessagesCmd::SendDiff {
             channel,
             diff,
@@ -1024,6 +1086,21 @@ pub async fn dispatch(
                 since,
                 kinds.as_deref(),
                 format,
+            )
+            .await
+        }
+        MessagesCmd::GetVerified {
+            channel,
+            max_events,
+            since,
+            kinds,
+        } => {
+            crate::commands::message_transport::cmd_get_verified(
+                client,
+                &channel,
+                max_events,
+                since,
+                kinds.as_deref(),
             )
             .await
         }
