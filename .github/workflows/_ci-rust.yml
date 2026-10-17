@@ -124,6 +124,10 @@ jobs:
       # repo-root rust-toolchain.toml, which the runner's preinstalled rustup
       # honors on demand; the host triple already is x86_64-pc-windows-msvc.
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        # Cache transport is optional; its post-save must not cancel passed
+        # Windows validation by exhausting the job budget (DEV-13288).
+        timeout-minutes: 5
+        continue-on-error: true
         with:
           workspaces: |
             .
