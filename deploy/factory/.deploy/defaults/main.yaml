@@ -1,0 +1,22 @@
+---
+# Same singleton host and infractl/Quadlet lifecycle as tools-factory-worker.
+buzz_pilot_release_name: buzz-relay-pilot
+buzz_pilot_hostname: buzz-pilot.enrichlayer.com
+buzz_pilot_http_port: 13415
+# Supply immutable refs from the remote build/registry receipt at apply time.
+buzz_pilot_image: ""
+buzz_pilot_source_sha: ""
+buzz_pilot_postgres_image: ""
+buzz_pilot_redis_image: ""
+buzz_pilot_runtime: >-
+  {{ lookup('community.hashi_vault.vault_kv2_get',
+            'service/buzz-relay-pilot/runtime',
+            engine_mount_point='secret').secret }}
+buzz_pilot_media: >-
+  {{ lookup('community.hashi_vault.vault_kv2_get',
+            'r2/buzz-pilot-media',
+            engine_mount_point='secret').secret }}
+buzz_pilot_registry_auth: >-
+  {{ lookup('community.hashi_vault.vault_kv2_get',
+            'service/buzz-relay-pilot/registry',
+            engine_mount_point='secret').secret['auth-json'] }}
