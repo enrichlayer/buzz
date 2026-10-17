@@ -626,9 +626,23 @@ export const MessageRow = React.memo(
         </div>
       ) : null;
 
+    const authorContent = message.pubkey ? (
+      <MessageAuthorWithIndicators
+        authorName={message.author}
+        ownerPubkey={message.ownerPubkey}
+        pubkey={message.pubkey}
+        role={profilePopoverRole}
+      >
+        {authorNode}
+      </MessageAuthorWithIndicators>
+    ) : (
+      authorNode
+    );
     const headerNode = isDisplayedAsContinuation ? null : (
-      // In narrow threads, reserve the action rail beside the author only;
-      // owner and timestamp metadata can use the full width below it.
+      // pe reserves the measured action-rail footprint (0px until measured) so
+      // header content ends before the rail's left edge in every rail state.
+      // In narrow threads, reserve the rail beside the author only; owner and
+      // timestamp metadata can use the full width below it.
       <MessageHeaderRow
         className={
           layoutVariant === "thread-reply"
@@ -636,26 +650,13 @@ export const MessageRow = React.memo(
             : "pe-[var(--message-action-rail-width,0px)]"
         }
       >
-        <span
-          className={cn(
-            "inline-flex min-w-0",
-            layoutVariant === "thread-reply" &&
-              "basis-full pe-[var(--message-action-rail-width,0px)]",
-          )}
-        >
-          {message.pubkey ? (
-            <MessageAuthorWithIndicators
-              authorName={message.author}
-              ownerPubkey={message.ownerPubkey}
-              pubkey={message.pubkey}
-              role={profilePopoverRole}
-            >
-              {authorNode}
-            </MessageAuthorWithIndicators>
-          ) : (
-            authorNode
-          )}
-        </span>
+        {layoutVariant === "thread-reply" ? (
+          <span className="inline-flex min-w-0 basis-full pe-[var(--message-action-rail-width,0px)]">
+            {authorContent}
+          </span>
+        ) : (
+          authorContent
+        )}
         {/* Author is not a segment: "Alice 9:53 AM" needs no divider. */}
         <MessageMetaSegments
           segments={[
