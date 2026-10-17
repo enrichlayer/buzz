@@ -1,5 +1,5 @@
-import { useThreadAnnotationSubmit } from "./useThreadAnnotationSubmit";
 import { latestPromptSuggestions } from "../lib/promptSuggestions";
+import { useThreadAnnotationSubmit } from "./useThreadAnnotationSubmit";
 import * as React from "react";
 import {
   ThreadSessionTimelineProvider,

@@ -1,4 +1,7 @@
-import { stripPromptSuggestionFooter } from "@/features/messages/lib/promptSuggestions";
+import {
+  isKnownAgentAuthor,
+  stripPromptSuggestionFooter,
+} from "@/features/messages/lib/promptSuggestions";
 import {
   resolveUserLabel,
   type UserProfileLookup,
@@ -178,10 +181,14 @@ function feedHeadline(item: FeedItem, groupItems: readonly FeedItem[] = []) {
   }
 }
 
-function feedPreview(item: FeedItem, profiles?: UserProfileLookup) {
+function feedPreview(
+  item: FeedItem,
+  profiles?: UserProfileLookup,
+  agentPubkeys?: ReadonlySet<string>,
+) {
   const content = stripPromptSuggestionFooter(
     item.content,
-    profiles?.[item.pubkey.toLowerCase()]?.isAgent === true,
+    isKnownAgentAuthor(item.pubkey, { agentPubkeys, profiles }),
   ).trim();
   if (content.length > 0) {
     return content;
@@ -464,6 +471,7 @@ export function groupInboxItems(
 }
 
 export function buildInboxItems({
+  agentPubkeys,
   channels,
   currentPubkey,
   feed,
@@ -472,6 +480,8 @@ export function buildInboxItems({
   getThreadReadAt,
   profiles,
 }: {
+  /** Known agent pubkeys (normalized); widens profile `isAgent` for previews. */
+  agentPubkeys?: ReadonlySet<string>;
   channels?: InboxChannel[];
   currentPubkey?: string;
   feed?: HomeFeedResponse;
@@ -593,7 +603,7 @@ export function buildInboxItems({
         preferResolvedSelfLabel: true,
       });
       const subject = feedHeadline(item, group.items);
-      const preview = feedPreview(item, profiles);
+      const preview = feedPreview(item, profiles, agentPubkeys);
       const { mentionNames, mentionPubkeysByName } = resolveMentionProps(
         item.tags,
         profiles,

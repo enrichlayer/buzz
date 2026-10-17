@@ -76,6 +76,33 @@ export function parsePromptSuggestions(body: string): {
   return { body: body.slice(0, match.index).trimEnd(), suggestions };
 }
 
+/**
+ * Agent provenance for raw-content previews. Mirrors the timeline formatter's
+ * `role === "bot" || profile.isAgent` check: a pubkey counts as an agent when
+ * it is in the community known-agent baseline (managed ∪ relay agents), its
+ * profile lookup carries `isAgent`, or a channel roster marks it as a bot.
+ */
+export function isKnownAgentAuthor(
+  pubkey: string,
+  sources: {
+    agentPubkeys?: ReadonlySet<string>;
+    profiles?: Readonly<Record<string, { isAgent?: boolean } | undefined>>;
+    members?: readonly { pubkey: string; role?: string; isAgent?: boolean }[];
+  },
+): boolean {
+  const key = pubkey.trim().toLowerCase();
+  if (!key) return false;
+  if (sources.agentPubkeys?.has(key)) return true;
+  if (sources.profiles?.[key]?.isAgent === true) return true;
+  return (
+    sources.members?.some(
+      (member) =>
+        member.pubkey.trim().toLowerCase() === key &&
+        (member.role === "bot" || member.isAgent === true),
+    ) ?? false
+  );
+}
+
 /** Only a known signing agent may supply hidden presentation metadata. */
 export function stripPromptSuggestionFooter(
   body: string,

@@ -1,0 +1,10 @@
+name: buzz-relay-pilot
+zone_id: 72cdcef7fc4b16e443687c00a9bb462b
+target: ovh-us-east-vin-1b
+ingress:
+  - hostname: buzz-pilot.enrichlayer.com
+    service: http://localhost:13415
+    # Native clients and agents authenticate with Buzz's signed Nostr protocol.
+    # Browser-only Cloudflare Access would prevent their WebSocket handshake.
+    access: false
+  - service: http_status:404

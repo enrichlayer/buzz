@@ -250,7 +250,9 @@ export function SelectionAnnotationEditor({
               type="button"
             >
               {submitting
-                ? "Sending…"
+                ? selection.scope
+                  ? "Sending…"
+                  : "Copying…"
                 : error
                   ? "Retry"
                   : selection.scope

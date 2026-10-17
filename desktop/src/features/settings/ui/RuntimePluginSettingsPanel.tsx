@@ -1,5 +1,6 @@
 import { BuzzIcon, PluginIdentity } from "@el/buzz-ui";
 import elBuzzManifest from "../../../../public/plugins/el-buzz.json";
+import { DemoPluginChecklist } from "./DemoPluginChecklist";
 import * as React from "react";
 import { FileJson, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
@@ -89,6 +90,7 @@ export function RuntimePluginSettingsPanel() {
         description="Install themes and content renderers. Plugin definitions contain data only; they cannot run scripts, access the network, or send messages."
         title="Plugins"
       />
+      <DemoPluginChecklist />
       <SettingsOptionGroupList>
         {(state.loadError || state.persistenceError) && (
           <div

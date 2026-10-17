@@ -446,7 +446,7 @@ function MessageComposerImpl({
     if (!replyTarget || composerDisabled) return;
     richText.focusPreserve();
   }, [composerDisabled, replyTarget, richText.focusPreserve]);
-  useComposerAutofocus(richText.focus, effectiveDraftKey, composerDisabled);
+  useComposerAutofocus(richText.editor, effectiveDraftKey, composerDisabled);
   const applyAutocompleteEdit = React.useCallback(
     (edit: AutocompleteEdit) => {
       richText.replacePlainTextRange(
@@ -879,7 +879,11 @@ function MessageComposerImpl({
             <PromptSuggestions
               key={`${channelId}:${draftKey}:${suggestedPrompts.messageId}`}
               source={suggestedPrompts}
-              onDismiss={suggestionDismissal.dismiss}
+              onDismiss={() => {
+                suggestionDismissal.dismiss();
+                // The chips unmount; keep keyboard focus in the composer.
+                richText.focusEnd();
+              }}
               onInsert={(suggestion) => {
                 if (
                   !richText.editor ||

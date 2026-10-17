@@ -8,20 +8,26 @@ floats above the content without a backdrop or document reflow. Human messages,
 agent responses, user prompts, tools, plans, status text, code/diffs and previews
 share this interaction. Selections may cross multiple rendered blocks.
 
-One `AnnotationWorkspace` owns selection handling per mounted community.
+One app-wide `AnnotationWorkspace` owns selection handling across route and
+community changes. Mounted views register their own sources and conversation
+scopes, then unregister them during cleanup so a stale destination cannot
+survive navigation.
 `SourceAnnotation` adds provenance when the source has a stable identity; it no
-longer gates annotation availability. Unregistered content retains the exact
-selected text and its view context. Editable inputs and unsent composer drafts
-keep their existing selection behavior. Modal previews contain the editor in
+longer gates annotation availability. Unregistered content retains the selected
+text, trimmed of surrounding whitespace, and its view context. Editable inputs
+and unsent composer drafts keep their existing selection behavior. Modal previews contain the editor in
 their own focus boundary.
 
-The nearest conversation supplies the send destination. Selections outside a
-conversation use the active conversation, with its destination displayed before
-sending. With no conversation open, the same editor offers **Copy annotation**.
+The nearest registered conversation scope supplies the send destination.
+Selections outside a conversation have no send scope, so the same editor offers
+**Copy annotation** instead of routing through whichever conversation happens
+to be active.
 Source provenance and the captured send destination are separate. Removing the
 source or destination dismisses the editor without sending, and a late send
-completion cannot dismiss a newer draft. Switching communities replaces the
-whole registry; there is no shared module-level selection state.
+completion cannot dismiss a newer draft. Switching communities keeps the
+app-wide workspace mounted while view cleanup removes the old community's
+registered sources and destinations; there is no shared module-level selection
+state.
 
 The anchor follows the last selected visual line for a forward selection and
 the first for a backward selection. A cloned DOM Range follows scrolling and
@@ -43,11 +49,11 @@ native bridge; native installation checks are recorded separately.
 
 ## Integration with PR #4
 
-This branch includes `codex/DEV-11526-buzz-output-modes` at `5ae03ed` and
-preserves its integrated transcript and expandable annotation quote receipts.
+This branch builds on `codex/DEV-11526-buzz-output-modes` (merged to `main` as
+PR #4) and preserves its integrated transcript and expandable annotation quote receipts.
 Each interleaved activity fragment registers its own annotation destination.
 New receipts use a neutral Selection label; existing Response receipts continue
-to parse and render. The PR targets that branch until its dependency merges.
+to parse and render. The PR targets `main`.
 
 The four overlapping files were reconciled in this checkout without editing the
 peer checkout. TypeScript, the e2e frontend build and 16 focused annotation and

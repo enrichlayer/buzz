@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { formatTimelineMessages } from "./formatTimelineMessages.ts";
 import {
+  isKnownAgentAuthor,
   latestPromptSuggestions,
   parsePromptSuggestions,
   stripPromptSuggestionFooter,
@@ -264,4 +265,67 @@ test("preview consumers preserve human and unknown authors, hiding only agent me
     });
     assert.equal(inbox.preview, expected);
   }
+});
+
+test("preview agent provenance matches the timeline: known set, profile flag or bot role", () => {
+  const content = footer({ version: 1, suggestions: [] });
+  assert.equal(isKnownAgentAuthor("ABC", {}), false);
+  assert.equal(
+    isKnownAgentAuthor("ABC", { agentPubkeys: new Set(["abc"]) }),
+    true,
+  );
+  assert.equal(
+    isKnownAgentAuthor("abc", { profiles: { abc: { isAgent: true } } }),
+    true,
+  );
+  assert.equal(
+    isKnownAgentAuthor("abc", {
+      profiles: { abc: { isAgent: false } },
+      members: [{ pubkey: "ABC", role: "bot" }],
+    }),
+    true,
+  );
+  assert.equal(
+    isKnownAgentAuthor("abc", {
+      members: [
+        { pubkey: "abc", role: "member" },
+        { pubkey: "other", role: "bot" },
+      ],
+    }),
+    false,
+  );
+  const item = {
+    id: "preview",
+    pubkey: "relay-agent",
+    kind: 9,
+    content,
+    createdAt: 1,
+    channelId: "channel",
+    channelName: "Trial",
+    tags: [["h", "channel"]],
+    category: "mention",
+  };
+  const feed = {
+    feed: {
+      mentions: [item],
+      needsAction: [],
+      activity: [],
+      agentActivity: [],
+    },
+    meta: {},
+  };
+  // A directory-only agent whose profile lacks the agent flag.
+  const [stripped] = buildInboxItems({
+    agentPubkeys: new Set(["relay-agent"]),
+    channels: [],
+    profiles: { "relay-agent": { isAgent: false } },
+    feed,
+  });
+  assert.equal(stripped.preview, "Done.");
+  const [kept] = buildInboxItems({
+    agentPubkeys: new Set(["someone-else"]),
+    channels: [],
+    feed,
+  });
+  assert.equal(kept.preview, content);
 });

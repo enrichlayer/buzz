@@ -37,7 +37,7 @@ export function useThreadAnnotationSubmit({
           channelId
       ) {
         throw new Error(
-          "This response is no longer available for feedback in this thread.",
+          "This selection can't receive feedback in this thread right now.",
         );
       }
       await onSend(

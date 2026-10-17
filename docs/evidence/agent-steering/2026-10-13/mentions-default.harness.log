@@ -1,0 +1,38 @@
+2026-10-13T12:13:20.538710Z  INFO buzz_acp: buzz-acp starting: relay=ws://127.0.0.1:62349 pubkey=79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798 agent_cmd=/Users/ytspar/miniconda3/bin/python3 /Users/ytspar/.codex/worktrees/agent-steering-regression/buzz-floating-annotations/crates/buzz-acp/tests/fixtures/steering_agent.py mcp_cmd= idle_timeout=60s max_turn=180s agents=1 heartbeat=0s subscribe=Mentions dedup=Queue session_policy=thread meh=Steer ignore_self=true context_limit=12 max_turns_per_session=0 presence=false typing=false memory=false model=(agent default) permission_mode=bypassPermissions respond_to=anyone
+2026-10-13T12:13:20.655129Z  INFO buzz_acp: agent initialized: {"_meta":{"steering":{"supported":true}},"agentCapabilities":{},"agentInfo":{"name":"deterministic-steering-probe"},"protocolVersion":2} agent=0
+2026-10-13T12:13:20.655194Z  INFO buzz_acp: agent initialized agent=0 name="deterministic-steering-probe" steering_supported=true
+2026-10-13T12:13:20.655243Z  INFO buzz_acp: agent_pool_ready agents=1
+2026-10-13T12:13:20.680065Z DEBUG buzz_acp::relay: connected to relay at ws://127.0.0.1:62349
+2026-10-13T12:13:20.741580Z DEBUG buzz_acp::relay: sent AUTH response for challenge
+2026-10-13T12:13:21.061519Z DEBUG buzz_acp::relay: NIP-42 authentication successful (event c14500237393ed582eb0aba8a56a81101b3b1afcef854f24fa6c8e896b46f848)
+2026-10-13T12:13:21.069215Z DEBUG buzz_acp::relay: sent ping to relay
+2026-10-13T12:13:21.079335Z  INFO buzz_acp: connected to relay at ws://127.0.0.1:62349
+2026-10-13T12:13:21.082553Z DEBUG buzz_acp::relay: startup watermark set to 1791893600
+2026-10-13T12:13:21.212939Z  INFO buzz_acp: subscribed to membership notifications
+2026-10-13T12:13:21.213091Z  INFO buzz_acp: no agent owner configured
+2026-10-13T12:13:21.213686Z DEBUG buzz_acp::relay: subscribed to membership notifications (since=1791893595)
+2026-10-13T12:13:21.329685Z DEBUG buzz_acp::relay: EOSE for subscription membership-notif
+2026-10-13T12:13:22.265567Z DEBUG buzz_acp::relay: discovered 1 channel(s)
+2026-10-13T12:13:22.265644Z  INFO buzz_acp: discovered 1 channel(s)
+2026-10-13T12:13:22.265748Z DEBUG buzz_acp::relay: queued subscribe for channel 017b00fd-6258-4116-a75d-625f71724f18
+2026-10-13T12:13:22.265764Z  INFO buzz_acp: subscribed to channel 017b00fd-6258-4116-a75d-625f71724f18
+2026-10-13T12:13:22.267076Z DEBUG buzz_acp::relay: subscribed to channel 017b00fd-6258-4116-a75d-625f71724f18 (with since filter)
+2026-10-13T12:13:22.268183Z DEBUG buzz_acp: membership notification: channel already subscribed channel_id=017b00fd-6258-4116-a75d-625f71724f18
+2026-10-13T12:13:22.309173Z DEBUG buzz_acp::relay: EOSE for subscription ch-017b00fd-6258-4116-a75d-625f71724f18
+2026-10-13T12:13:22.941550Z DEBUG buzz_acp: admitted event — resolved session scope channel_id=017b00fd-6258-4116-a75d-625f71724f18 scope=thread:62d506f4 thread_scoped=true thread_root="62d506f4f374e3fd9b48e77d8314770b5e60b3686d52006cb6172c874ce1097b" policy=thread
+2026-10-13T12:13:22.943299Z DEBUG buzz_acp: agent_claimed agent=0 channel=017b00fd-6258-4116-a75d-625f71724f18 scope=thread:62d506f4 affinity_hit=false
+2026-10-13T12:13:22.943406Z DEBUG buzz_acp: dispatch_pending dispatched=1 queue_depth=0
+2026-10-13T12:13:23.446157Z DEBUG buzz_acp::pool: reaction add timed out event_id="62d506f4f374e3fd9b48e77d8314770b5e60b3686d52006cb6172c874ce1097b" emoji="👀"
+2026-10-13T12:13:25.006441Z DEBUG buzz_acp: admitted event — resolved session scope channel_id=017b00fd-6258-4116-a75d-625f71724f18 scope=thread:62d506f4 thread_scoped=true thread_root="62d506f4f374e3fd9b48e77d8314770b5e60b3686d52006cb6172c874ce1097b" policy=thread
+2026-10-13T12:13:25.018109Z DEBUG buzz_acp: dispatch_pending dispatched=0 queue_depth=0
+2026-10-13T12:13:25.019542Z  INFO buzz_acp::acp: steer success: renewed hard deadline (180s from now)
+2026-10-13T12:13:25.019867Z  INFO buzz_acp: non-cancelling steer ack received channel=017b00fd-6258-4116-a75d-625f71724f18 event_id=9a8662b10d63d83acc33c47a44e61baa39bbf5c3ad73523bff45366030198894 ack=Ok(Success { session_id: "probe-session" }) release_withheld=false drop_withheld=true signal_fallback=false
+2026-10-13T12:13:25.019924Z  INFO buzz_acp::queue: extending in-flight deadline by 180s + 100s buffer channel_id=017b00fd-6258-4116-a75d-625f71724f18 scope=thread:62d506f4
+2026-10-13T12:13:25.019955Z DEBUG buzz_acp: dispatch_pending dispatched=0 queue_depth=0
+2026-10-13T12:13:25.123636Z DEBUG buzz_acp: agent_returned agent=0 outcome="ok"
+2026-10-13T12:13:25.123751Z DEBUG buzz_acp: dispatch_pending dispatched=0 queue_depth=0
+2026-10-13T12:13:25.386440Z  INFO buzz_acp: shutting down
+2026-10-13T12:13:25.386512Z  INFO buzz_acp: shutdown: waiting for in-flight prompts
+2026-10-13T12:13:25.387629Z DEBUG buzz_acp: reaped idle agent on shutdown agent=0
+2026-10-13T12:13:25.388144Z DEBUG buzz_acp::relay: background task shutting down — sending close frame
+2026-10-13T12:13:25.388800Z  INFO buzz_acp: buzz-acp stopped
