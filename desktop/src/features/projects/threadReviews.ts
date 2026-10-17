@@ -1,6 +1,7 @@
 import type { RelayEvent } from "@/shared/api/types";
 import type { RelaySubscriptionFilter } from "@/shared/api/relayClientShared";
 import { eventToProjectPullRequest } from "./projectPullRequests.mjs";
+import { fetchTrustedReviewUpdates } from "./projectReviewFetch";
 import { sessionReviewContext } from "./sessionReviewContext";
 
 type FetchEvents = (filter: RelaySubscriptionFilter) => Promise<RelayEvent[]>;
@@ -32,14 +33,17 @@ export async function fetchThreadReviews(
   if (!scoped.length) return [];
   const ids = scoped.map((root) => root.id);
   const [updates, statuses] = await Promise.all([
-    fetchEvents({ kinds: [1619], "#E": ids, limit: LIMIT }),
+    // Uppercase #E is filtered after the relay's SQL LIMIT, so a capped #E
+    // query silently drops this review's updates once other reviews have
+    // more recent ones. Walk the trusted signers' updates instead.
+    fetchTrustedReviewUpdates(scoped, fetchEvents),
     fetchEvents({
       kinds: [1630, 1631, 1632, 1633],
       "#e": ids,
       limit: LIMIT,
     }),
   ]);
-  if (updates.length >= LIMIT || statuses.length >= LIMIT)
+  if (statuses.length >= LIMIT)
     throw new Error(
       "This thread's review history is too large for a summary. Open Projects for the full review.",
     );

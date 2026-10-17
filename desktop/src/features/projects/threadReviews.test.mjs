@@ -41,6 +41,7 @@ test("thread discovery opens the same durable review and follows only trusted co
   };
   const rogue = {
     ...updated,
+    id: "0".repeat(64),
     pubkey: "f".repeat(64),
     created_at: 3,
     tags: [
@@ -65,7 +66,8 @@ test("thread discovery opens the same durable review and follows only trusted co
     "#e": [thread],
     limit: 200,
   });
-  assert.deepEqual(requests[1]["#E"], [root.id]);
+  assert.equal(requests[1]["#E"], undefined);
+  assert.deepEqual(requests[1].authors, [author, "c".repeat(64)].sort());
   assert.deepEqual(
     requests[2].kinds,
     [1630, 1631, 1632, 1633],
@@ -175,4 +177,61 @@ test("Git reviews remain discoverable when provenance h-tags are stored globally
   );
   assert.equal(reviews.length, 1);
   assert.equal(reviews[0].id, root.id);
+});
+
+test("newer updates to other reviews cannot hide this review's latest commit", async () => {
+  // Faithful relay ordering: kinds/authors/time in SQL, LIMIT, then #E.
+  const update = (id, pubkey, created_at, target, commit) => ({
+    ...root,
+    id,
+    pubkey,
+    kind: 1619,
+    created_at,
+    tags: [
+      ["a", repo],
+      ["E", target],
+      ["c", commit],
+    ],
+  });
+  const all = [
+    root,
+    update("1".repeat(64), author, 2, root.id, "2".repeat(40)),
+    ...Array.from({ length: 300 }, (_, i) =>
+      update(
+        `other-${i}`,
+        "9".repeat(64),
+        10 + i,
+        "8".repeat(64),
+        "9".repeat(40),
+      ),
+    ),
+  ];
+  const reviews = await fetchThreadReviews(
+    async (filter) => {
+      const page = all
+        .filter(
+          (event) =>
+            filter.kinds.includes(event.kind) &&
+            (!filter.authors || filter.authors.includes(event.pubkey)) &&
+            (filter.until === undefined || event.created_at <= filter.until) &&
+            (!filter["#e"] ||
+              event.tags.some(
+                (tag) => tag[0] === "e" && filter["#e"].includes(tag[1]),
+              )),
+        )
+        .sort((a, b) => b.created_at - a.created_at)
+        .slice(0, filter.limit);
+      return page.filter(
+        (event) =>
+          !filter["#E"] ||
+          event.tags.some(
+            (tag) => tag[0] === "E" && filter["#E"].includes(tag[1]),
+          ),
+      );
+    },
+    channel,
+    thread,
+  );
+  assert.equal(reviews.length, 1);
+  assert.equal(reviews[0].commit, "2".repeat(40));
 });
