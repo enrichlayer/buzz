@@ -13,27 +13,33 @@ refuse_running() {
 }
 refuse_running
 # One installer at a time: concurrent runs could delete each other's backup
-# before a failed placement restores it. mkdir is atomic; macOS has no flock.
+# before a failed placement restores it. macOS has no flock. A symlink whose
+# target is the holder PID is created atomically together with its owner, so
+# no lock can exist without a PID to check, and a crash leaves a dead PID that
+# the next run recovers.
 LOCK="$HOME/Applications/.buzz-local-install.lock"
 mkdir -p "$HOME/Applications"
-if ! mkdir "$LOCK" 2>/dev/null; then
-  holder="$(cat "$LOCK/pid" 2>/dev/null || true)"
-  if [[ -z "$holder" ]]; then
-    # mkdir won the lock before its holder could publish the PID. Never steal
-    # an empty lock directory: the owner is still inside the acquisition window.
-    echo "Another Buzz Local Coding install is acquiring the installer lock. Wait for it to finish." >&2
+acquire_lock() { ln -s "$$" "$LOCK" 2>/dev/null && [[ "$(readlink "$LOCK" 2>/dev/null)" == "$$" ]]; }
+release_lock() { if [[ "$(readlink "$LOCK" 2>/dev/null)" == "$$" ]]; then rm -f "$LOCK"; fi; }
+if ! acquire_lock; then
+  if [[ -L "$LOCK" ]]; then
+    holder="$(readlink "$LOCK" 2>/dev/null || true)"
+  elif [[ -d "$LOCK" ]]; then
+    # Directory lock from an earlier version of this installer.
+    holder="$(cat "$LOCK/pid" 2>/dev/null || true)"
+  else
+    echo "Unexpected file at $LOCK; remove it if no installer is running." >&2
     exit 1
   fi
-  if [[ -n "$holder" ]] && kill -0 "$holder" 2>/dev/null; then
+  if [[ "$holder" =~ ^[0-9]+$ ]] && kill -0 "$holder" 2>/dev/null; then
     echo "Another Buzz Local Coding install is running (pid $holder). Wait for it to finish." >&2
     exit 1
   fi
   # The previous holder exited without releasing; take the lock over.
   rm -rf "$LOCK"
-  mkdir "$LOCK" || { echo "Could not acquire $LOCK; another install just started." >&2; exit 1; }
+  acquire_lock || { echo "Could not acquire $LOCK; another install just started." >&2; exit 1; }
 fi
-echo $$ > "$LOCK/pid"
-trap 'rm -rf "$LOCK"' EXIT
+trap release_lock EXIT
 . ./bin/activate-hermit
 pnpm install --frozen-lockfile
 TARGET="$(rustc -vV | sed -n 's/^host: //p')"
@@ -46,7 +52,7 @@ for binary in buzz-acp buzz-agent buzz-backend-kubernetes buzz-dev-mcp git-crede
   chmod +x "desktop/src-tauri/binaries/$binary-$TARGET"
 done
 CONFIG="$(mktemp "${TMPDIR:-/tmp}/buzz-local-config.XXXXXX")"
-trap 'rm -rf "$LOCK"; rm -f "$CONFIG"' EXIT
+trap 'release_lock; rm -f "$CONFIG"' EXIT
 # Stable lane identity: updates retain this lane's profile, never production's.
 node desktop/scripts/demo-build-config.mjs 'Local Coding' "$CONFIG" 0000000000000001 >/dev/null
 cd desktop
@@ -56,7 +62,7 @@ APP="$DESKTOP_TARGET/debug/bundle/macos/Buzz Local Coding.app"
 DEST="$HOME/Applications/Buzz Local Coding.app"
 mkdir -p "$HOME/Applications"
 STAGED="$(mktemp -d "$HOME/Applications/.buzz-local-install.XXXXXX")"
-trap 'rm -rf "$LOCK"; rm -f "$CONFIG"; if [[ -d "$STAGED" ]]; then echo "Staged build retained for recovery: $STAGED" >&2; fi' EXIT
+trap 'release_lock; rm -f "$CONFIG"; if [[ -d "$STAGED" ]]; then echo "Staged build retained for recovery: $STAGED" >&2; fi' EXIT
 ditto "$APP" "$STAGED/Buzz Local Coding.app"
 BUNDLE="$STAGED/Buzz Local Coding.app"
 # Sign nested code first, without entitlements: camera, microphone and
@@ -83,15 +89,23 @@ if ! mv "$STAGED/Buzz Local Coding.app" "$DEST"; then
 fi
 rmdir "$STAGED"
 echo "Installed: $DEST"
-# Keep only the newest backup; older ones are superseded copies of earlier installs.
+# Keep only the newest backup; older ones are superseded copies of earlier
+# installs. Only directories this installer could have produced (empty, or
+# holding exactly the app bundle) are candidates; anything else is left alone.
+installer_backup() {
+  [[ -d "$1" && ! -L "$1" ]] || return 1
+  local entries
+  entries="$(ls -A "$1")"
+  [[ -z "$entries" || ( "$entries" == "Buzz Local Coding.app" && -d "$1/Buzz Local Coding.app" ) ]]
+}
 KEEP="$BACKUP"
 if [[ -z "$KEEP" ]]; then
   for old in "$HOME"/Applications/.buzz-local-backup.*; do
-    if [[ -d "$old" && ( -z "$KEEP" || "$old" -nt "$KEEP" ) ]]; then KEEP="$old"; fi
+    if installer_backup "$old" && [[ -d "$old/Buzz Local Coding.app" ]] && [[ -z "$KEEP" || "$old" -nt "$KEEP" ]]; then KEEP="$old"; fi
   done
 fi
 for old in "$HOME"/Applications/.buzz-local-backup.*; do
-  if [[ -d "$old" && "$old" != "$KEEP" ]]; then rm -rf "$old"; fi
+  if [[ "$old" != "$KEEP" ]] && installer_backup "$old"; then rm -rf "$old"; fi
 done
 if [[ -n "$KEEP" && -d "$KEEP" ]]; then
   echo "Latest previous app backup: $KEEP/Buzz Local Coding.app (older backups removed)"

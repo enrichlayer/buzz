@@ -44,8 +44,8 @@ export function FencedCodeBlock({ children }: { children?: React.ReactNode }) {
         {DEMO_PLUGINS.some((p) => p.fence === language) && (
           <p className="text-sm text-muted-foreground" role="note">
             Coding demo renderer is missing or disabled. Open Settings → Plugins
-            to check compatibility and install its manifest. Source is shown
-            below.
+            to enable it, or install its manifest if it is missing. Source is
+            shown below.
           </p>
         )}
         {codeBlock}

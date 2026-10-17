@@ -5,25 +5,21 @@ export const DEMO_PLUGINS = [
     name: "Review card",
     fence: "buzz-review-card",
     ids: ["example.review-card"],
-    minimum: "1.0.0",
   },
   {
     name: "Feedback card",
     fence: "buzz-feedback-card",
     ids: ["example.feedback-card"],
-    minimum: "1.0.0",
   },
   {
     name: "Runbook",
     fence: "buzz-runbook",
     ids: ["example.runbook"],
-    minimum: "1.0.0",
   },
   {
     name: "Session demo",
     fence: "buzz-session-test",
     ids: ["demo.session-card", "test.session-card"],
-    minimum: "1.0.0",
   },
 ] as const;
 export function demoPluginStatus(

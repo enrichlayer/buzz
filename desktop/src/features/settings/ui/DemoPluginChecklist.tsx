@@ -8,7 +8,7 @@ export function DemoPluginChecklist() {
   const { plugins, loadError } = useRuntimePluginState();
   return (
     <div className="rounded-xl border p-4 text-sm space-y-2">
-      <h3 className="font-medium">Coding demo compatibility</h3>
+      <h2 className="font-medium">Coding demo compatibility</h2>
       <p>
         These optional renderers are installed separately on each desktop.
         Required versions: stable 1.x (minimum 1.0.0).

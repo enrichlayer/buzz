@@ -51,7 +51,7 @@ export function LocalBuildCard() {
       className="rounded-xl border p-4 space-y-3 text-sm"
       aria-label="Local build identity"
     >
-      <h3 className="font-medium">Installed build and coding demo channel</h3>
+      <h2 className="font-medium">Installed build and coding demo channel</h2>
       <p>Channel: {DEMO_CHANNEL}</p>
       {info && (
         <p>

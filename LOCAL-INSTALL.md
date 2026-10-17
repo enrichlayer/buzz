@@ -7,9 +7,10 @@ This branch is the local coding-demo channel, separate from the signed release c
 
 ## Prerequisites
 
-This local installer is supported on macOS. Install Git, Bash, Python 3,
-Hermit (the repository's pinned Rust/Node/pnpm/just toolchain), and Xcode Command
-Line Tools. This desktop-only path does not require Docker, a local relay,
+This local installer is supported on macOS. Install Git, Bash, Python 3 and
+Xcode Command Line Tools. Hermit ships in the repository: sourcing
+`bin/activate-hermit` bootstraps the pinned Rust/Node/pnpm/just toolchain, so
+no separate Hermit installation is needed. This desktop-only path does not require Docker, a local relay,
 migrations, or a new `.env`. Linux/Windows installation is not validated by this
 workflow; consult the upstream platform instructions rather than assuming this
 installer supports them.
@@ -33,7 +34,8 @@ signed without entitlements; only the app executable receives the camera,
 microphone and `disable-library-validation` entitlements, under the hardened
 runtime. Before replacing an existing copy, the installer moves it to a hidden
 `~/Applications/.buzz-local-backup.*` directory, keeps only the newest such
-backup and prints its location. It does not overwrite regular Buzz or Buzz Dev,
+backup and prints its location. Cleanup removes only directories the installer
+could have created (empty, or holding just the app); anything else is left alone. It does not overwrite regular Buzz or Buzz Dev,
 migrate their identity, or configure signed automatic updates. The installer
 refuses to run while Buzz Local Coding is running; quit it first. The installed
 app can run without the development terminal.
@@ -102,7 +104,7 @@ frontend hot reload alone is not a new installed binary.
 DEV-12467 / PR #6 owns the independent Enrich Layer signed updater. Its first
 manual installation, Apple signing, feed promotion and real install/update
 acceptance are still pending; these local commands do not complete those steps.
-The native identity API carries a copy of DEV-12462’s implementation (`build_version.rs`, `app_build.rs`), pending reconciliation with PR #11. Older native binaries deliberately show identity unavailable. No source freshness check grants merge or release
+The native identity API is DEV-12462's implementation (`build_version.rs`, `app_build.rs`), merged in PR #11. Older native binaries deliberately show identity unavailable. No source freshness check grants merge or release
 approval.
 
 ## Demo acceptance

@@ -9,6 +9,8 @@ import {
   rmSync,
   existsSync,
   readdirSync,
+  symlinkSync,
+  lstatSync,
 } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
@@ -41,7 +43,19 @@ test("installer preserves old app and restores it if final placement fails", () 
         path.join(root, "home/Applications/Buzz Local Coding.app/old"),
         "old",
       );
-      mkdirSync(path.join(root, "home/Applications/.buzz-local-backup.older"));
+      mkdirSync(
+        path.join(
+          root,
+          "home/Applications/.buzz-local-backup.older/Buzz Local Coding.app",
+        ),
+        { recursive: true },
+      );
+      // Same prefix, but not something this installer created: never deleted.
+      mkdirSync(path.join(root, "home/Applications/.buzz-local-backup.notes"));
+      writeFileSync(
+        path.join(root, "home/Applications/.buzz-local-backup.notes/keep.txt"),
+        "user data",
+      );
       const scripts = {
         uname: "echo Darwin",
         git: "exit 0",
@@ -99,10 +113,25 @@ test("installer preserves old app and restores it if final placement fails", () 
       if (!failure) {
         const backups = readdirSync(
           path.join(root, "home/Applications"),
-        ).filter((n) => n.startsWith(".buzz-local-backup."));
+        ).filter(
+          (n) =>
+            n.startsWith(".buzz-local-backup.") &&
+            n !== ".buzz-local-backup.notes",
+        );
         assert.equal(backups.length, 1, "only the newest backup is kept");
         const [backup] = backups;
         assert.notEqual(backup, ".buzz-local-backup.older");
+        assert.equal(
+          readFileSync(
+            path.join(
+              root,
+              "home/Applications/.buzz-local-backup.notes/keep.txt",
+            ),
+            "utf8",
+          ),
+          "user data",
+          "unrelated directories sharing the prefix are not deleted",
+        );
         assert.match(
           result.stdout,
           /Latest previous app backup: .*\.buzz-local-backup\./,
@@ -162,46 +191,78 @@ test("installer refuses to replace a running Local Coding app", () => {
   }
 });
 
-test("installer keeps an in-progress lock and does not start a second install", () => {
-  const root = mkdtempSync(path.join(tmpdir(), "buzz-install-locking-"));
-  try {
-    mkdirSync(path.join(root, "scripts"));
-    mkdirSync(path.join(root, "bin"));
-    const lock = path.join(root, "Applications/.buzz-local-install.lock");
-    mkdirSync(lock, { recursive: true });
-    copyFileSync(
-      new URL("./install-local-macos.sh", import.meta.url),
-      path.join(root, "scripts/install-local-macos.sh"),
-    );
-    for (const [name, body] of Object.entries({
-      uname: "echo Darwin",
-      git: "exit 0",
-      pgrep: "exit 1",
-      pnpm: 'touch "$HOME/second-install-started"',
-    }))
-      writeFileSync(path.join(root, "bin", name), `#!/bin/sh\n${body}\n`, {
-        mode: 0o755,
-      });
-
-    const result = spawnSync(
-      "bash",
-      [path.join(root, "scripts/install-local-macos.sh")],
-      {
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          HOME: root,
-          PATH: `${path.join(root, "bin")}:${process.env.PATH}`,
-        },
+function lockFixture(prefix, prepareLock) {
+  const root = mkdtempSync(path.join(tmpdir(), prefix));
+  mkdirSync(path.join(root, "scripts"));
+  mkdirSync(path.join(root, "bin"));
+  mkdirSync(path.join(root, "Applications"));
+  const lock = path.join(root, "Applications/.buzz-local-install.lock");
+  prepareLock(lock);
+  copyFileSync(
+    new URL("./install-local-macos.sh", import.meta.url),
+    path.join(root, "scripts/install-local-macos.sh"),
+  );
+  writeFileSync(path.join(root, "bin/activate-hermit"), "");
+  for (const [name, body] of Object.entries({
+    uname: "echo Darwin",
+    git: "exit 0",
+    pgrep: "exit 1",
+    // Stop right after the lock is taken; the EXIT trap must release it.
+    pnpm: 'touch "$HOME/install-started"; exit 42',
+  }))
+    writeFileSync(path.join(root, "bin", name), `#!/bin/sh\n${body}\n`, {
+      mode: 0o755,
+    });
+  const result = spawnSync(
+    "bash",
+    [path.join(root, "scripts/install-local-macos.sh")],
+    {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HOME: root,
+        PATH: `${path.join(root, "bin")}:${process.env.PATH}`,
       },
-    );
+    },
+  );
+  const lockPresent = (() => {
+    try {
+      lstatSync(lock);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  const started = existsSync(path.join(root, "install-started"));
+  rmSync(root, { recursive: true, force: true });
+  return { result, lockPresent, started };
+}
 
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /is acquiring the installer lock/);
-    assert.equal(existsSync(lock), true, "the active lock is not stolen");
-    assert.equal(existsSync(path.join(root, "second-install-started")), false);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
+test("installer does not steal a live holder's lock", () => {
+  const { result, lockPresent, started } = lockFixture(
+    "buzz-install-locking-",
+    (lock) => symlinkSync(String(process.pid), lock),
+  );
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, new RegExp(`running \\(pid ${process.pid}\\)`));
+  assert.equal(lockPresent, true, "the active lock is not stolen");
+  assert.equal(started, false);
+});
+
+test("installer recovers a lock left by an exited holder", () => {
+  const dead = spawnSync("true").pid;
+  for (const [label, prepare] of [
+    ["dead pid", (lock) => symlinkSync(String(dead), lock)],
+    // An interrupted acquisition by the earlier directory-lock installer.
+    ["empty legacy directory", (lock) => mkdirSync(lock)],
+  ]) {
+    const { result, lockPresent, started } = lockFixture(
+      "buzz-install-stale-",
+      prepare,
+    );
+    assert.equal(result.status, 42, `${label}: ${result.stderr}`);
+    assert.equal(started, true, `${label}: install proceeds`);
+    assert.equal(lockPresent, false, `${label}: lock released on exit`);
   }
 });
 
