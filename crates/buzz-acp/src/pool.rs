@@ -1836,11 +1836,30 @@ async fn create_session_and_apply_model(
     // advertises the requested mode in session/new. Agents that don't support
     // the mode (e.g., goose crashes on unrecognized set_config_option values)
     // are safely skipped — the harness auto-approves via handle_permission_request.
-    if !ctx.permission_mode.is_default()
-        && agent_supports_mode(&resp.raw, ctx.permission_mode.as_wire_str())
-    {
+    let applied_permission_mode = !ctx.permission_mode.is_default()
+        && agent_supports_mode(&resp.raw, ctx.permission_mode.as_wire_str());
+    if applied_permission_mode {
         apply_permission_mode(&mut agent.acp, &resp.session_id, &ctx.permission_mode).await?;
     }
+    let reported_mode = resp
+        .raw
+        .pointer("/modes/currentModeId")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| {
+            resp.raw
+                .get("configOptions")?
+                .as_array()?
+                .iter()
+                .find(|option| option["id"] == "mode")?
+                .get("currentValue")?
+                .as_str()
+        });
+    agent.acp.observe("permission_policy", serde_json::json!({
+        "requested": ctx.permission_mode.as_wire_str(),
+        "effective": if applied_permission_mode { Some(ctx.permission_mode.as_wire_str()) } else { reported_mode },
+        "source": if applied_permission_mode { "applied" } else { "adapter" },
+        "cwd": ctx.cwd,
+    }));
 
     Ok(resp.session_id)
 }
@@ -2413,13 +2432,21 @@ fn question_asker(
         .events
         .last()
         .and_then(|last| nostr::EventId::from_hex(&last.reply_thread()).ok());
-    Some(crate::agent_questions::QuestionAsker::new(
+    let asker = crate::agent_questions::QuestionAsker::new(
         Arc::new(ctx.rest_client.clone()),
         ctx.agent_keys.clone(),
         batch.scope.channel_id(),
         thread_root,
         ctx.session_title.clone(),
-    ))
+    );
+    // Permission cards specialize the harness's normal (`default`) permission
+    // flow. Other modes keep their configured policy: no owner is attached,
+    // so the read loop answers requests as it always has.
+    Some(if ctx.permission_mode.is_default() {
+        asker.with_permission_context(ctx.agent_owner_pubkey, ctx.cwd.clone())
+    } else {
+        asker
+    })
 }
 
 /// Core async function spawned for each prompt.
@@ -2437,11 +2464,11 @@ fn question_asker(
 #[allow(clippy::too_many_arguments)]
 pub async fn run_prompt_task(
     mut agent: OwnedAgent,
-    batch: Option<FlushBatch>,
+    mut batch: Option<FlushBatch>,
     prompt_text: Option<String>,
     ctx: Arc<PromptContext>,
     result_tx: mpsc::UnboundedSender<PromptResult>,
-    control_rx: Option<tokio::sync::oneshot::Receiver<ControlSignal>>,
+    mut control_rx: Option<tokio::sync::oneshot::Receiver<ControlSignal>>,
     turn_id: String,
     prompt_routing: crate::queue::PromptRouting,
 ) {
@@ -2567,6 +2594,184 @@ pub async fn run_prompt_task(
         && matches!(&source, PromptSource::Channel(scope) if !agent.state.sessions.contains_key(scope));
     if !initial_message_pending {
         prompt_routing.record_dm(prompt_is_dm);
+    }
+
+    // Explicit owner shell requests are handled before ACP session creation or
+    // any model prompt. The result is a signed thread message, available through
+    // the ordinary conversation-context fetch on the next model turn.
+    let mut held_signal: Option<ControlSignal> = None;
+    let mut control_signal_consumed = false;
+    if let Some(b) = batch.as_mut() {
+        let requests: Vec<_> = b
+            .events
+            .iter()
+            .filter(|e| crate::shell_commands::is_request(&e.event))
+            .cloned()
+            .collect();
+        b.events
+            .retain(|e| !crate::shell_commands::is_request(&e.event));
+        for request in requests {
+            agent.acp.observe(
+                "human_command_requested",
+                serde_json::json!({
+                    "messageId": request.event.id.to_hex(),
+                    "authorPubkey": request.event.pubkey.to_hex(),
+                    "content": request.event.content,
+                    "cwd": ctx.cwd,
+                }),
+            );
+            // Only Cancel/Rotate stop a running command. Steer, Interrupt and
+            // SwitchModel are held and applied once the commands finish, so
+            // their requeue and model switch are not lost. A dropped sender
+            // means nobody can control this turn any more, not a stop.
+            let mut stopped_by: Option<ControlSignal> = None;
+            let cancel = async {
+                let Some(rx) = control_rx.as_mut() else {
+                    return std::future::pending::<()>().await;
+                };
+                let signal = rx.await.ok();
+                control_signal_consumed = true;
+                match signal {
+                    Some(signal @ (ControlSignal::Cancel | ControlSignal::Rotate)) => {
+                        stopped_by = Some(signal);
+                    }
+                    other => {
+                        held_signal = other;
+                        std::future::pending::<()>().await;
+                    }
+                }
+            };
+            let result = crate::shell_commands::run(
+                &request.event,
+                &ctx.agent_keys,
+                ctx.agent_owner_pubkey,
+                b.channel_id,
+                &ctx.cwd,
+                cancel,
+            )
+            .await;
+            if control_signal_consumed {
+                // A resolved oneshot must not be polled again.
+                control_rx = None;
+            }
+            let text = match result {
+                Ok(result) => {
+                    agent.acp.observe("human_command_completed", serde_json::json!({
+                        "messageId": request.event.id.to_hex(), "status": result.status, "exitCode": result.exit_code,
+                    }));
+                    result.message()
+                }
+                Err(error) => {
+                    agent.acp.observe("human_command_completed", serde_json::json!({
+                        "messageId": request.event.id.to_hex(), "status": "not run", "error": error,
+                    }));
+                    format!("Human command was not run: {error}")
+                }
+            };
+            let root =
+                nostr::EventId::from_hex(&request.reply_thread()).unwrap_or(request.event.id);
+            let thread = buzz_sdk::ThreadRef {
+                root_event_id: root,
+                // Keep outcomes in the integrated transcript rather than
+                // creating a nested reply under each command message.
+                parent_event_id: root,
+            };
+            let publication =
+                buzz_sdk::build_message(b.channel_id, &text, Some(&thread), &[], false, &[], &[])
+                    .map_err(|e| e.to_string())
+                    .and_then(|builder| {
+                        builder
+                            .custom_created_at(nostr::Timestamp::from(
+                                request.event.created_at.as_secs() + 1,
+                            ))
+                            .sign_with_keys(&ctx.agent_keys)
+                            .map_err(|e| e.to_string())
+                    });
+            match publication {
+                Ok(event) => {
+                    if let Err(error) = ctx.rest_client.submit_event(&event).await {
+                        tracing::error!(
+                            "shell result publication failed; retained local receipt: {error}"
+                        );
+                        // The on-disk claim prevents execution twice on retry.
+                        b.events.push(request);
+                    }
+                }
+                Err(error) => {
+                    tracing::error!("shell result signing failed: {error}");
+                    b.events.push(request);
+                }
+            }
+            if let Some(signal) = stopped_by {
+                if signal == ControlSignal::Rotate {
+                    agent.state.invalidate(&source);
+                }
+                send_prompt_result(
+                    &result_tx,
+                    &turn_id,
+                    agent,
+                    source,
+                    PromptOutcome::Cancelled,
+                    None,
+                );
+                return;
+            }
+        }
+        if let Some(ControlSignal::SwitchModel {
+            model_id,
+            request_id,
+        }) = &held_signal
+        {
+            // Same landing as the prompt arm: the next session applies it.
+            agent.desired_model = Some(model_id.clone());
+            agent.model_overridden = true;
+            agent.desired_model_request_id = request_id.clone();
+            agent.desired_model_pending_ack = true;
+            agent.state.invalidate(&source);
+        }
+        // Never pass a failed-to-publish command to the model. Retry its receipt
+        // through the same explicit path; it cannot execute again.
+        if b.events
+            .iter()
+            .any(|e| crate::shell_commands::is_request(&e.event))
+        {
+            send_prompt_result(
+                &result_tx,
+                &turn_id,
+                agent,
+                source,
+                PromptOutcome::ProjectContextIndeterminate(
+                    "Shell result could not be published".into(),
+                ),
+                batch,
+            );
+            return;
+        }
+        if let Some(signal) = held_signal {
+            // The turn never reached the model: requeue what remains with the
+            // held signal's framing, exactly as a cancelled prompt would.
+            let retry_batch = requeue_cancelled_batch(&ctx, signal, batch);
+            send_prompt_result(
+                &result_tx,
+                &turn_id,
+                agent,
+                source,
+                PromptOutcome::Cancelled,
+                retry_batch,
+            );
+            return;
+        }
+        if b.events.is_empty() {
+            send_prompt_result(
+                &result_tx,
+                &turn_id,
+                agent,
+                source,
+                PromptOutcome::Ok(StopReason::EndTurn),
+                None,
+            );
+            return;
+        }
     }
 
     //
@@ -5715,7 +5920,7 @@ pub(crate) mod tests {
 
     /// Conversation scope for a channel — the scope these pool tests exercise
     /// (equivalent to the pre-thread-scoping channel key).
-    fn conv(channel_id: Uuid) -> SessionScope {
+    pub(super) fn conv(channel_id: Uuid) -> SessionScope {
         SessionScope::Conversation { channel_id }
     }
 
@@ -10462,7 +10667,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
         make_prompt_context_impl(&agent_keys, None)
     }
 
-    fn make_prompt_context_with_owner(
+    pub(super) fn make_prompt_context_with_owner(
         agent_keys: &nostr::Keys,
         owner_pubkey: nostr::PublicKey,
     ) -> PromptContext {
@@ -12472,3 +12677,7 @@ done"#
 #[cfg(all(test, unix))]
 #[path = "pool/pi_prompt_tests.rs"]
 mod pi_prompt_tests;
+
+#[cfg(all(test, unix))]
+#[path = "pool/shell_prompt_tests.rs"]
+mod shell_prompt_tests;

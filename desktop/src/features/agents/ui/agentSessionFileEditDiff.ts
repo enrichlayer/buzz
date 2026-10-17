@@ -50,7 +50,23 @@ export function buildFileEditDiff(
     return null;
   }
 
-  const lines = getDiffLines(resultText);
+  let lines = getDiffLines(resultText);
+  // Claude's Edit reports success in prose; its exact old/new strings are
+  // observed arguments, not a guessed current file or line number.
+  if (
+    !lines.some((line) => line.kind === "add" || line.kind === "remove") &&
+    typeof item.args.old_string === "string" &&
+    typeof item.args.new_string === "string"
+  ) {
+    lines = [
+      ...item.args.old_string
+        .split("\n")
+        .map((text) => ({ kind: "remove" as const, text: `-${text}` })),
+      ...item.args.new_string
+        .split("\n")
+        .map((text) => ({ kind: "add" as const, text: `+${text}` })),
+    ];
+  }
   const stats = getDiffStats(resultText, lines);
   if (!stats) {
     return null;

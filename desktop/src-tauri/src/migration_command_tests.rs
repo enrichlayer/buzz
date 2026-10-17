@@ -183,3 +183,23 @@ fn reconcile_legacy_team_persona_runtime_files_rewrites_persona_md() {
     let updated = std::fs::read_to_string(persona_path).unwrap();
     assert!(updated.contains("runtime: buzz-agent\n"));
 }
+
+#[test]
+fn rewrite_legacy_persona_preserves_yaml_only_metadata() {
+    let content =
+        "---\nruntime: sprout-agent\nmetadata:\n  7: [true, null, 3.5]\n---\nKeep body.\n";
+    let updated = rewrite_legacy_persona_md_runtime(content).unwrap();
+    let (original, _) = buzz_persona_pkg::persona::split_frontmatter(content).unwrap();
+    let (rewritten, body) = buzz_persona_pkg::persona::split_frontmatter(&updated).unwrap();
+    let mut expected: serde_value::Value = serde_saphyr::from_str_with_options(original, serde_saphyr::options! { strict_booleans: true, merge_keys: serde_saphyr::options::MergeKeyPolicy::AsOrdinary }).unwrap();
+    let serde_value::Value::Map(map) = &mut expected else {
+        panic!("mapping expected")
+    };
+    map.insert(
+        serde_value::Value::String("runtime".into()),
+        serde_value::Value::String("buzz-agent".into()),
+    );
+    let actual: serde_value::Value = serde_saphyr::from_str_with_options(rewritten, serde_saphyr::options! { strict_booleans: true, merge_keys: serde_saphyr::options::MergeKeyPolicy::AsOrdinary }).unwrap();
+    assert_eq!(actual, expected);
+    assert_eq!(body, "Keep body.\n");
+}

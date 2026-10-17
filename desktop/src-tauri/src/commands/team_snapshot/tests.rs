@@ -13,6 +13,7 @@ fn member(name: &str) -> AgentSnapshot {
         version: crate::managed_agents::agent_snapshot::FORMAT_VERSION,
         definition: AgentSnapshotDefinition {
             session_policy: Default::default(),
+            output_mode: Default::default(),
             acp_command: None,
             name: name.to_string(),
             source_is_builtin: false,
@@ -58,6 +59,7 @@ fn team_export_round_trip_preserves_team_and_excludes_member_memory() {
     let definitions = vec![
         AgentDefinition {
             session_policy: Default::default(),
+            output_mode: Default::default(),
             description: Some("A careful reviewer.".to_string()),
             id: "alice".to_string(),
             display_name: "Alice".to_string(),
@@ -84,6 +86,7 @@ fn team_export_round_trip_preserves_team_and_excludes_member_memory() {
         },
         AgentDefinition {
             session_policy: Default::default(),
+            output_mode: Default::default(),
             description: None,
             id: "bob".to_string(),
             display_name: "Bob".to_string(),
@@ -164,6 +167,7 @@ fn team_export_round_trip_preserves_team_and_excludes_member_memory() {
 fn team_export_with_instance_and_memory_level_uses_supplied_entries() {
     let definitions = vec![AgentDefinition {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         description: None,
         id: "alice".to_string(),
         display_name: "Alice".to_string(),
@@ -208,6 +212,7 @@ fn team_export_with_instance_and_memory_level_uses_supplied_entries() {
     // Build a fake instance record tied to this team+persona.
     let instance = ManagedAgentRecord {
         session_policy: Default::default(),
+        output_mode: Default::default(),
         description: None,
         pubkey: "a".repeat(64),
         name: "Alice".to_string(),

@@ -1,12 +1,13 @@
 import { expect, test } from "@playwright/test";
 
 import { installMockBridge } from "../helpers/bridge";
+import { waitForMockChannelHeadReady } from "../helpers/channelHeadReady";
 
-// The mock identity's own pre-seeded message in #general (authored by
-// DEFAULT_MOCK_IDENTITY.pubkey in e2eBridge.ts). Editing/deleting one's own
-// message is exactly Sam's workflow: "delete a message by clearing its edit."
-const OWN_MESSAGE_ID = "mock-general-welcome";
-const RENDERED_ORIGINAL_CONTENT = "Welcome to general";
+// Edit overlays require a valid Nostr event target. The default welcome seed
+// has a short mock ID, so its local cache edit disappears on a head refetch.
+const OWN_MESSAGE_ID = "ed17".repeat(16);
+const CHANNEL_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
+const RENDERED_ORIGINAL_CONTENT = "Editable welcome to general";
 
 // Open the more-actions menu for a message row and wait for the menu to mount.
 async function openMoreActionsMenu(
@@ -46,6 +47,16 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("channel-general").click();
   await expect(page.getByTestId("chat-title")).toHaveText("general");
+  await waitForMockChannelHeadReady(page, "general", CHANNEL_ID);
+  await page.evaluate((id) => {
+    const emit = window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__;
+    if (!emit) throw new Error("Mock message emitter is unavailable");
+    emit({
+      channelName: "general",
+      content: "Editable welcome to #general",
+      id,
+    });
+  }, OWN_MESSAGE_ID);
 });
 
 test("clearing an edit to empty prompts to delete, then deletes on confirm", async ({
@@ -112,10 +123,17 @@ test("a non-empty edit still edits and never deletes", async ({ page }) => {
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
   await expect(page.getByTestId("edit-target")).toBeHidden({ timeout: 10_000 });
   await expect(row).toBeVisible();
-  await expect(page.getByTestId("message-timeline")).toContainText(
-    editedContent,
-  );
-  await expect(page.getByTestId("message-timeline")).not.toContainText(
-    RENDERED_ORIGINAL_CONTENT,
-  );
+  await expect(row).toContainText(editedContent);
+  // Prove the recorded edit survives an authoritative history read, not only
+  // the mutation's immediate local cache patch.
+  await page.evaluate(async (channelId) => {
+    const client = window.__BUZZ_E2E_QUERY_CLIENT__;
+    if (!client) throw new Error("Mock query client is unavailable");
+    await client.invalidateQueries({
+      queryKey: ["channel-messages", channelId],
+      exact: true,
+    });
+  }, CHANNEL_ID);
+  await expect(row).toContainText(editedContent);
+  await expect(row).not.toContainText(RENDERED_ORIGINAL_CONTENT);
 });
