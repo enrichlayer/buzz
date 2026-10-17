@@ -1,3 +1,4 @@
+import { CodeText } from "@/shared/ui/markdown/CodeText";
 import { Terminal } from "lucide-react";
 
 import { ScrollFadeMonoPanel } from "../FileContentBlock";
@@ -24,7 +25,7 @@ export function ShellCommandBlock({
       >
         <p className="whitespace-pre-wrap wrap-break-word text-muted-foreground/70">
           <Terminal className="mr-2 inline h-3.5 w-3.5 align-[-0.1875rem] text-primary" />
-          {command}
+          <CodeText code={command} language="shellscript" />
         </p>
       </ScrollFadeMonoPanel>
       {stdout ? (
@@ -34,7 +35,7 @@ export function ShellCommandBlock({
           maxHeightClassName="max-h-36"
         >
           <pre className="whitespace-pre-wrap wrap-break-word text-foreground">
-            {stdout}
+            <CodeText code={stdout} />
           </pre>
         </ScrollFadeMonoPanel>
       ) : null}

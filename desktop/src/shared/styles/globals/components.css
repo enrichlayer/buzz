@@ -825,3 +825,8 @@
   box-shadow: none;
   margin: 0;
 }
+:root {
+  /* Adapter for the canonical @el/ui/Buzz illustration tokens. */
+  --component-buzz-illustration: hsl(var(--primary));
+  --component-buzz-registration: hsl(var(--secondary));
+}

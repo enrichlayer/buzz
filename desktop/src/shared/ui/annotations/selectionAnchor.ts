@@ -54,11 +54,12 @@ export function captureSelectionAnchor(
   root: HTMLElement,
   source: AnnotationSource,
   selection: Selection | null,
+  boundedRange?: Range,
 ): AnnotationAnchor | null {
   if (selection?.rangeCount !== 1 || selection.isCollapsed) {
     return null;
   }
-  const range = selection.getRangeAt(0);
+  const range = boundedRange ?? selection.getRangeAt(0);
   if (
     !root.contains(range.startContainer) ||
     !root.contains(range.endContainer)
@@ -68,7 +69,21 @@ export function captureSelectionAnchor(
   const selectedText = selection.toString().trim();
   if (!selectedText) return null;
 
+  const prefix = range.cloneRange();
+  prefix.selectNodeContents(root);
+  prefix.setEnd(range.startContainer, range.startOffset);
+  const leading = range.toString().length - range.toString().trimStart().length;
+
   return {
+    textOffset: prefix.toString().length + leading,
+    renderedRevision: annotationSourceRevision({
+      sourceId: source.sourceId,
+      text: root.textContent ?? "",
+    }),
+    selectedDomText:
+      range.toString().trim() === selectedText
+        ? undefined
+        : range.toString().trim(),
     sourceId: source.sourceId,
     sourceRevision: annotationSourceRevision(source),
     originalSourceText: source.text,

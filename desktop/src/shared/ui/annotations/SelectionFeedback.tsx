@@ -1,5 +1,6 @@
 import * as React from "react";
 import { Markdown } from "@/shared/ui/markdown";
+import { useAnnotationNavigation } from "./useAnnotationNavigation";
 import type { parseAnnotationMessage } from "./annotationModel";
 
 export function SelectionFeedback({
@@ -7,6 +8,7 @@ export function SelectionFeedback({
 }: {
   value: NonNullable<ReturnType<typeof parseAnnotationMessage>>;
 }) {
+  const { open, status } = useAnnotationNavigation(value.metadata);
   const [expanded, setExpanded] = React.useState(false);
   const [overflow, setOverflow] = React.useState(false);
   const quote = React.useRef<HTMLQuoteElement>(null);
@@ -33,7 +35,7 @@ export function SelectionFeedback({
       <div className="max-w-[75ch] space-y-1.5">
         <p className="text-xs text-muted-foreground">
           {value.label.includes("code block")
-            ? value.label.replace("Response ·", "Reply to")
+            ? value.label.replace(/^(Response|Selection) ·/, "Reply to")
             : "Reply to selection"}
         </p>
         <blockquote
@@ -55,6 +57,16 @@ export function SelectionFeedback({
           </button>
         ) : null}
       </div>
+      <button
+        type="button"
+        className="text-xs underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring"
+        onClick={() => void open()}
+      >
+        View source
+      </button>
+      <p role="status" className="text-xs text-muted-foreground">
+        {status}
+      </p>
       <Markdown content={value.comment} />
       <details
         className="text-xs text-muted-foreground"

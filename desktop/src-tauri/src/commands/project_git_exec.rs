@@ -6,9 +6,8 @@
 
 use crate::{app_state::AppState, managed_agents::resolve_command};
 use nostr::{Keys, ToBech32};
-use std::io::Read;
-use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::process::Command;
+use std::time::Duration;
 use url::Url;
 
 /// Wall-clock cap for a single git invocation. Remote operations talk to
@@ -51,19 +50,25 @@ pub(crate) struct GitAuthConfig {
     allow_file_transport: bool,
 }
 
-fn read_pipe_lossy(pipe: Option<impl Read>) -> String {
-    let Some(mut pipe) = pipe else {
-        return String::new();
-    };
-    let mut bytes = Vec::new();
-    let _ = pipe.read_to_end(&mut bytes);
-    String::from_utf8_lossy(&bytes).to_string()
-}
-
 pub(crate) fn run_git(
     args: &[&str],
     cwd: Option<&std::path::Path>,
     auth: &GitAuthConfig,
+) -> Result<String, String> {
+    let needs_credentials = git_needs_credentials(args);
+    let timeout = if needs_credentials {
+        REMOTE_GIT_TIMEOUT
+    } else {
+        LOCAL_GIT_TIMEOUT
+    };
+    run_git_with_timeout(args, cwd, auth, timeout)
+}
+
+fn run_git_with_timeout(
+    args: &[&str],
+    cwd: Option<&std::path::Path>,
+    auth: &GitAuthConfig,
+    timeout: Duration,
 ) -> Result<String, String> {
     let mut command = Command::new(&auth.git_path);
     command.args(args);
@@ -71,64 +76,27 @@ pub(crate) fn run_git(
         command.current_dir(cwd);
     }
     let needs_credentials = git_needs_credentials(args);
-    let timeout = if needs_credentials {
-        REMOTE_GIT_TIMEOUT
-    } else {
-        LOCAL_GIT_TIMEOUT
-    };
     configure_git_auth(&mut command, auth, needs_credentials);
-    command.stdin(Stdio::null());
-    command.stdout(Stdio::piped());
-    command.stderr(Stdio::piped());
-    crate::util::configure_no_window(&mut command);
-
-    let mut child = command
-        .spawn()
-        .map_err(|error| format!("failed to run git: {error}"))?;
-
-    // Drain the pipes on background threads so a chatty git process can't
-    // deadlock on a full pipe while we poll for exit below.
-    let stdout_pipe = child.stdout.take();
-    let stderr_pipe = child.stderr.take();
-    let stdout_thread = std::thread::spawn(move || read_pipe_lossy(stdout_pipe));
-    let stderr_thread = std::thread::spawn(move || read_pipe_lossy(stderr_pipe));
-
-    let started = Instant::now();
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) => {
-                if started.elapsed() > timeout {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    let _ = stdout_thread.join();
-                    let _ = stderr_thread.join();
-                    return Err(format!("git timed out after {}s", timeout.as_secs()));
-                }
-                std::thread::sleep(Duration::from_millis(50));
-            }
-            Err(error) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(format!("failed to wait for git: {error}"));
-            }
-        }
-    };
-
-    let stdout = stdout_thread.join().unwrap_or_default();
-    let stderr = stderr_thread.join().unwrap_or_default();
-    if !status.success() {
-        let stderr = stderr.trim().to_string();
+    // The shared runner caps aggregate capture at 1 MiB, contains descendants,
+    // and bounds pipe draining even when a Unix writer escapes its group.
+    let output = crate::managed_agents::bounded_process_output(command, timeout)
+        .ok_or_else(|| format!(
+            "git could not complete safely (spawn/read failure, 1 MiB output limit, or {}s timeout)",
+            timeout.as_secs()
+        ))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         return Err(if stderr.is_empty() {
-            format!("git exited with status {status}")
+            format!("git exited with status {}", output.status)
         } else {
             stderr
         });
     }
-    Ok(stdout)
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
 fn configure_git_auth(command: &mut Command, auth: &GitAuthConfig, needs_credentials: bool) {
+    command.env_remove("NOSTR_PRIVATE_KEY");
     command.env("GIT_TERMINAL_PROMPT", "0");
     command.env("GIT_CONFIG_NOSYSTEM", "1");
     for key in [
@@ -185,9 +153,12 @@ fn configure_git_auth(command: &mut Command, auth: &GitAuthConfig, needs_credent
 /// Format a path for git `credential.helper`.
 ///
 /// Git for Windows invokes helpers via MinGW bash, which treats `\` as
-/// escapes. Forward slashes work on every platform git supports.
+/// escapes. Forward slashes work on every platform git supports. The `!`
+/// form keeps Git from interpreting the quoted path as a helper name;
+/// shell quoting preserves spaces and prevents path characters becoming code.
 fn credential_helper_config_value(path: &std::path::Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
+    let value = path.to_string_lossy().replace('\\', "/");
+    format!("!'{}'", value.replace('\'', "'\\''"))
 }
 
 fn apply_git_config(command: &mut Command, entries: &[(&str, String)]) {
@@ -398,14 +369,133 @@ mod tests {
         validate_local_clone_url,
     };
 
+    #[cfg(unix)]
+    #[test]
+    fn git_runner_bounds_capture_and_reaps_pipe_holding_descendants() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::time::{Duration, Instant};
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("git-fixture");
+        let pid_file = dir.path().join("child.pid");
+        let auth = super::GitAuthConfig {
+            git_path: script.clone(),
+            credential_helper: None,
+            nsec: String::new(),
+            allow_file_transport: false,
+        };
+        for body in [
+            "sleep 30 &\necho $! > child.pid\nwait\n",
+            "sleep 30 &\necho $! > child.pid\nexit 0\n",
+            "head -c 1100000 /dev/zero\n",
+        ] {
+            std::fs::write(&script, format!("#!/bin/sh\n{body}")).unwrap();
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
+            let start = Instant::now();
+            let result = super::run_git_with_timeout(
+                &[],
+                Some(dir.path()),
+                &auth,
+                Duration::from_millis(200),
+            );
+            assert!(start.elapsed() < Duration::from_secs(5));
+            if body.contains("exit 0") {
+                assert!(result.is_ok());
+            } else {
+                assert!(result.is_err());
+            }
+            if let Ok(pid) = std::fs::read_to_string(&pid_file) {
+                // Reaping a descendant can lag its group kill briefly.
+                let mut dead = false;
+                for _ in 0..100 {
+                    let status = std::process::Command::new("ps")
+                        .args(["-o", "stat=", "-p", pid.trim()])
+                        .output()
+                        .unwrap();
+                    let state = String::from_utf8_lossy(&status.stdout);
+                    if !status.status.success()
+                        || state.trim().is_empty()
+                        || state.trim().starts_with('Z')
+                    {
+                        dead = true;
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                assert!(dead, "Git descendant survived bounded runner");
+                std::fs::remove_file(&pid_file).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn local_git_commands_remove_inherited_identity_key() {
+        let auth = super::GitAuthConfig {
+            git_path: "git".into(),
+            credential_helper: None,
+            nsec: String::new(),
+            allow_file_transport: false,
+        };
+        let mut command = std::process::Command::new("git");
+        command.env("NOSTR_PRIVATE_KEY", "fixture-only");
+        super::configure_git_auth(&mut command, &auth, false);
+        assert!(command
+            .get_envs()
+            .any(|(key, value)| key == "NOSTR_PRIVATE_KEY" && value.is_none()));
+    }
+
     #[test]
     fn credential_helper_config_value_uses_forward_slashes() {
         let path =
             std::path::PathBuf::from(r"C:\Users\x\AppData\Local\Buzz\git-credential-nostr.exe");
         assert_eq!(
             credential_helper_config_value(&path),
-            "C:/Users/x/AppData/Local/Buzz/git-credential-nostr.exe",
+            "!'C:/Users/x/AppData/Local/Buzz/git-credential-nostr.exe'",
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn git_credentials_preserve_helper_path_with_shell_characters() {
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+        use std::process::{Command, Stdio};
+
+        let dir = tempfile::tempdir().unwrap();
+        let helper = dir.path().join("Buzz Review's $(false) `false` helper");
+        std::fs::write(
+            &helper,
+            "#!/bin/sh\nprintf 'username=fixture\\npassword=fixture-token\\n'\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let auth = super::GitAuthConfig {
+            git_path: "git".into(),
+            credential_helper: Some(helper),
+            nsec: String::new(),
+            allow_file_transport: false,
+        };
+        let mut command = Command::new(&auth.git_path);
+        command.args(["credential", "fill"]);
+        super::configure_git_auth(&mut command, &auth, true);
+        let mut child = command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(b"protocol=https\nhost=review.invalid\n\n")
+            .unwrap();
+        let result = child.wait_with_output().unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert!(String::from_utf8_lossy(&result.stdout).contains("password=fixture-token"));
     }
 
     #[test]

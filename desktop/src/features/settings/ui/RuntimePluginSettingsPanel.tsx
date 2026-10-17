@@ -1,3 +1,5 @@
+import { BuzzIcon, PluginIdentity } from "@el/buzz-ui";
+import elBuzzManifest from "../../../../public/plugins/el-buzz.json";
 import * as React from "react";
 import { FileJson, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
@@ -84,8 +86,8 @@ export function RuntimePluginSettingsPanel() {
   return (
     <section>
       <SettingsSectionHeader
-        description="Install versioned, data-only renderers for namespaced Markdown code fences. Plugins cannot run scripts, access the network, or send messages."
-        title="Content plugins"
+        description="Install themes and content renderers. Plugin definitions contain data only; they cannot run scripts, access the network, or send messages."
+        title="Plugins"
       />
       <SettingsOptionGroupList>
         {(state.loadError || state.persistenceError) && (
@@ -108,7 +110,7 @@ export function RuntimePluginSettingsPanel() {
         )}
 
         <SettingsOptionGroup
-          description="Each definition is stored on this device. Disabling a plugin immediately restores the normal code block."
+          description="Definitions are stored on this device. Disabled themes use Buzz Dark; disabled content renderers use normal code blocks."
           title={`Installed (${state.plugins.length})`}
         >
           {state.plugins.length === 0 ? (
@@ -130,22 +132,20 @@ export function RuntimePluginSettingsPanel() {
                     void setRuntimePluginEnabled(entry.manifest.id, enabled)
                   }
                 />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-x-2">
-                    <span className="font-medium">{entry.manifest.name}</span>
-                    <span className="font-mono text-xs text-muted-foreground">
-                      v{entry.manifest.version}
-                    </span>
-                  </div>
-                  <p className="truncate font-mono text-xs text-muted-foreground">
-                    ```{entry.manifest.fenceLanguage}
-                  </p>
-                  {entry.manifest.description ? (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {entry.manifest.description}
-                    </p>
-                  ) : null}
-                </div>
+                <BuzzIcon
+                  name="plugin"
+                  className="h-5 w-5 shrink-0 text-muted-foreground"
+                />
+                <PluginIdentity
+                  name={entry.manifest.name}
+                  version={entry.manifest.version}
+                  description={entry.manifest.description}
+                  contribution={
+                    entry.manifest.schemaVersion === 2
+                      ? `${entry.manifest.themes.length} theme${entry.manifest.themes.length === 1 ? "" : "s"}`
+                      : entry.manifest.fenceLanguage
+                  }
+                />
                 <Button
                   aria-label={`Load ${entry.manifest.name} manifest for editing`}
                   onClick={() => {
@@ -179,6 +179,28 @@ export function RuntimePluginSettingsPanel() {
           title="Install or update"
         >
           <div className="space-y-3 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                data-testid="runtime-plugin-load-el-buzz"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setDraft(JSON.stringify(elBuzzManifest, null, 2));
+                  setMessage(
+                    "el-buzz is ready to install. Then select it in Appearance.",
+                  );
+                }}
+              >
+                Load el-buzz theme
+              </Button>
+              <a
+                className="text-sm underline"
+                href="/plugins/el-buzz.json"
+                download="el-buzz.json"
+              >
+                Download el-buzz theme
+              </a>
+            </div>
             <Textarea
               aria-label="Runtime plugin manifest"
               className="min-h-72 font-mono text-xs"
@@ -236,7 +258,7 @@ export function RuntimePluginSettingsPanel() {
             >
               {message ??
                 (parsed.ok
-                  ? `${parsed.manifest.name} ${parsed.manifest.version} · ${parsed.manifest.fenceLanguage}`
+                  ? `${parsed.manifest.name} ${parsed.manifest.version} · ${parsed.manifest.schemaVersion === 2 ? `${parsed.manifest.themes.length} themes` : parsed.manifest.fenceLanguage}`
                   : parsed.error)}
             </p>
           </div>

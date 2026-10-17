@@ -61,7 +61,7 @@ pub async fn cmd_sign_message(
     Ok(())
 }
 
-fn read_bounded_event_input(path: &str, max_bytes: usize) -> Result<String, CliError> {
+pub(crate) fn read_bounded_event_input(path: &str, max_bytes: usize) -> Result<String, CliError> {
     use std::io::Read;
 
     fn read_bounded(reader: impl Read, max_bytes: usize) -> Result<Vec<u8>, std::io::Error> {

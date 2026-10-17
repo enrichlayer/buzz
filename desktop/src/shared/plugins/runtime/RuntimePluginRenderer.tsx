@@ -17,7 +17,7 @@ import type {
   RuntimePluginAction,
   RuntimePluginBlock,
   RuntimePluginField,
-  RuntimePluginManifest,
+  RuntimeContentPluginManifest,
 } from "./types";
 
 function RuntimeActionButton({
@@ -364,7 +364,7 @@ export function RuntimePluginRenderer({
 }: {
   code: string;
   fallback: React.ReactNode;
-  manifest: RuntimePluginManifest;
+  manifest: RuntimeContentPluginManifest;
 }) {
   const parsed = React.useMemo(
     () => parseRuntimePluginContent(manifest, code),

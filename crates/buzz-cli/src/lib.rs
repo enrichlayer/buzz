@@ -210,6 +210,9 @@ pub enum OutputFormat {
 
 #[derive(Subcommand)]
 enum Cmd {
+    /// Mirror Linear work through a private, channel-scoped integration
+    #[command(subcommand)]
+    Linear(commands::linear::LinearCmd),
     /// Draft owner-reviewed agent creation and updates
     #[command(subcommand)]
     Agents(AgentsCmd),
@@ -1775,6 +1778,12 @@ pub enum PrCmd {
         /// Channel where this pull request originated (NIP-29 h-tag)
         #[arg(long)]
         channel: Option<String>,
+        /// Canonical Buzz thread root; inherited by thread-scoped session MCP tools
+        #[arg(long)]
+        thread: Option<String>,
+        /// Linked Linear issue URL (https://linear.app/workspace/issue/TEAM-123)
+        #[arg(long)]
+        linear_issue: Option<String>,
         /// Root patch event id this PR revises
         #[arg(long)]
         revision_of: Option<String>,
@@ -1829,6 +1838,9 @@ pub enum PrCmd {
         /// Repo identifier (d-tag)
         #[arg(long)]
         repo_id: String,
+        /// Only reviews associated with this canonical coding thread
+        #[arg(long)]
+        thread: Option<String>,
         /// Filter by PR author pubkey
         #[arg(long)]
         author: Option<String>,
@@ -2311,6 +2323,7 @@ async fn run(cli: Cli) -> Result<(), CliError> {
         Cmd::Notes(sub) => commands::notes::dispatch(sub, &client).await,
         Cmd::Repos(sub) => commands::repos::dispatch(sub, &client).await,
         Cmd::Projects(sub) => commands::projects::dispatch(sub, &client).await,
+        Cmd::Linear(sub) => commands::linear::dispatch(sub, &client).await,
         Cmd::Patches(sub) => commands::patches::dispatch(sub, &client).await,
         Cmd::Issues(sub) => commands::issues::dispatch(sub, &client).await,
         Cmd::Pr(sub) => commands::pr::dispatch(sub, &client).await,
@@ -2477,6 +2490,7 @@ mod tests {
             "feed",
             "gifs",
             "issues",
+            "linear",
             "media",
             "mem",
             "messages",

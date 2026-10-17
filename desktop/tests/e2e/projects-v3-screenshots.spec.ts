@@ -262,14 +262,11 @@ test("repository pages show a centered Buzz loader while fetching", async ({
   const loader = page.getByTestId("buzz-loading-state");
   await expect(loader).toBeVisible();
   await expect(
-    loader.getByRole("img", { name: "Loading repository" }),
+    loader.getByRole("status", { name: "Loading repository" }),
   ).toBeVisible();
-  const animatedMark = loader.locator(".buzz-logo__mark");
-  await expect(animatedMark).toHaveCSS(
-    "animation-name",
-    "buzz-logo-scale-pulse",
-  );
-  await expect(animatedMark).toHaveCSS("opacity", "1");
+  const animatedMark = loader.locator(".el-buzz-bee");
+  await expect(animatedMark).toHaveCSS("animation-name", "el-buzz-breathe");
+  await expect(animatedMark).toHaveCSS("animation-play-state", "running");
   await expect(loader).toHaveCSS("justify-content", "center");
   await expect(loader).toBeHidden({ timeout: 5_000 });
 });
@@ -325,8 +322,10 @@ test("projects v3 workspace screenshot states", async ({ page }) => {
       ),
     ).toBe(16);
     expect(workspaceBox?.x).toBe(menuBox?.x);
-    expect((workspaceBox?.x ?? 0) + (workspaceBox?.width ?? 0)).toBe(
+    // Chromium can round independently laid-out edges to adjacent 1/64px units.
+    expect((workspaceBox?.x ?? 0) + (workspaceBox?.width ?? 0)).toBeCloseTo(
       (menuBox?.x ?? 0) + (menuBox?.width ?? 0),
+      1,
     );
   };
   await expect(overviewTab).toBeVisible();

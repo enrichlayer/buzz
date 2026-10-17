@@ -1,4 +1,5 @@
-import { Activity, Bot, Folders, Inbox, Zap } from "lucide-react";
+import { Activity, Inbox } from "lucide-react";
+import { BuzzIcon } from "@el/buzz-ui";
 
 import { TopbarSearch } from "@/features/search/ui/TopbarSearch";
 import { SidebarProjectsSection } from "@/features/sidebar/ui/SidebarProjectsSection";
@@ -150,7 +151,7 @@ export function AppSidebarPrimaryMenu({
                 tooltip="Projects"
                 type="button"
               >
-                <Folders className="h-4 w-4" />
+                <BuzzIcon name="project" className="h-4 w-4" />
                 <SidebarMenuLabel>Projects</SidebarMenuLabel>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -164,7 +165,7 @@ export function AppSidebarPrimaryMenu({
               tooltip="Agents"
               type="button"
             >
-              <Bot className="h-4 w-4" />
+              <BuzzIcon name="agent" className="h-4 w-4" />
               <SidebarMenuLabel>Agents</SidebarMenuLabel>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -178,7 +179,7 @@ export function AppSidebarPrimaryMenu({
                 tooltip="Workflows"
                 type="button"
               >
-                <Zap className="h-4 w-4" />
+                <BuzzIcon name="workflow" className="h-4 w-4" />
                 <SidebarMenuLabel>Workflows</SidebarMenuLabel>
               </SidebarMenuButton>
             </SidebarMenuItem>

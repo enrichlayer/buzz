@@ -1,3 +1,5 @@
+import { useThreadAnnotationSubmit } from "./useThreadAnnotationSubmit";
+import { latestPromptSuggestions } from "../lib/promptSuggestions";
 import * as React from "react";
 import {
   ThreadSessionTimelineProvider,
@@ -29,10 +31,7 @@ import { useEscapeKey } from "@/shared/hooks/useEscapeKey";
 import { useIsThreadPanelOverlay } from "@/shared/hooks/use-mobile";
 import { VideoReviewNavigationProvider } from "@/shared/ui/VideoReviewNavigation";
 import { cn } from "@/shared/lib/cn";
-import {
-  AnnotationSubmitProvider,
-  type AnnotationSubmitRequest,
-} from "@/shared/ui/annotations";
+import { AnnotationSubmitProvider } from "@/shared/ui/annotations";
 import { RuntimePluginHostProvider } from "@/shared/plugins/runtime";
 import { AuxiliaryPanel } from "@/shared/layout/AuxiliaryPanel";
 import { AuxiliaryPanelBody } from "@/shared/layout/AuxiliaryPanel";
@@ -133,6 +132,8 @@ type MessageThreadPanelProps = ThreadPanelLayoutProps & {
   videoReviewPresentation?: VideoReviewPresentation;
   activityAccessoryContent?: React.ReactNode;
   activityAccessoryVisible: boolean;
+  /** Durable reviews, independent of whether an agent transcript is loaded. */
+  sessionReviewContent?: React.ReactNode;
   /** Exact thread-scoped agent activity rendered alongside published replies. */
   sessionActivityContent?: React.ReactNode;
   widthPx: number;
@@ -225,6 +226,7 @@ function MessageThreadPanelContent({
   threadTypingPubkeys,
   activityAccessoryContent,
   activityAccessoryVisible,
+  sessionReviewContent,
   sessionActivityContent,
   canResetWidth,
   splitPaneClamp,
@@ -249,39 +251,14 @@ function MessageThreadPanelContent({
   >(null);
   const isOverlay = useIsThreadPanelOverlay();
   const threadHeadId = threadHead?.id ?? null;
-  const handlePublishedAnnotation = React.useCallback(
-    async (request: AnnotationSubmitRequest) => {
-      const source = [
-        threadHead,
-        ...threadReplies.map((entry) => entry.message),
-      ].find((message) => message?.id === request.anchor.sourceId);
-      if (
-        disabled ||
-        isSending ||
-        !channelId ||
-        !threadHeadId ||
-        !source?.pubkey ||
-        request.anchor.channelId !== channelId
-      ) {
-        throw new Error(
-          "This response is no longer available for feedback in this thread.",
-        );
-      }
-      await onSend(request.message, [source.pubkey], undefined, channelId, {
-        parentEventId: source.id,
-        threadHeadId,
-      });
-    },
-    [
-      channelId,
-      disabled,
-      isSending,
-      onSend,
-      threadHead,
-      threadHeadId,
-      threadReplies,
-    ],
-  );
+  const handlePublishedAnnotation = useThreadAnnotationSubmit({
+    disabled,
+    isSending,
+    channelId,
+    threadHead,
+    threadReplies,
+    onSend,
+  });
   useEscapeKey(
     onClose,
     !isHuddleTranscript && (isOverlay || isSinglePanelView || isFocusMode),
@@ -676,6 +653,7 @@ function MessageThreadPanelContent({
           </div>
         )}
 
+        {!isHuddleTranscript ? sessionReviewContent : null}
         <ThreadSessionVisibleMessages
           value={[
             threadHead.id,
@@ -945,6 +923,16 @@ function MessageThreadPanelContent({
           >
             <ComposerDockBackdrop gutterClassName="inset-x-5" />
             <MessageComposer
+              suggestedPrompts={
+                threadRepliesPending ||
+                threadTypingPubkeys.length > 0 ||
+                activityAccessoryVisible
+                  ? null
+                  : latestPromptSuggestions([
+                      threadHead,
+                      ...threadReplies.map((entry) => entry.message),
+                    ])
+              }
               audienceContext={{
                 type: "thread",
                 rootTags: threadHead.tags,
@@ -1014,7 +1002,14 @@ function MessageThreadPanelContent({
 
   return (
     <VideoReviewNavigationProvider>
-      <AnnotationSubmitProvider onSubmit={handlePublishedAnnotation}>
+      <AnnotationSubmitProvider
+        onSubmit={handlePublishedAnnotation}
+        scope={{
+          id: `thread:${channelId}:${threadHeadId}`,
+          channelId,
+          label: `#${channelName} · ${threadHead?.body.slice(0, 60) || "thread"}`,
+        }}
+      >
         <RuntimePluginHostProvider onCompose={handlePluginCompose}>
           <AuxiliaryPanel
             canResetWidth={canResetWidth}

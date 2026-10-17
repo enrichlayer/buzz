@@ -10,6 +10,11 @@ const ProjectDetailScreen = React.lazy(async () => {
   return { default: module.ProjectDetailScreen };
 });
 
+const LinearWorkScreen = React.lazy(async () => {
+  const module = await import("@/features/projects/ui/LinearWorkScreen");
+  return { default: module.LinearWorkScreen };
+});
+
 export const Route = createFileRoute("/projects/$projectId")({
   component: ProjectDetailRouteComponent,
   validateSearch: parseProjectDetailSearch,
@@ -31,16 +36,20 @@ function ProjectDetailRouteComponent() {
 
   return (
     <React.Suspense fallback={<ViewLoadingFallback kind="projects" />}>
-      <ProjectDetailScreen
-        commitHash={commitHash}
-        entityNavigationId={entityNavigationId}
-        filePath={filePath}
-        issueId={issueId}
-        projectId={projectId}
-        pullRequestId={pullRequestId}
-        repositoryId={repositoryId}
-        tab={tab}
-      />
+      {/^(30623|30624):/.test(projectId) ? (
+        <LinearWorkScreen key={projectId} address={projectId} />
+      ) : (
+        <ProjectDetailScreen
+          commitHash={commitHash}
+          entityNavigationId={entityNavigationId}
+          filePath={filePath}
+          issueId={issueId}
+          projectId={projectId}
+          pullRequestId={pullRequestId}
+          repositoryId={repositoryId}
+          tab={tab}
+        />
+      )}
     </React.Suspense>
   );
 }

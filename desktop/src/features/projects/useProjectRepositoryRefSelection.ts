@@ -42,7 +42,10 @@ export function useProjectRepositoryRefSelection(input: {
       return;
     }
     setSelectedBranch((currentBranch) => {
-      if (currentBranch && input.branchOptions.includes(currentBranch)) {
+      // The picker also offers unpublished local branches. Remote options
+      // cannot invalidate an explicit selection in this repository; a missing
+      // ref should stay selected and expose its recovery actions.
+      if (currentBranch) {
         return currentBranch;
       }
       return input.defaultBranch ?? input.branchOptions[0] ?? null;

@@ -688,7 +688,13 @@ export function TopbarSearch({
           ? result.action.description
           : result.kind === "user"
             ? getUserSecondaryLabel(result.user)
-            : buildSearchResultPreview(result.hit.content, resultQuery);
+            : buildSearchResultPreview(
+                result.hit.content,
+                resultQuery,
+                96,
+                resultProfiles?.[result.hit.pubkey.toLowerCase()]?.isAgent ===
+                  true,
+              );
     const trailingLabel =
       result.kind === "channel"
         ? getChannelSuggestionMeta(result.channel)

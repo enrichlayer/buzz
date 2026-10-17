@@ -604,3 +604,24 @@ fn parse_nostr_bind_deep_link_accepts_expired_link_for_user_facing_error() {
     let payload = parse_nostr_bind_deep_link(&url).unwrap();
     assert_eq!(payload.expires_at, "2000-01-01T00:00:00Z");
 }
+
+#[test]
+fn linear_task_transport_preserves_channel_bound_source_identity() {
+    let dtag = "linear:11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222:33333333-3333-4333-8333-333333333333";
+    for host in ["linear-task", "linear-project"] {
+        let canonical = format!("buzz://{host}?owner={}&d={dtag}", "a".repeat(64));
+        let transport = Url::parse(&canonical.replacen("buzz:", "buzz-demo-review:", 1)).unwrap();
+        assert_eq!(
+            canonical_entity_deep_link(&transport, "buzz-demo-review"),
+            Some(canonical.clone())
+        );
+        assert!(
+            parse_entity_deep_link(&Url::parse(&format!("{canonical}&d={dtag}")).unwrap())
+                .is_none()
+        );
+        assert!(parse_entity_deep_link(
+            &Url::parse(&canonical.replace(dtag, "linear:wrong")).unwrap()
+        )
+        .is_none());
+    }
+}

@@ -1,3 +1,5 @@
+import { applyPluginThemeColors, getPluginThemes } from "./plugin-themes";
+import { useRuntimePluginState } from "../plugins/runtime/store";
 import { useEffect, useState } from "react";
 import { createThemeVars } from "./adaptive-theme";
 import {
@@ -25,11 +27,17 @@ let themePreviewVarsPromise: Promise<ThemePreviewVarsByTheme> | null = null;
 async function loadThemePreviewVars(name: SyntaxThemeName) {
   const themeData = await loadThemeData(name);
   const info = extractThemeInfo(name, themeData);
-  const { vars } = createThemeVars(info.bg, info.fg, info.comment, {
-    added: info.added,
-    deleted: info.deleted,
-    modified: info.modified,
-  });
+  const { vars: derivedVars } = createThemeVars(
+    info.bg,
+    info.fg,
+    info.comment,
+    {
+      added: info.added,
+      deleted: info.deleted,
+      modified: info.modified,
+    },
+  );
+  const vars = applyPluginThemeColors(name, derivedVars);
   return [name, vars] as const;
 }
 
@@ -59,14 +67,22 @@ export function preloadThemePreviewVars() {
 }
 
 export function useThemePreviewVars() {
+  const pluginState = useRuntimePluginState();
   const [previewVarsByTheme, setPreviewVarsByTheme] =
     useState<ThemePreviewVarsByTheme>(() => themePreviewVarsCache ?? {});
 
   useEffect(() => {
     let canceled = false;
 
-    void preloadThemePreviewVars()
-      .then((previewVars) => {
+    const pluginNames = getPluginThemes(pluginState).map(
+      (theme) => theme.selection,
+    );
+    void Promise.all([
+      preloadThemePreviewVars(),
+      Promise.all(pluginNames.map(loadThemePreviewVars)),
+    ])
+      .then(([base, entries]) => {
+        const previewVars = { ...base, ...Object.fromEntries(entries) };
         if (!canceled) {
           setPreviewVarsByTheme(previewVars);
         }
@@ -80,7 +96,7 @@ export function useThemePreviewVars() {
     return () => {
       canceled = true;
     };
-  }, []);
+  }, [pluginState]);
 
   return previewVarsByTheme;
 }

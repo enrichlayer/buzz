@@ -1,3 +1,4 @@
+import { parseThemeContributions } from "./themeSchema";
 import type {
   RuntimePluginAction,
   RuntimePluginBlock,
@@ -286,8 +287,8 @@ export function parseRuntimePluginManifest(
   try {
     const value: unknown = JSON.parse(raw);
     if (!isObject(value)) throw new Error("Manifest must be a JSON object");
-    if (value.schemaVersion !== 1) {
-      throw new Error("schemaVersion must be 1");
+    if (value.schemaVersion !== 1 && value.schemaVersion !== 2) {
+      throw new Error("schemaVersion must be 1 or 2");
     }
     const id = stringField(value.id, "id", 120);
     if (!ID_RE.test(id))
@@ -295,6 +296,26 @@ export function parseRuntimePluginManifest(
     const version = stringField(value.version, "version", 80);
     if (!SEMVER_RE.test(version))
       throw new Error("version must be valid semver");
+    if (value.schemaVersion === 2) {
+      if (value.kind !== "theme")
+        throw new Error("schemaVersion 2 requires kind theme");
+      return {
+        ok: true,
+        manifest: {
+          schemaVersion: 2,
+          kind: "theme",
+          id,
+          version,
+          name: stringField(value.name, "name", 120),
+          ...(value.description === undefined
+            ? {}
+            : {
+                description: stringField(value.description, "description", 500),
+              }),
+          themes: parseThemeContributions(value.themes),
+        },
+      };
+    }
     const fenceLanguage = stringField(value.fenceLanguage, "fenceLanguage", 64);
     if (!FENCE_RE.test(fenceLanguage)) {
       throw new Error("fenceLanguage must be a namespaced buzz-* language");

@@ -1,3 +1,4 @@
+import { buildLinearWorkLink } from "./linearWorkLink";
 import {
   buildIssueLink,
   buildProjectLink,
@@ -300,6 +301,8 @@ function createPreview(
  * markdown-label override it must not overwrite.
  */
 export function buzzEntityFallbackTitle(link: ParsedEntityLink): string {
+  if (link.type === "linear-task" || link.type === "linear-project")
+    return `Linear ${link.type === "linear-task" ? "task" : "project"} ${link.id.slice(0, 8)}`;
   if (link.type === "repo" || link.type === "project") return link.dtag;
   return `${link.dtag} #${link.id.slice(0, 8)}`;
 }
@@ -315,6 +318,15 @@ function parseBuzzEntityPreview(href: string): SupportedLinkPreview | null {
 
   const link = parsed.value;
   const title = buzzEntityFallbackTitle(link);
+  if (link.type === "linear-task" || link.type === "linear-project") {
+    return {
+      kind: link.type === "linear-task" ? "buzz-issue" : "buzz-project",
+      href: buildLinearWorkLink(link),
+      provider: "Buzz",
+      title,
+      typeLabel: link.type === "linear-task" ? "Task" : "project",
+    };
+  }
   if (link.type === "pr") {
     return {
       kind: "buzz-pull-request",

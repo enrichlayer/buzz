@@ -1,6 +1,6 @@
-import { waitForAnimations } from "../helpers/animations";
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
+import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge } from "../helpers/bridge";
 import { openSettings } from "../helpers/settings";
 
@@ -161,10 +161,10 @@ test("unsupported manifests are rejected and malformed payloads retain readable 
   await settings(page);
   await page
     .getByTestId("runtime-plugin-manifest-input")
-    .fill(JSON.stringify({ ...manifest, schemaVersion: 2 }));
+    .fill(JSON.stringify({ ...manifest, schemaVersion: 3 }));
   await expect(page.getByTestId("runtime-plugin-install")).toBeDisabled();
   await expect(page.getByRole("alert")).toContainText(
-    "schemaVersion must be 1",
+    "schemaVersion must be 1 or 2",
   );
   await page
     .getByTestId("runtime-plugin-manifest-input")

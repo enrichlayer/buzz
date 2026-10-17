@@ -39,6 +39,7 @@ jobs:
       BUZZ_UPDATER_ENDPOINT: https://buzz-downloads.enrichlayer.com/latest.json
       BUZZ_UPDATER_PUBLIC_KEY: ${{ secrets.BUZZ_UPDATER_PUBLIC_KEY }}
       APPLE_SIGNING_IDENTITY: '-'
+      BUZZ_EL_BRANDING: '1'
       VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -142,10 +143,10 @@ jobs:
           PLATFORM: ${{ inputs.platform }}
         run: |
           set -euo pipefail
-          codesign --verify --deep --strict desktop/src-tauri/target/release/bundle/macos/Buzz.app
+          codesign --verify --deep --strict desktop/src-tauri/target/release/bundle/macos/el-buzz.app
           mkdir -p staged
-          cp desktop/src-tauri/target/release/bundle/macos/Buzz.app.tar.gz "staged/Buzz_${VERSION}_${PLATFORM}.app.tar.gz"
-          cp desktop/src-tauri/target/release/bundle/macos/Buzz.app.tar.gz.sig "staged/Buzz_${VERSION}_${PLATFORM}.app.tar.gz.sig"
+          cp desktop/src-tauri/target/release/bundle/macos/el-buzz.app.tar.gz "staged/Buzz_${VERSION}_${PLATFORM}.app.tar.gz"
+          cp desktop/src-tauri/target/release/bundle/macos/el-buzz.app.tar.gz.sig "staged/Buzz_${VERSION}_${PLATFORM}.app.tar.gz.sig"
           cp desktop/src-tauri/target/release/bundle/dmg/*.dmg "staged/Buzz_${VERSION}_${PLATFORM}.dmg"
       - name: Store verified build artifacts in private R2
         id: upload
