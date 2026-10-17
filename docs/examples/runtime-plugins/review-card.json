@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "example.review-card",
   "name": "Review card",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Shows a review summary, diff, and mediated reply form.",
   "fenceLanguage": "buzz-review-card",
   "contentType": "json",
@@ -21,7 +21,7 @@
       "id": "review-reply",
       "title": "Compose feedback",
       "fields": [
-        { "id": "decision", "label": "Decision", "type": "select", "options": ["Approve", "Needs changes"] },
+        { "id": "decision", "label": "Decision", "type": "select", "presentation": "segmented", "options": ["Approve", "Needs changes"] },
         { "id": "feedback", "label": "Feedback", "type": "textarea", "placeholder": "Add concrete feedback" }
       ],
       "submit": {
