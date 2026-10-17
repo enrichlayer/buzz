@@ -390,6 +390,7 @@ export function PullRequestDetailHeader({
         <ProjectOriginReference
           agentName={pullRequest.originAgentName}
           channelId={pullRequest.channelId}
+          threadRootId={pullRequest.sessionContext?.threadRootId}
         />
       </p>
     </header>
@@ -700,6 +701,7 @@ export function ProjectPullRequestDetail({
               </button>
             ) : null}
             {displayedReviewHistory.map(({ item, timelineKind }, index) => {
+              const AnchorTag = onOpenInlineComment ? "button" : "span";
               const isHistoricalDecision =
                 item.reviewDecisionStatus === "historical";
               const trimmedContent = item.content.trim();
@@ -785,13 +787,22 @@ export function ProjectPullRequestDetail({
                       />
                     ) : null}
                     {item.anchor ? (
-                      <button
-                        aria-label={`Open ${item.anchor.path} ${item.anchor.side} line ${item.anchor.line} in Files changed`}
-                        className="mt-1 inline-flex min-w-0 items-center gap-1 rounded-md bg-muted/65 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                        onClick={() => {
-                          if (item.anchor) onOpenInlineComment?.(item.anchor);
-                        }}
-                        type="button"
+                      <AnchorTag
+                        aria-label={
+                          onOpenInlineComment
+                            ? `Open ${item.anchor.path} ${item.anchor.side} line ${item.anchor.line} in Files changed`
+                            : undefined
+                        }
+                        className={`mt-1 inline-flex min-w-0 items-center gap-1 rounded-md bg-muted/65 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground ${onOpenInlineComment ? "transition-colors hover:bg-muted hover:text-foreground" : ""}`}
+                        onClick={
+                          onOpenInlineComment
+                            ? () => {
+                                if (item.anchor)
+                                  onOpenInlineComment(item.anchor);
+                              }
+                            : undefined
+                        }
+                        type={onOpenInlineComment ? "button" : undefined}
                       >
                         <FileCode2 className="h-3 w-3 shrink-0" />
                         <span className="truncate">{item.anchor.path}</span>
@@ -804,7 +815,7 @@ export function ProjectPullRequestDetail({
                             Outdated
                           </span>
                         ) : null}
-                      </button>
+                      </AnchorTag>
                     ) : null}
                   </div>
                 </div>

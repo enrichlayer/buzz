@@ -304,6 +304,24 @@ impl RespondToArg {
 
 #[derive(Subcommand)]
 pub enum AgentsCmd {
+    /// Enroll an external runtime using a durable, owner-authorized agent identity
+    Enroll {
+        /// Private directory holding credentials and the signed enrollment journal
+        #[arg(long)]
+        state_dir: std::path::PathBuf,
+        /// Existing channel where the owner may add agents
+        #[arg(long)]
+        channel: String,
+        /// Stable runtime identity supplied by its launcher (not a display name)
+        #[arg(long)]
+        runtime_id: String,
+        /// Runtime cohort: local, herdr, or factory
+        #[arg(long, value_parser = ["local", "herdr", "factory"])]
+        cohort: String,
+        /// Public agent display name
+        #[arg(long)]
+        display_name: String,
+    },
     /// Open a prefilled create-agent form in the owner's Buzz Desktop
     DraftCreate {
         /// Current channel UUID; the new agent is added here after save
@@ -1757,6 +1775,12 @@ pub enum PrCmd {
         /// Channel where this pull request originated (NIP-29 h-tag)
         #[arg(long)]
         channel: Option<String>,
+        /// Canonical Buzz thread root; inherited by thread-scoped session MCP tools
+        #[arg(long)]
+        thread: Option<String>,
+        /// Linked Linear issue URL (https://linear.app/workspace/issue/TEAM-123)
+        #[arg(long)]
+        linear_issue: Option<String>,
         /// Root patch event id this PR revises
         #[arg(long)]
         revision_of: Option<String>,
@@ -1811,6 +1835,9 @@ pub enum PrCmd {
         /// Repo identifier (d-tag)
         #[arg(long)]
         repo_id: String,
+        /// Only reviews associated with this canonical coding thread
+        #[arg(long)]
+        thread: Option<String>,
         /// Filter by PR author pubkey
         #[arg(long)]
         author: Option<String>,
@@ -2523,6 +2550,7 @@ mod tests {
                 "archived",
                 "draft-create",
                 "draft-update",
+                "enroll",
                 "unarchive"
             ]
         );
@@ -2670,7 +2698,7 @@ mod tests {
     #[test]
     fn subcommand_counts_are_stable() {
         let expected: Vec<(&str, usize)> = vec![
-            ("agents", 5),
+            ("agents", 6),
             ("canvas", 4),
             ("channels", 16),
             ("dms", 4),

@@ -6,12 +6,22 @@ import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
 
 const SHOTS = "test-results/agent-access-warning";
 
-async function choosePersonaAccess(
+/** Access choices fit both dialogs, so they render as a radio group. */
+function accessOption(page: import("@playwright/test").Page, name: string) {
+  return page
+    .locator("#agent-respond-to")
+    .getByRole("radio", { name, exact: true });
+}
+
+async function chooseAccess(
   page: import("@playwright/test").Page,
   optionName: string,
 ) {
-  await page.locator("#agent-respond-to").click();
-  await page.getByRole("menuitemradio", { name: optionName }).click();
+  await accessOption(page, optionName).click();
+  await expect(accessOption(page, optionName)).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
 }
 
 async function openAgentAccessDialog(
@@ -61,15 +71,17 @@ test("open agent access explains the available access before save", async ({
   await expect(accessBadge).toHaveText("Anyone");
   await openAgentAccessDialog(page, agent.pubkey);
 
-  const accessSelect = page.getByTestId("agent-respond-to-select");
-  await expect(accessSelect).toHaveValue("anyone");
+  await expect(accessOption(page, "Anyone")).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
   const saveAccess = page.getByRole("button", { name: "Save access" });
   await expect(saveAccess).toBeVisible();
 
   const commandsBeforeSave = await page.evaluate(
     () => window.__BUZZ_E2E_COMMAND_LOG__?.length ?? 0,
   );
-  await accessSelect.selectOption("owner-only");
+  await chooseAccess(page, "Only me (default)");
   await expect(page.getByTestId("agent-access-warning")).toHaveCount(0);
 
   await waitForAnimations(page);
@@ -99,10 +111,13 @@ test("open agent access explains the available access before save", async ({
   await expect(accessBadge).toHaveText("Only me");
 
   await openAgentAccessDialog(page, agent.pubkey);
-  await expect(accessSelect).toHaveValue("owner-only");
+  await expect(accessOption(page, "Only me (default)")).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
   // Selected people narrows the audience but not the access, so the warning
   // persists with its own audience phrase.
-  await accessSelect.selectOption("allowlist");
+  await chooseAccess(page, "Selected people");
   const warning = page.getByTestId("agent-access-warning");
   await expect(warning).toBeVisible();
   await expect(warning).toContainText(
@@ -150,7 +165,7 @@ test("open agent access explains the available access before save", async ({
   ).toBeVisible();
 
   // Only me shares nothing, so the warning goes away entirely.
-  await accessSelect.selectOption("owner-only");
+  await chooseAccess(page, "Only me (default)");
   await expect(warning).toHaveCount(0);
 });
 
@@ -221,7 +236,7 @@ test("full agent editor tightens the exact sidebar agent instance", async ({
   const dialog = page.getByRole("dialog", { name: "Edit agent" });
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Advanced" }).click();
-  await choosePersonaAccess(page, "Only me (default)");
+  await chooseAccess(page, "Only me (default)");
   await dialog.getByRole("tab", { name: "Customize for this agent" }).click();
   const saveChanges = dialog.getByRole("button", { name: "Save changes" });
   await expect(saveChanges).toBeEnabled();
@@ -255,8 +270,9 @@ test("full agent editor tightens the exact sidebar agent instance", async ({
   await page.getByTestId("user-profile-edit-agent").click();
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Advanced" }).click();
-  await expect(page.locator("#agent-respond-to")).toHaveText(
-    "Only me (default)",
+  await expect(accessOption(page, "Only me (default)")).toHaveAttribute(
+    "aria-checked",
+    "true",
   );
   await page
     .locator("#persona-system-prompt")
@@ -301,7 +317,7 @@ test("a provider-backed agent's warning names the server, not this computer", as
   await page.goto("/");
   await openAgentAccessDialog(page, agent.pubkey);
 
-  await page.getByTestId("agent-respond-to-select").selectOption("anyone");
+  await chooseAccess(page, "Anyone");
   const warning = page.getByTestId("agent-access-warning");
   await expect(warning).toContainText(
     "Anyone can use this agent to access the server it runs on, including any accounts and tools available there.",
@@ -332,10 +348,11 @@ test("persona-backed edit warns before saving open access", async ({
 
   const dialog = page.getByTestId("edit-agent-dialog");
   await expect(dialog).toBeVisible();
-  await expect(page.locator("#agent-respond-to")).toHaveText(
-    "Only me (default)",
+  await expect(accessOption(page, "Only me (default)")).toHaveAttribute(
+    "aria-checked",
+    "true",
   );
-  await choosePersonaAccess(page, "Anyone");
+  await chooseAccess(page, "Anyone");
   await expect(dialog.getByTestId("agent-access-warning")).toContainText(
     "Anyone can use this agent to access your computer, including files, accounts, and connected tools.",
   );

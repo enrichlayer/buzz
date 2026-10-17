@@ -11,6 +11,23 @@ use crate::{AgentsCmd, RespondToArg};
 
 pub async fn dispatch(command: AgentsCmd, client: &BuzzClient) -> Result<(), CliError> {
     match command {
+        AgentsCmd::Enroll {
+            state_dir,
+            channel,
+            runtime_id,
+            cohort,
+            display_name,
+        } => {
+            super::agent_enrollment::enroll(
+                client,
+                state_dir,
+                channel,
+                runtime_id,
+                cohort,
+                display_name,
+            )
+            .await
+        }
         AgentsCmd::DraftCreate {
             channel,
             display_name,

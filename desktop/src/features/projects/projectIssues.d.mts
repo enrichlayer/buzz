@@ -54,6 +54,8 @@ export const PROJECT_ISSUE_STATUS: {
 export function getTag(event: RelayEvent, name: string): string | undefined;
 export function getAllTags(event: RelayEvent, name: string): string[];
 export function getImetaTags(event: RelayEvent): string[][];
+/** The root author and repository owner: the only signers trusted to update it. */
+export function allowedActorsForRoot(rootEvent: RelayEvent): Set<string>;
 export function eventToProjectIssue(
   issue: RelayEvent,
   statusEvents?: RelayEvent[],

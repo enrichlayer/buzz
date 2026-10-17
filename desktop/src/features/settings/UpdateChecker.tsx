@@ -1,3 +1,4 @@
+import { LocalBuildCard } from "./ui/LocalBuildCard";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useUpdaterContext } from "./hooks/UpdaterProvider";
 import { Button } from "@/shared/ui/button";
@@ -16,6 +17,7 @@ export function UpdateChecker() {
         description="Keep Buzz up to date with the latest features and fixes."
       />
 
+      <LocalBuildCard />
       <SettingsOptionGroup title="Update status">
         {status.state === "idle" && (
           <SettingsOptionRow>

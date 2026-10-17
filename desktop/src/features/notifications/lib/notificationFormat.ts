@@ -1,3 +1,4 @@
+import { stripPromptSuggestionFooter } from "@/features/messages/lib/promptSuggestions";
 const NOTIFICATION_BODY_MAX_LENGTH = 140;
 
 /**
@@ -79,12 +80,13 @@ export function formatMessageNotification(opts: {
   senderName?: string | null;
   channelName?: string | null;
   content: string;
+  authorIsAgent?: boolean;
 }): { title: string; body: string } {
   const { source, content } = opts;
   const senderName = opts.senderName?.trim() || null;
   const channelName = opts.channelName?.trim() || null;
   const body = truncateNotificationBody(
-    content,
+    stripPromptSuggestionFooter(content, opts.authorIsAgent === true),
     MESSAGE_BODY_FALLBACKS[source],
   );
 
