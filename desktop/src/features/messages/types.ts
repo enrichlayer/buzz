@@ -1,3 +1,5 @@
+import type { PromptSuggestion } from "./lib/promptSuggestions";
+
 export type TimelineReaction = {
   emoji: string;
   /** Custom (image) emoji URL from the reaction's NIP-30 `emoji` tag, if any. */
@@ -49,4 +51,6 @@ export type TimelineMessage = {
   kind?: number;
   tags?: string[][];
   reactions?: TimelineReaction[];
+  /** Validated suggested-prompts footer from an agent body (stripped from `body`). */
+  promptSuggestions?: readonly PromptSuggestion[];
 };

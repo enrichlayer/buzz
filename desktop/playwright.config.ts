@@ -57,6 +57,7 @@ export default defineConfig({
         "**/agent-output-modes.spec.ts",
         "**/agent-thread-session-archive.spec.ts",
         "**/question-card.spec.ts",
+        "**/prompt-suggestions.spec.ts",
         "**/bestie.spec.ts",
         "**/message-feedback-snapshots.spec.ts",
         "**/message-copy-link.spec.ts",

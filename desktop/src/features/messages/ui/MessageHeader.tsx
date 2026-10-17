@@ -63,7 +63,7 @@ export function MessageMetaSegments({
 }) {
   const present = segments.filter((slot) => Boolean(slot.node));
   return (
-    <>
+    <span className="inline-flex min-w-0 max-w-full flex-wrap items-baseline gap-x-1.5">
       {present.map(({ key, node }, index) =>
         index === 0 ? (
           <React.Fragment key={key}>{node}</React.Fragment>
@@ -77,7 +77,7 @@ export function MessageMetaSegments({
           </span>
         ),
       )}
-    </>
+    </span>
   );
 }
 

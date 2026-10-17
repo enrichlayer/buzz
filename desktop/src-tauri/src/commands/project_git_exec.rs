@@ -61,14 +61,23 @@ pub(crate) fn run_git(
     } else {
         LOCAL_GIT_TIMEOUT
     };
-    run_git_with_timeout(args, cwd, auth, timeout)
+    run_git_with_timeout(args, cwd, auth, timeout, GIT_CAPTURE_LIMIT)
 }
+
+/// Aggregate stdout+stderr ceiling for one git invocation. Snapshot queries
+/// such as whole-history `git log --name-only` and `git ls-tree -r --long`
+/// legitimately exceed the 1 MiB discovery-probe cap on ordinary repositories
+/// (this repository's own name-only history is about 2 MiB), and callers treat
+/// a failed query as empty data. The ceiling still bounds memory against a
+/// runaway or hostile process.
+const GIT_CAPTURE_LIMIT: u64 = 64 << 20; // 64 MiB
 
 fn run_git_with_timeout(
     args: &[&str],
     cwd: Option<&std::path::Path>,
     auth: &GitAuthConfig,
     timeout: Duration,
+    capture_limit: u64,
 ) -> Result<String, String> {
     let mut command = Command::new(&auth.git_path);
     command.args(args);
@@ -77,13 +86,17 @@ fn run_git_with_timeout(
     }
     let needs_credentials = git_needs_credentials(args);
     configure_git_auth(&mut command, auth, needs_credentials);
-    // The shared runner caps aggregate capture at 1 MiB, contains descendants,
-    // and bounds pipe draining even when a Unix writer escapes its group.
-    let output = crate::managed_agents::bounded_process_output(command, timeout)
-        .ok_or_else(|| format!(
-            "git could not complete safely (spawn/read failure, 1 MiB output limit, or {}s timeout)",
-            timeout.as_secs()
-        ))?;
+    // The shared runner caps aggregate capture, contains descendants, and
+    // bounds pipe draining even when a Unix writer escapes its group.
+    let output =
+        crate::managed_agents::bounded_process_output_with_limit(command, timeout, capture_limit)
+            .ok_or_else(|| {
+                format!(
+                    "git could not complete safely (spawn/read failure, {} MiB output limit, or {}s timeout)",
+                    capture_limit >> 20,
+                    timeout.as_secs()
+                )
+            })?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         return Err(if stderr.is_empty() {
@@ -396,6 +409,7 @@ mod tests {
                 Some(dir.path()),
                 &auth,
                 Duration::from_millis(200),
+                1 << 20,
             );
             assert!(start.elapsed() < Duration::from_secs(5));
             if body.contains("exit 0") {
@@ -425,6 +439,28 @@ mod tests {
                 std::fs::remove_file(&pid_file).unwrap();
             }
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn git_runner_returns_output_larger_than_the_discovery_probe_cap() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("git-fixture");
+        std::fs::write(
+            &script,
+            "#!/bin/sh\nhead -c 3000000 /dev/zero | tr '\\0' x\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let auth = super::GitAuthConfig {
+            git_path: script,
+            credential_helper: None,
+            nsec: String::new(),
+            allow_file_transport: false,
+        };
+        let output = super::run_git(&["log"], Some(dir.path()), &auth).unwrap();
+        assert_eq!(output.len(), 3_000_000);
     }
 
     #[test]

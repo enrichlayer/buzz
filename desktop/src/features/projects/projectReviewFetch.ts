@@ -1,6 +1,7 @@
 import { relayClient } from "@/shared/api/relayClient";
 import type { RelayEvent } from "@/shared/api/types";
 import type { RelaySubscriptionFilter } from "@/shared/api/relayClientShared";
+import { allowedActorsForRoot } from "./projectIssues.mjs";
 import { projectPullRequestEventsToPullRequests } from "./projectPullRequests.mjs";
 
 type FetchEvents = (filter: RelaySubscriptionFilter) => Promise<RelayEvent[]>;
@@ -26,7 +27,7 @@ export async function fetchProjectPullRequests(
   if (!roots.length) return [];
   const ids = roots.map((root) => root.id);
   const [updates, statuses, comments] = await Promise.all([
-    fetchCompleteReviewEvents({ kinds: [1619] }, fetchEvents, signal),
+    fetchTrustedReviewUpdates(roots, fetchEvents, signal),
     fetchCompleteReviewEvents(
       { kinds: [1630, 1631, 1632, 1633], "#e": ids },
       fetchEvents,
@@ -42,8 +43,28 @@ export async function fetchProjectPullRequests(
   );
 }
 
+/**
+ * Updates are honored only from a review's author or repository owner, and
+ * `authors` is pushed into SQL before LIMIT while uppercase `#E` is not. Scope
+ * the walk to those signers so unrelated relay-wide updates cannot exhaust it.
+ */
+export function fetchTrustedReviewUpdates(
+  roots: RelayEvent[],
+  fetchEvents: FetchEvents,
+  signal?: AbortSignal,
+) {
+  const authors = [
+    ...new Set(roots.flatMap((root) => [...allowedActorsForRoot(root)])),
+  ].sort();
+  return fetchCompleteReviewEvents(
+    { kinds: [1619], authors },
+    fetchEvents,
+    signal,
+  );
+}
+
 async function fetchCompleteReviewEvents(
-  filter: { kinds: number[]; "#e"?: string[] },
+  filter: { kinds: number[]; "#e"?: string[]; authors?: string[] },
   fetchEvents: FetchEvents,
   signal?: AbortSignal,
 ) {
@@ -53,7 +74,7 @@ async function fetchCompleteReviewEvents(
   // A hard bound prevents hostile history from keeping a refresh alive forever.
   for (let pageNumber = 0; pageNumber < 40; pageNumber++) {
     signal?.throwIfAborted();
-    // #e is pushed into SQL before LIMIT. #a/#t are post-filtered and cannot
+    // #e and authors are pushed into SQL before LIMIT. #a/#t are post-filtered and cannot
     // establish exhaustion, so repository and semantic roles are checked by
     // the production projection instead.
     const page = await fetchEvents({
