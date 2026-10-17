@@ -250,11 +250,12 @@ test("create agent supports parallelism and system prompt overrides", async ({
   const sessionPolicy = page.locator("#persona-session-policy");
   await expect(sessionPolicy).toHaveAttribute(
     "aria-describedby",
-    "persona-session-policy-description",
+    "persona-session-policy-description persona-steering-description",
   );
   await expect(
     page.locator("#persona-session-policy-description"),
   ).toBeVisible();
+  await expect(page.locator("#persona-steering-description")).toBeVisible();
   // The field renders as a radio group when both labels fit its width and
   // as a dropdown otherwise; drive whichever form this layout produced.
   if ((await sessionPolicy.getAttribute("role")) === "radiogroup") {
