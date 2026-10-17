@@ -74,6 +74,9 @@ test("snapshot reads the explicit project, closed/archived issues, and full issu
   assert.equal(snapshot.complete, true);
   assert.match(source.calls[1].query, /project\(id: \$id\)/);
   assert.match(source.calls[1].query, /includeArchived: true/);
+  // A mutable sort key lets an issue edited mid-scan skip past the cursor.
+  assert.match(source.calls[1].query, /orderBy: createdAt/);
+  assert.doesNotMatch(source.calls[1].query, /orderBy: updatedAt/);
   assert.doesNotMatch(source.calls[1].query, /neq: "completed"/);
 });
 
