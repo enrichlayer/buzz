@@ -1,0 +1,9 @@
+{
+  "eventId": "b13ca821d683e1cf5b80cbc73216d017775caab49fa109c01a073494fd82641a",
+  "pubkey": "3bb9df659695d52cb5689d64b1d6c730f02d00ee9980c4b013234b5c6d98e423",
+  "canonicalHashMatches": true,
+  "signatureVerified": true,
+  "expectedIdentity": true,
+  "channelMatches": true,
+  "tamperRejected": true
+}

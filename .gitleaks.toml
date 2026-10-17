@@ -1,0 +1,608 @@
+# Exact reviewed nonsecret fixtures; see docs/security/source-scan-policy.md.
+# Keep targetRules: global path allowlists skip files before content checks.
+minVersion = "8.30.1"
+[extend]
+useDefault = true
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "public local development identity at Justfile"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?Justfile$''']
+regexes = ['''(?s)^BUZZ_PRIVATE_KEY="3dbaebadb5dfd777ff25149ee230d907a15a9e1294b40b830661e65bb42f6c03"$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "nonsecret dependency names at Cargo.lock"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?Cargo\.lock$''']
+regexes = ['''(?s)^crypto_secretbox",\
+\ "curve25519\-dalek\ $''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "provider contract fixture at crates/buzz-backend-kubernetes/tests/fixtures/provider-wire/deploy-no-owner.request.json"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-backend\-kubernetes/tests/fixtures/provider\-wire/deploy\-no\-owner\.request\.json$''']
+regexes = ['''(?s)^private_key_nsec":\ "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5"$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "provider contract fixture at crates/buzz-backend-kubernetes/tests/fixtures/provider-wire/deploy-full-launch.request.json"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-backend\-kubernetes/tests/fixtures/provider\-wire/deploy\-full\-launch\.request\.json$''']
+regexes = ['''(?s)^private_key_nsec":\ "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5"$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "provider contract fixture at crates/buzz-backend-kubernetes/tests/fixtures/provider-wire/deploy-relay-mesh-padded.request.json"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-backend\-kubernetes/tests/fixtures/provider\-wire/deploy\-relay\-mesh\-padded\.request\.json$''']
+regexes = ['''(?s)^private_key_nsec":\ "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5"$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "provider contract fixture at crates/buzz-backend-kubernetes/tests/fixtures/provider-wire/deploy-tag-image.request.json"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-backend\-kubernetes/tests/fixtures/provider\-wire/deploy\-tag\-image\.request\.json$''']
+regexes = ['''(?s)^private_key_nsec":\ "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5"$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "provider contract fixture at crates/buzz-backend-kubernetes/tests/fixtures/provider-wire/deploy-relay-mesh.request.json"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-backend\-kubernetes/tests/fixtures/provider\-wire/deploy\-relay\-mesh\.request\.json$''']
+regexes = ['''(?s)^private_key_nsec":\ "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5"$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "nonsecret model identifier at crates/buzz-agent/src/agent.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-agent/src/agent\.rs$''']
+regexes = ['''(?s)^api\.anthropic\.com",\ "claude\-3\-7\-sonnet"$''']
+
+[[allowlists]]
+targetRules = ["private-key"]
+description = "test-only cryptographic identity at crates/buzz-auth/src/nip_fi/command.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-auth/src/nip_fi/command\.rs$''']
+regexes = ['''(?s)^\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-\\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgcnxDM4EiirH9dHUE\\nWZc759TX4s5PAn8kO5ovXSnGxCWhRANCAARFb6ZnsfkqOOXyEhj3KBQphGKF4vTa\\nzhebbavbZ1ZoklqkF1cGg\+jTO7rONAVEzXvXUWtV6CdDV\+rybiVmFP2w\\n\-\-\-\-\-END\ PRIVATE\ KEY\-\-\-\-\-$''']
+
+[[allowlists]]
+targetRules = ["private-key"]
+description = "test-only cryptographic identity at crates/buzz-auth/src/nip_fi/jwks/tests.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-auth/src/nip_fi/jwks/tests\.rs$''']
+regexes = ['''(?s)^\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-\\n\\\
+\ \ \ \ \ \ \ \ MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgcnxDM4EiirH9dHUE\\n\\\
+\ \ \ \ \ \ \ \ WZc759TX4s5PAn8kO5ovXSnGxCWhRANCAARFb6ZnsfkqOOXyEhj3KBQphGKF4vTa\\n\\\
+\ \ \ \ \ \ \ \ zhebbavbZ1ZoklqkF1cGg\+jTO7rONAVEzXvXUWtV6CdDV\+rybiVmFP2w\\n\\\
+\ \ \ \ \ \ \ \ \-\-\-\-\-END\ PRIVATE\ KEY\-\-\-\-\-$''']
+
+[[allowlists]]
+targetRules = ["private-key"]
+description = "test-only cryptographic identity at crates/buzz-auth/src/nip_fi/jwks/tests.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-auth/src/nip_fi/jwks/tests\.rs$''']
+regexes = ['''(?s)^\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-\\n\\\
+\ \ \ \ \ \ \ \ MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgMKMRn6EQMn67Z6tu\\n\\\
+\ \ \ \ \ \ \ \ DbUTZWzrQpbRRTL3SJSMSd\+EDG2hRANCAATGgMYxftLlZ11AIANHcr0b13pWkaLy\\n\\\
+\ \ \ \ \ \ \ \ lkOeBZRG0bBMoUesLN7EdVYhtzcrCeNJh031QuO\+UDWcwOmShbeR43x6\\n\\\
+\ \ \ \ \ \ \ \ \-\-\-\-\-END\ PRIVATE\ KEY\-\-\-\-\-$''']
+
+[[allowlists]]
+targetRules = ["private-key"]
+description = "test-only cryptographic identity at crates/buzz-auth/src/nip_fi/jwks/tests.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-auth/src/nip_fi/jwks/tests\.rs$''']
+regexes = ['''(?s)^\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-\\n\\\
+\ \ \ \ \ \ \ \ MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgKcmDf3\+zDWyC96/X\\n\\\
+\ \ \ \ \ \ \ \ Gv8aYK552uF5aE6nXKzxAfl4fSWhRANCAATf0ccbp1c4mMd6WvSuliv5ZAS8iIWL\\n\\\
+\ \ \ \ \ \ \ \ Ne2tqOfFa0hRpa41DANab1/EuDGi7PtIo8xSYwkaoib1MAJlfLvRMjQA\\n\\\
+\ \ \ \ \ \ \ \ \-\-\-\-\-END\ PRIVATE\ KEY\-\-\-\-\-$''']
+
+[[allowlists]]
+targetRules = ["private-key"]
+description = "test-only cryptographic identity at crates/buzz-auth/src/nip_fi/jwks/tests.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-auth/src/nip_fi/jwks/tests\.rs$''']
+regexes = ['''(?s)^\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-\\n\\\
+\ \ \ \ \ \ \ \ MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgcnxDM4EiirH9dHUE\\\
+\ \ \ \ \ \ \ \ WZc759TX4s5PAn8kO5ovXSnGxCWhRANCAARFb6ZnsfkqOOXyEhj3KBQphGKF4vTa\\\
+\ \ \ \ \ \ \ \ zhebbavbZ1ZoklqkF1cGg\+jTO7rONAVEzXvXUWtV6CdDV\+rybiVmFP2w\\\
+\ \ \ \ \ \ \ \ \\n\-\-\-\-\-END\ PRIVATE\ KEY\-\-\-\-\-$''']
+
+[[allowlists]]
+targetRules = ["private-key"]
+description = "test-only cryptographic identity at crates/buzz-auth/src/nip_fi/jwks/tests.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-auth/src/nip_fi/jwks/tests\.rs$''']
+regexes = ['''(?s)^\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-\\n\\\
+\ \ \ \ \ \ \ \ MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgMKMRn6EQMn67Z6tu\\\
+\ \ \ \ \ \ \ \ DbUTZWzrQpbRRTL3SJSMSd\+EDG2hRANCAATGgMYxftLlZ11AIANHcr0b13pWkaLy\\\
+\ \ \ \ \ \ \ \ lkOeBZRG0bBMoUesLN7EdVYhtzcrCeNJh031QuO\+UDWcwOmShbeR43x6\\\
+\ \ \ \ \ \ \ \ \\n\-\-\-\-\-END\ PRIVATE\ KEY\-\-\-\-\-$''']
+
+[[allowlists]]
+targetRules = ["private-key"]
+description = "test-only cryptographic identity at crates/buzz-auth/src/nip_fi/verifier/tests.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-auth/src/nip_fi/verifier/tests\.rs$''']
+regexes = ['''(?s)^\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-\\n\\\
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgcnxDM4EiirH9dHUE\\n\\\
+WZc759TX4s5PAn8kO5ovXSnGxCWhRANCAARFb6ZnsfkqOOXyEhj3KBQphGKF4vTa\\n\\\
+zhebbavbZ1ZoklqkF1cGg\+jTO7rONAVEzXvXUWtV6CdDV\+rybiVmFP2w\\n\\\
+\-\-\-\-\-END\ PRIVATE\ KEY\-\-\-\-\-$''']
+
+[[allowlists]]
+targetRules = ["private-key"]
+description = "test-only cryptographic identity at crates/buzz-auth/src/nip_fi/verifier/tests.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-auth/src/nip_fi/verifier/tests\.rs$''']
+regexes = ['''(?s)^\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-\\n\\\
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgKcmDf3\+zDWyC96/X\\n\\\
+Gv8aYK552uF5aE6nXKzxAfl4fSWhRANCAATf0ccbp1c4mMd6WvSuliv5ZAS8iIWL\\n\\\
+Ne2tqOfFa0hRpa41DANab1/EuDGi7PtIo8xSYwkaoib1MAJlfLvRMjQA\\n\\\
+\-\-\-\-\-END\ PRIVATE\ KEY\-\-\-\-\-$''']
+
+[[allowlists]]
+targetRules = ["private-key"]
+description = "test-only cryptographic identity at crates/buzz-push-gateway/tests/fixtures/apns-test-key-only.pem"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-push\-gateway/tests/fixtures/apns\-test\-key\-only\.pem$''']
+regexes = ['''(?s)^\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-\
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg/p0z63nx4o4jOiA0\
+AEwfcyxe4NyuSjl0wPYOW5u3SQahRANCAATVJOs\+qdG7RX0ma7NcjEyy0tNu8pEu\
+RWhAxkej48uXOXw9tdTDo3B\+\+tNV75rbEYlf9D8dR1s6435q5GWslRQS\
+\-\-\-\-\-END\ PRIVATE\ KEY\-\-\-\-\-$''']
+
+[[allowlists]]
+targetRules = ["private-key"]
+description = "test-only cryptographic identity at crates/buzz-push-gateway/tests/fixtures/apns-test-identity.pem"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-push\-gateway/tests/fixtures/apns\-test\-identity\.pem$''']
+regexes = ['''(?s)^\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-\
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg/p0z63nx4o4jOiA0\
+AEwfcyxe4NyuSjl0wPYOW5u3SQahRANCAATVJOs\+qdG7RX0ma7NcjEyy0tNu8pEu\
+RWhAxkej48uXOXw9tdTDo3B\+\+tNV75rbEYlf9D8dR1s6435q5GWslRQS\
+\-\-\-\-\-END\ PRIVATE\ KEY\-\-\-\-\-$''']
+
+[[allowlists]]
+targetRules = ["private-key"]
+description = "test-only cryptographic identity at crates/buzz-push-gateway/tests/fixtures/apns-test-mismatched-identity.pem"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-push\-gateway/tests/fixtures/apns\-test\-mismatched\-identity\.pem$''']
+regexes = ['''(?s)^\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-\
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg18TP8zUw6UBPuIc2\
+4zZIQ7TMe4Iu9VtXGxVXMV3PRPqhRANCAASN9Thxojkwcn1d2XN3KswViaVM\+tpK\
+v69Qne0M1q8A6finFJ7chBwu8/G\+nFPyYszJZnm6vGwxzxIBEpd9KJT1\
+\-\-\-\-\-END\ PRIVATE\ KEY\-\-\-\-\-$''']
+
+[[allowlists]]
+targetRules = ["private-key"]
+description = "test-only cryptographic identity at crates/buzz-push-gateway/tests/fixtures/apns-test-encrypted-identity.pem"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-push\-gateway/tests/fixtures/apns\-test\-encrypted\-identity\.pem$''']
+regexes = ['''(?s)^\-\-\-\-\-BEGIN\ ENCRYPTED\ PRIVATE\ KEY\-\-\-\-\-\
+MIH0MF8GCSqGSIb3DQEFDTBSMDEGCSqGSIb3DQEFDDAkBBCrxiLXIJU5iHcD0IMS\
+sRI0AgIIADAMBggqhkiG9w0CCQUAMB0GCWCGSAFlAwQBKgQQmlIQbhuOv5VUfS6I\
+MVPLEwSBkNqbXztd0jeDg0nA1RCDPerWJUZqN5i6TtZtLwxLhpfcrDPT0aVEoFLv\
+dyRLcdzRmYNmHAoEaO0o0nLahGOlu4PlYqEoTahIq/ursix7JV5NhUJUWMFJFTz9\
+qgYSTxsvecejzM4SvMMVx5zVhgn/ojMDbocNOA8DfMW/U6gP9AxBV5RqyMGsMcuK\
+OPn9XCFJsg==\
+\-\-\-\-\-END\ ENCRYPTED\ PRIVATE\ KEY\-\-\-\-\-$''']
+
+[[allowlists]]
+targetRules = ["private-key"]
+description = "test-only cryptographic identity at crates/buzz-relay/src/api/media.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-relay/src/api/media\.rs$''']
+regexes = ['''(?s)^\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-\\n\\\
+\ \ \ \ \ \ \ \ \ \ \ \ MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgcnxDM4EiirH9dHUE\\n\\\
+\ \ \ \ \ \ \ \ \ \ \ \ WZc759TX4s5PAn8kO5ovXSnGxCWhRANCAARFb6ZnsfkqOOXyEhj3KBQphGKF4vTa\\n\\\
+\ \ \ \ \ \ \ \ \ \ \ \ zhebbavbZ1ZoklqkF1cGg\+jTO7rONAVEzXvXUWtV6CdDV\+rybiVmFP2w\\n\\\
+\ \ \ \ \ \ \ \ \ \ \ \ \-\-\-\-\-END\ PRIVATE\ KEY\-\-\-\-\-$''']
+
+[[allowlists]]
+targetRules = ["private-key"]
+description = "test-only cryptographic identity at crates/buzz-relay/src/api/invites.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-relay/src/api/invites\.rs$''']
+regexes = ['''(?s)^\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-\\n\\\
+\ \ \ \ \ \ \ \ MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgcnxDM4EiirH9dHUE\\n\\\
+\ \ \ \ \ \ \ \ WZc759TX4s5PAn8kO5ovXSnGxCWhRANCAARFb6ZnsfkqOOXyEhj3KBQphGKF4vTa\\n\\\
+\ \ \ \ \ \ \ \ zhebbavbZ1ZoklqkF1cGg\+jTO7rONAVEzXvXUWtV6CdDV\+rybiVmFP2w\\n\\\
+\ \ \ \ \ \ \ \ \-\-\-\-\-END\ PRIVATE\ KEY\-\-\-\-\-$''']
+
+[[allowlists]]
+targetRules = ["private-key"]
+description = "test-only cryptographic identity at crates/buzz-relay/src/api/nip_fi.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-relay/src/api/nip_fi\.rs$''']
+regexes = ['''(?s)^\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-\\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgcnxDM4EiirH9dHUE\\nWZc759TX4s5PAn8kO5ovXSnGxCWhRANCAARFb6ZnsfkqOOXyEhj3KBQphGKF4vTa\\nzhebbavbZ1ZoklqkF1cGg\+jTO7rONAVEzXvXUWtV6CdDV\+rybiVmFP2w\\n\-\-\-\-\-END\ PRIVATE\ KEY\-\-\-\-\-$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "public WebSocket handshake nonce at crates/buzz-relay/src/api/nip_fi.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-relay/src/api/nip_fi\.rs$''']
+regexes = ['''(?s)^Sec\-WebSocket\-Key",\ "dGhlIHNhbXBsZSBub25jZQ=="$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "synthetic bearer fixture at crates/buzz-relay/src/nip_fi_upgrade.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-relay/src/nip_fi_upgrade\.rs$''']
+regexes = ['''(?s)^token,\ "eyJhbGciOiJFUzI1NiJ9\.e30\.sig"$''']
+
+[[allowlists]]
+targetRules = ["private-key"]
+description = "test-only cryptographic identity at crates/buzz-relay/src/api/git/settings_tests.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-relay/src/api/git/settings_tests\.rs$''']
+regexes = ['''(?s)^\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-\\n\\\
+\ \ \ \ \ \ \ \ MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgcnxDM4EiirH9dHUE\\n\\\
+\ \ \ \ \ \ \ \ WZc759TX4s5PAn8kO5ovXSnGxCWhRANCAARFb6ZnsfkqOOXyEhj3KBQphGKF4vTa\\n\\\
+\ \ \ \ \ \ \ \ zhebbavbZ1ZoklqkF1cGg\+jTO7rONAVEzXvXUWtV6CdDV\+rybiVmFP2w\\n\\\
+\ \ \ \ \ \ \ \ \-\-\-\-\-END\ PRIVATE\ KEY\-\-\-\-\-$''']
+
+[[allowlists]]
+targetRules = ["private-key"]
+description = "test-only cryptographic identity at crates/buzz-relay/src/api/git/settings_tests.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-relay/src/api/git/settings_tests\.rs$''']
+regexes = ['''(?s)^\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-\\n\\\
+\ \ \ \ \ \ \ \ \ \ \ \ MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgcnxDM4EiirH9dHUE\\n\\\
+\ \ \ \ \ \ \ \ \ \ \ \ WZc759TX4s5PAn8kO5ovXSnGxCWhRANCAARFb6ZnsfkqOOXyEhj3KBQphGKF4vTa\\n\\\
+\ \ \ \ \ \ \ \ \ \ \ \ zhebbavbZ1ZoklqkF1cGg\+jTO7rONAVEzXvXUWtV6CdDV\+rybiVmFP2w\\n\\\
+\ \ \ \ \ \ \ \ \ \ \ \ \-\-\-\-\-END\ PRIVATE\ KEY\-\-\-\-\-$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "public WebSocket handshake nonce at crates/buzz-relay/src/router.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-relay/src/router\.rs$''']
+regexes = ['''(?s)^Sec\-WebSocket\-Key",\ "dGhlIHNhbXBsZSBub25jZQ=="$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "configuration placeholder at deploy/charts/buzz/examples/secret-sample.yaml"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?deploy/charts/buzz/examples/secret\-sample\.yaml$''']
+regexes = ['''(?s)^BUZZ_RELAY_PRIVATE_KEY:\ "REPLACE_WITH_64_HEX"$''']
+
+[[allowlists]]
+targetRules = ["private-key"]
+description = "test-only cryptographic identity at crates/buzz-relay/src/api/git/transport.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-relay/src/api/git/transport\.rs$''']
+regexes = ['''(?s)^\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-\\n\\\
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgcnxDM4EiirH9dHUE\\n\\\
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ WZc759TX4s5PAn8kO5ovXSnGxCWhRANCAARFb6ZnsfkqOOXyEhj3KBQphGKF4vTa\\n\\\
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ zhebbavbZ1ZoklqkF1cGg\+jTO7rONAVEzXvXUWtV6CdDV\+rybiVmFP2w\\n\\\
+\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \-\-\-\-\-END\ PRIVATE\ KEY\-\-\-\-\-$''']
+
+[[allowlists]]
+targetRules = ["private-key"]
+description = "test-only cryptographic identity at crates/buzz-relay/src/router.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?crates/buzz\-relay/src/router\.rs$''']
+regexes = ['''(?s)^\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-\\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgcnxDM4EiirH9dHUE\\nWZc759TX4s5PAn8kO5ovXSnGxCWhRANCAARFb6ZnsfkqOOXyEhj3KBQphGKF4vTa\\nzhebbavbZ1ZoklqkF1cGg\+jTO7rONAVEzXvXUWtV6CdDV\+rybiVmFP2w\\n\-\-\-\-\-END\ PRIVATE\ KEY\-\-\-\-\-$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "public protocol vector at desktop/src/features/workflows/ui/workflowFormTypes.test.mjs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?desktop/src/features/workflows/ui/workflowFormTypes\.test\.mjs$''']
+regexes = ['''(?s)^KEY_HEX\ =\
+\ \ "ea9b4d7a7a78a3e3729e5568b14d764d4962be0e1f20f749bcf8d9dbbf9a9328"$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "public protocol vector at desktop/src/features/workflows/ui/workflowFormTypes.test.mjs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?desktop/src/features/workflows/ui/workflowFormTypes\.test\.mjs$''']
+regexes = ['''(?s)^KEY_NPUB\ =\
+\ \ "npub1a2d567n60z37xu57245tzntkf4yk90swrus0wjdulrvah0u6jv5qusyp60"$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "nonsecret keyboard shortcut at desktop/src/shared/lib/keyboard-shortcuts.ts"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?desktop/src/shared/lib/keyboard\-shortcuts\.ts$''']
+regexes = ['''(?s)^keysWindows:\ "Shift\+Escape"$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "provider contract fixture at desktop/src-tauri/src/commands/agents_tests.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?desktop/src\-tauri/src/commands/agents_tests\.rs$''']
+regexes = ['''(?s)^private_key_nsec":\ "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5"$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "synthetic redaction fixture at desktop/src-tauri/src/commands/agent_discovery/install_report_redaction_tests.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?desktop/src\-tauri/src/commands/agent_discovery/install_report_redaction_tests\.rs$''']
+regexes = ['''(?s)^secret\ =\ "0e8f31c5a4b7d296e5f1a"$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "synthetic redaction fixture at desktop/src-tauri/src/commands/agent_discovery/install_report_redaction_tests.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?desktop/src\-tauri/src/commands/agent_discovery/install_report_redaction_tests\.rs$''']
+regexes = ['''(?s)^auth\ =\ "YnVpbGRlcjpodW50ZXIycGFzcw=="$''']
+
+[[allowlists]]
+targetRules = ["private-key"]
+description = "synthetic redaction fixture at desktop/src-tauri/src/commands/agent_discovery/install_report_redaction_tests.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?desktop/src\-tauri/src/commands/agent_discovery/install_report_redaction_tests\.rs$''']
+regexes = ['''(?s)^\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-lowerkey"\.to_string\(\),\
+\ \ \ \ \ \ \ \ \),\
+\ \ \ \ \ \ \ \ \(\
+\ \ \ \ \ \ \ \ \ \ \ \ "NPM_CONFIG_KEY"\.to_string\(\),\
+\ \ \ \ \ \ \ \ \ \ \ \ "\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-$''']
+
+[[allowlists]]
+targetRules = ["private-key"]
+description = "synthetic redaction fixture at desktop/src-tauri/src/commands/agent_discovery/install_report_redaction_tests.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?desktop/src\-tauri/src/commands/agent_discovery/install_report_redaction_tests\.rs$''']
+regexes = ['''(?s)^\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-lowerkey",\
+\ \ \ \ \ \ \ \ \ \ \ \ "\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-upperkey",\
+\ \ \ \ \ \ \ \ \ \ \ \ "bG93ZXJhdXRo",\
+\ \ \ \ \ \ \ \ \ \ \ \ "dXBwZXJhdXRo",\
+\ \ \ \ \ \ \ \ \ \ \ \ "618243",\
+\ \ \ \ \ \ \ \ \ \ \ \ "907154",\
+\ \ \ \ \ \ \ \ \]\
+\ \ \ \ \);\
+\}\
+\
+///\ An\ unset\-but\-exported\ credential\ is\ empty,\ and\ an\ empty\ needle\ would\ match\
+///\ everywhere\.\ The\ name\ being\ exact\ does\ not\ make\ a\ blank\ value\ a\ secret\.\
+\#\[test\]\
+fn\ test_an_empty_npm_credential_config_contributes_no_secret\(\)\ \{\
+\ \ \ \ let\ secrets\ =\ secret_values_from\(\[\
+\ \ \ \ \ \ \ \ \("NPM_CONFIG_KEY"\.to_string\(\),\ String::new\(\)\),\
+\ \ \ \ \ \ \ \ \("npm_config_otp"\.to_string\(\),\ String::new\(\)\),\
+\ \ \ \ \]\);\
+\
+\ \ \ \ assert!\(secrets\.is_empty\(\),\ "got:\ \{secrets:\?\}"\);\
+\}\
+\
+///\ A\ private\ registry's\ URL\ follows\ the\ proxy\ policy\ rather\ than\ the\ whole\-value\
+///\ one:\ which\ registry\ an\ install\ talked\ to\ is\ exactly\ what\ a\ 401\ or\ an\ ETIMEDOUT\
+///\ has\ to\ be\ read\ against,\ so\ only\ the\ userinfo\ is\ the\ secret\.\
+\#\[test\]\
+fn\ test_npm_registry_userinfo_is_secret_but_the_registry_host_is_not\(\)\ \{\
+\ \ \ \ let\ secrets\ =\ secret_values_from\(\[\(\
+\ \ \ \ \ \ \ \ "npm_config_registry"\.to_string\(\),\
+\ \ \ \ \ \ \ \ "https://builder:hunter2pass@registry\.example/api/npm/"\.to_string\(\),\
+\ \ \ \ \)\]\);\
+\
+\ \ \ \ assert_eq!\(secrets,\ vec!\["builder:hunter2pass"\]\);\
+\}\
+\
+///\ The\ public\ registry\ —\ and\ any\ private\ one\ reached\ with\ a\ token\ header\ rather\
+///\ than\ URL\ credentials\ —\ contributes\ nothing,\ so\ the\ registry\ stays\ named\ in\
+///\ the\ record\.\
+\#\[test\]\
+fn\ test_an_npm_registry_without_credentials_contributes_no_secret\(\)\ \{\
+\ \ \ \ let\ secrets\ =\ secret_values_from\(\[\
+\ \ \ \ \ \ \ \ \(\
+\ \ \ \ \ \ \ \ \ \ \ \ "npm_config_registry"\.to_string\(\),\
+\ \ \ \ \ \ \ \ \ \ \ \ "https://registry\.npmjs\.org/"\.to_string\(\),\
+\ \ \ \ \ \ \ \ \),\
+\ \ \ \ \ \ \ \ \(\
+\ \ \ \ \ \ \ \ \ \ \ \ "NPM_CONFIG_REGISTRY"\.to_string\(\),\
+\ \ \ \ \ \ \ \ \ \ \ \ "https://builder@registry\.example/api/npm/"\.to_string\(\),\
+\ \ \ \ \ \ \ \ \),\
+\ \ \ \ \]\);\
+\
+\ \ \ \ assert!\(secrets\.is_empty\(\),\ "got:\ \{secrets:\?\}"\);\
+\}\
+\
+///\ The\ credential\ settings\ are\ matched\ by\ exact\ name,\ never\ by\ a\ `KEY`\ or\
+///\ `AUTH`\ substring\.\ Those\ occur\ throughout\ an\ ordinary\ environment\ on\ values\
+///\ that\ are\ paths,\ agent\ sockets\ and\ people's\ names,\ and\ scrubbing\ them\ would\
+///\ delete\ unrelated\ text\ from\ every\ record\.\
+\#\[test\]\
+fn\ test_key_and_auth_inside_a_variable_name_do_not_make_it_secret\(\)\ \{\
+\ \ \ \ let\ secrets\ =\ secret_values_from\(\[\
+\ \ \ \ \ \ \ \ \(\
+\ \ \ \ \ \ \ \ \ \ \ \ "SSH_AUTH_SOCK"\.to_string\(\),\
+\ \ \ \ \ \ \ \ \ \ \ \ "/tmp/ssh\-agent\.socket"\.to_string\(\),\
+\ \ \ \ \ \ \ \ \),\
+\ \ \ \ \ \ \ \ \("GIT_AUTHOR_NAME"\.to_string\(\),\ "Ada\ Lovelace"\.to_string\(\)\),\
+\ \ \ \ \ \ \ \ \(\
+\ \ \ \ \ \ \ \ \ \ \ \ "KEYCHAIN"\.to_string\(\),\
+\ \ \ \ \ \ \ \ \ \ \ \ "/Users/dev/Library/login\.keychain"\.to_string\(\),\
+\ \ \ \ \ \ \ \ \),\
+\ \ \ \ \ \ \ \ \(\
+\ \ \ \ \ \ \ \ \ \ \ \ "NPM_CONFIG_KEYFILE"\.to_string\(\),\
+\ \ \ \ \ \ \ \ \ \ \ \ "/Users/dev/\.npm/client\.pem"\.to_string\(\),\
+\ \ \ \ \ \ \ \ \),\
+\ \ \ \ \]\);\
+\
+\ \ \ \ assert!\(secrets\.is_empty\(\),\ "got:\ \{secrets:\?\}"\);\
+\}\
+\
+///\ The\ wiring,\ not\ just\ the\ classification:\ npm\ prints\ its\ resolved\ config\ on\ an\
+///\ auth\ failure,\ so\ each\ of\ these\ has\ to\ be\ gone\ from\ the\ log\ and\ from\ the\ step\
+///\ the\ frontend\ renders\.\ The\ one\-time\ password\ is\ the\ interesting\ one\ —\ at\ six\
+///\ digits\ it\ is\ far\ shorter\ than\ any\ other\ secret\ here,\ and\ a\ value\ under\ four\
+///\ bytes\ is\ dropped\ by\ the\ shared\ redactor\ rather\ than\ scrubbed\.\
+\#\[test\]\
+fn\ test_npm_credential_configs_are_redacted_from_the_log_and_the_returned_step\(\)\ \{\
+\ \ \ \ let\ client_key\ =\ "\-\-\-\-\-BEGIN\ PRIVATE\ KEY\-\-\-\-\-$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "synthetic redaction fixture at desktop/src-tauri/src/commands/agent_models_tests.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?desktop/src\-tauri/src/commands/agent_models_tests\.rs$''']
+regexes = ['''(?s)^OPENROUTER_API_KEY",\ "sk\-or\-v1\-secret\-key\-12345"$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "nonsecret dependency names at desktop/src-tauri/Cargo.lock"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?desktop/src\-tauri/Cargo\.lock$''']
+regexes = ['''(?s)^crypto_secretbox",\
+\ "curve25519\-dalek\ $''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "synthetic hostile-input fixture at desktop/src-tauri/src/commands/personas/inbound/inbound_tests.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?desktop/src\-tauri/src/commands/personas/inbound/inbound_tests\.rs$''']
+regexes = ['''(?s)^private_key_nsec":\ "nsec1INJECTEDSECRET"$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "synthetic managed-agent fixture at desktop/src-tauri/src/managed_agents/agent_events.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?desktop/src\-tauri/src/managed_agents/agent_events\.rs$''']
+regexes = ['''(?s)^private_key_nsec:\ "nsec1secretdonotpublish"$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "synthetic redaction fixture at desktop/src-tauri/src/managed_agents/backend_tests.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?desktop/src\-tauri/src/managed_agents/backend_tests\.rs$''']
+regexes = ['''(?s)^key=nsec1abc123def456\ $''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "synthetic redaction fixture at desktop/src-tauri/src/managed_agents/backend_tests.rs"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?desktop/src\-tauri/src/managed_agents/backend_tests\.rs$''']
+regexes = ['''(?s)^token":"sprt_tok_xyz789"$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "public cryptographic interoperability vector at desktop/src-tauri/src/testdata/hpke_nsec_backup_v1.json"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?desktop/src\-tauri/src/testdata/hpke_nsec_backup_v1\.json$''']
+regexes = ['''(?s)^recipient_private_key_hex":\ "7ad00e296b224923f735144f3cc7e49746c8e3ebf20b8002d0a73998467d8f78"$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "synthetic media identifier at desktop/tests/e2e/markdown-tables.spec.ts"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?desktop/tests/e2e/markdown\-tables\.spec\.ts$''']
+regexes = ['''(?s)^token\ =\ "0123456789abcdef"$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "public protocol vector at docs/nips/NIP-AA.md"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?docs/nips/NIP\-AA\.md$''']
+regexes = ['''(?s)^auth",\
+\ "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "public protocol vector at docs/nips/NIP-OA.md"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?docs/nips/NIP\-OA\.md$''']
+regexes = ['''(?s)^auth_sig=8b7df2575caf0a108374f8471722b233c53f9ff827a8b0f91861966c3b9dd5cb2e189eae9f49d72187674c2f5bd244145e10ff86c9f257ffe65a1ee5f108b369$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "public protocol vector at docs/nips/NIP-OA.md"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?docs/nips/NIP\-OA\.md$''']
+regexes = ['''(?s)^auth","79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "public protocol vector at docs/nips/NIP-IA.md"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?docs/nips/NIP\-IA\.md$''']
+regexes = ['''(?s)^auth","79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "nonsecret dependency checksum at mobile/ios/Podfile.lock"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?mobile/ios/Podfile\.lock$''']
+regexes = ['''(?s)^local_auth_darwin:\ c3ee6cce0a8d56be34c8ccb66ba31f7f180aaebb$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "synthetic pairing fixture at mobile/test/features/pairing/pairing_provider_test.dart"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?mobile/test/features/pairing/pairing_provider_test\.dart$''']
+regexes = ['''(?s)^secret=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789'$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "provider contract fixture at scripts/test-k8s-provider-release.sh"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?scripts/test\-k8s\-provider\-release\.sh$''']
+regexes = ['''(?s)^private_key_nsec":\ "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5"$''']
+
+[[allowlists]]
+targetRules = ["curl-auth-header"]
+description = "malformed authentication fixture at scripts/e2e-git-perms.sh"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?scripts/e2e\-git\-perms\.sh$''']
+regexes = ['''(?s)^curl\ \-sf\ \-\-max\-time\ "\$CURL_TIMEOUT"\ \-o\ /dev/null\ \-w\ "%\{http_code\}"\ \\\
+\ \ \ \ \-H\ "Authorization:\ Bearer\ invalid\-token"$''']

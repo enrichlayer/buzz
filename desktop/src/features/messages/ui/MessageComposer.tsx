@@ -2,6 +2,7 @@ import { useFeatureEnabled } from "@/shared/features";
 import { usePromptSuggestionDismissal } from "./usePromptSuggestionDismissal";
 import { PromptSuggestions } from "./PromptSuggestions";
 import * as React from "react";
+import { composerShellCommand } from "@/features/messages/lib/shellCommand";
 import { EditorContent } from "@tiptap/react";
 import {
   useChannelLinks,
@@ -93,6 +94,7 @@ function MessageComposerImpl({
   onEditSave,
   onPrepareSendChannel,
   onPreparingMentionSendChange,
+  onInsertTextReady,
   onSend,
   placeholder,
   profiles,
@@ -555,6 +557,30 @@ function MessageComposerImpl({
     richText,
     setIsEmojiPickerOpen,
   });
+  const insertText = React.useCallback(
+    (text: string) => {
+      const nextText = text.trim();
+      if (!nextText || !richText.editor) return;
+      const current = richText.getPlainTextAndCursor().text;
+      const separator = current.trim().length > 0 ? "\n\n" : "";
+      richText.replacePlainTextRange(
+        current.length,
+        current.length,
+        `${separator}${nextText}`,
+      );
+      richText.focusEnd();
+    },
+    [
+      richText.editor,
+      richText.focusEnd,
+      richText.getPlainTextAndCursor,
+      richText.replacePlainTextRange,
+    ],
+  );
+  React.useLayoutEffect(() => {
+    onInsertTextReady?.(insertText);
+    return () => onInsertTextReady?.(null);
+  }, [insertText, onInsertTextReady]);
   const handleAlwaysAddressShortcut = useAlwaysAddressShortcut({
     enabled: Boolean(audienceScope && editTarget == null),
     lockedAgent: lockedAgents[0],
@@ -961,6 +987,25 @@ function MessageComposerImpl({
               </div>
             ) : null}
             {composerLinkPreviews}
+            {editTarget == null &&
+              composerShellCommand(
+                contentRef.current,
+                mentions.getDraftMentionRefs(contentRef.current),
+                persistentAudience.pubkeys,
+              ) != null && (
+                <div
+                  role="status"
+                  className="mb-3 border-l-2 border-primary/60 pl-3 text-sm leading-relaxed text-muted-foreground"
+                >
+                  <span className="font-medium text-foreground">
+                    Run Bash on the addressed agent’s host
+                  </span>
+                  <br />
+                  Address one agent. The command runs directly; its output is
+                  shared in this thread and available to the agent. Remove ! to
+                  send a message.
+                </div>
+              )}
             <output
               aria-live="polite"
               className="sr-only"

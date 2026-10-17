@@ -128,9 +128,7 @@ void main() {
       containsAll([posterUrl, animationUrl]),
     );
     animationResponse.complete(http.Response.bytes(_transparentPng, 200));
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 50)),
-    );
+    await _waitForMediaImage(tester, animationUrl);
     await tester.pumpAndSettle();
 
     expect(
@@ -235,9 +233,7 @@ void main() {
     expect(container.read(profileAvatarHandoffProvider), isNotNull);
 
     posterResponse.complete(http.Response.bytes(_transparentPng, 200));
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 50)),
-    );
+    await _waitForMediaImage(tester, posterUrl);
     await tester.pumpAndSettle();
 
     expect(container.read(profileAvatarHandoffProvider), isNull);
@@ -499,3 +495,39 @@ final _transparentPng = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAA'
   'AAYAAjCB0C8AAAAASUVORK5CYII=',
 );
+
+// Observe the exact provider (including decode dimensions) used by the widget.
+// Completing HTTP alone does not mean the engine has decoded its first frame.
+Future<void> _waitForMediaImage(WidgetTester tester, String url) async {
+  await tester.pump();
+  final media = find.byWidgetPredicate(
+    (widget) => widget is MediaImage && widget.url == url,
+    skipOffstage: false,
+  );
+  final imageFinder = find.descendant(
+    of: media,
+    matching: find.byType(Image, skipOffstage: false),
+    skipOffstage: false,
+  );
+  final image = tester.widget<Image>(imageFinder);
+  final context = tester.element(imageFinder);
+  await tester.runAsync(() async {
+    final stream = image.image.resolve(createLocalImageConfiguration(context));
+    final decoded = Completer<void>();
+    final listener = ImageStreamListener(
+      (frame, _) {
+        frame.dispose();
+        if (!decoded.isCompleted) decoded.complete();
+      },
+      onError: (Object error, StackTrace? stack) {
+        if (!decoded.isCompleted) decoded.completeError(error, stack);
+      },
+    );
+    stream.addListener(listener);
+    try {
+      await decoded.future.timeout(const Duration(seconds: 10));
+    } finally {
+      stream.removeListener(listener);
+    }
+  });
+}

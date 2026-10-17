@@ -345,6 +345,7 @@ pub fn build_managed_agent_summary<R: tauri::Runtime>(
         max_turn_duration_seconds: record.max_turn_duration_seconds,
         parallelism: record.parallelism,
         session_policy: super::effective_acp_session_policy(record, personas),
+        output_mode: super::effective_agent_output_mode(record, personas),
         system_prompt: effective_prompt,
         avatar_url: record.avatar_url.clone(),
         model: effective_model,
@@ -784,6 +785,8 @@ pub fn spawn_agent_child<R: tauri::Runtime>(
     // Resolve once and stamp the same value onto the environment and snapshot.
     let acp_session_policy = super::effective_acp_session_policy(record, &personas);
     super::apply_acp_session_policy_env(&mut command, acp_session_policy);
+    let agent_output_mode = super::effective_agent_output_mode(record, &personas);
+    super::apply_agent_output_mode_env(&mut command, agent_output_mode);
 
     crate::build_identity::apply_demo_config_home(&mut command)?;
     // Publish-first replay floor: written AFTER the `descriptor.env` loop, the
@@ -835,6 +838,7 @@ pub fn spawn_agent_child<R: tauri::Runtime>(
             provider: effective_provider.as_deref(),
             enforced_owner_only: super::owner_only_access_build(),
             session_policy: acp_session_policy,
+            output_mode: agent_output_mode,
         },
     );
 

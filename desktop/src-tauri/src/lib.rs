@@ -527,6 +527,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::get_app_build_info,
             terminal_runtime::terminal_attach,
             terminal_runtime::terminal_detach,
             terminal_runtime::terminal_close,
@@ -594,6 +595,7 @@ pub fn run() {
             publish_project_pull_request_merged_status,
             merge_project_pull_request,
             open_project_terminal,
+            open_agent_permission_terminal,
             open_project_merge_recovery_terminal,
             search_users,
             get_presence,

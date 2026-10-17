@@ -135,6 +135,7 @@ export type MockManagedAgentSeed = {
   autoRestartOnConfigChange?: boolean;
   respondTo?: RawManagedAgent["respond_to"];
   respondToAllowlist?: string[];
+  outputMode?: "full" | "summary";
   /** Per-agent env vars seeded into the mock store. */
   envVars?: Record<string, string>;
 };
@@ -175,6 +176,7 @@ type MockPersonaSeed = {
   respondTo?: "owner-only" | "allowlist" | "anyone";
   respondToAllowlist?: string[];
   sessionPolicy?: "channel" | "thread";
+  outputMode?: "full" | "summary";
 };
 
 type MockTeamSeed = {
@@ -969,6 +971,7 @@ type RawManagedAgent = {
   pubkey: string;
   name: string;
   persona_id: string | null;
+  output_mode?: "full" | "summary";
   /** Record-level harness/runtime pin (`null` when inheriting from the persona). */
   runtime: string | null;
   relay_url: string;
@@ -1066,6 +1069,7 @@ type RawPersona = {
   respond_to_allowlist?: string[];
   parallelism?: number | null;
   session_policy?: "channel" | "thread";
+  output_mode?: "full" | "summary";
   created_at: string;
   updated_at: string;
 };
@@ -1990,6 +1994,11 @@ function cloneManagedAgent(agent: MockManagedAgent): RawManagedAgent {
     pubkey: agent.pubkey,
     name: agent.name,
     persona_id: agent.persona_id,
+    output_mode:
+      mockPersonas.find((persona) => persona.id === agent.persona_id)
+        ?.output_mode ??
+      agent.output_mode ??
+      "full",
     runtime: agent.runtime ?? null,
     relay_url: agent.relay_url,
     acp_command: agent.acp_command,
@@ -2549,6 +2558,7 @@ function buildSeededManagedAgent(seed: MockManagedAgentSeed): MockManagedAgent {
     pubkey: seed.pubkey,
     name: seed.name,
     persona_id: seed.personaId ?? null,
+    output_mode: seed.outputMode ?? "full",
     // Native serde always emits this key (`null` when unpinned) — the bridge
     // must mirror the wire shape, not omit the key.
     runtime: seed.runtime ?? null,
@@ -2734,6 +2744,7 @@ function resetMockPersonas(config?: E2eConfig) {
           ? [...(persona.respondToAllowlist ?? [])]
           : [],
       session_policy: persona.sessionPolicy ?? "channel",
+      output_mode: persona.outputMode ?? "full",
       is_builtin: false,
       is_active: persona.isActive ?? true,
       shared: persona.shared ?? false,
@@ -3689,6 +3700,7 @@ function mockPersonaCatalogPublications() {
         parallelism:
           typeof content.parallelism === "number" ? content.parallelism : null,
         sessionPolicy,
+        outputMode: content.output_mode === "summary" ? "summary" : "full",
       },
     });
   }
@@ -8948,9 +8960,10 @@ type PersonaBehaviorInput = {
   respondToAllowlist?: string[];
   parallelism?: number;
   sessionPolicy?: "channel" | "thread";
+  outputMode?: "full" | "summary";
 };
 
-/** Mirrors `apply_persona_behavior`: replace all four as a unit. */
+/** Mirrors `apply_persona_behavior`: replace the behavior group as a unit. */
 function applyMockPersonaBehavior(
   persona: RawPersona,
   behavior: PersonaBehaviorInput | undefined,
@@ -8965,6 +8978,7 @@ function applyMockPersonaBehavior(
       : [];
   persona.parallelism = behavior.parallelism ?? null;
   persona.session_policy = behavior.sessionPolicy ?? "channel";
+  persona.output_mode = behavior.outputMode ?? "full";
 }
 
 async function handleCreatePersona(args: {
@@ -15114,6 +15128,13 @@ export function maybeInstallE2eTauriMocks() {
       case "archive_events":
         // Returns the ArchiveBatchResult shape the UI expects.
         return { persisted: 0, dropped: 0 };
+      case "read_unindexed_observer_rows":
+        // The mock archive persists no events, so it has no rows to backfill.
+        return [];
+      case "read_archived_observer_events_for_channel":
+        // Same empty mock archive: a short page marks history exhausted, so
+        // agent threads do not offer an "Older coding session" banner.
+        return [];
       // Archive sync runs natively; the bridge has no relay-backed backend to
       // drive, so these are accepted no-ops. Without them every AppShell mount
       // logs an unknown-command warning once the gate opens.
@@ -15363,6 +15384,15 @@ export function maybeInstallE2eTauriMocks() {
       // shows up as noise in unrelated specs.
       case "plugin:app|version":
         return MOCK_APP_VERSION;
+      // Sidebar and Settings footers render the native build identity.
+      case "get_app_build_info":
+        return {
+          version: MOCK_APP_VERSION,
+          buildNumber: "1790000000000",
+          revision: "0".repeat(40),
+          sourceState: "clean",
+          repository: "https://github.com/enrichlayer/buzz",
+        };
       case "merge_save_subscription_kinds": {
         // Mirrors `merge_owner_p_kinds`: union `kind` into the owner_p row's
         // kinds, creating the row if it doesn't exist yet.
