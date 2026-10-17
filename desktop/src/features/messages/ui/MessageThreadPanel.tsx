@@ -1,3 +1,4 @@
+import { latestPromptSuggestions } from "../lib/promptSuggestions";
 import * as React from "react";
 import {
   ThreadSessionTimelineProvider,
@@ -945,6 +946,16 @@ function MessageThreadPanelContent({
           >
             <ComposerDockBackdrop gutterClassName="inset-x-5" />
             <MessageComposer
+              suggestedPrompts={
+                threadRepliesPending ||
+                threadTypingPubkeys.length > 0 ||
+                activityAccessoryVisible
+                  ? null
+                  : latestPromptSuggestions([
+                      threadHead,
+                      ...threadReplies.map((entry) => entry.message),
+                    ])
+              }
               audienceContext={{
                 type: "thread",
                 rootTags: threadHead.tags,

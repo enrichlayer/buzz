@@ -1,4 +1,12 @@
 import * as React from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useKnownAgentPubkeys } from "@/features/agents/useKnownAgentPubkeys";
+import { channelMembersQueryKey } from "@/features/channels/rosterFreshness";
+import { isKnownAgentAuthor } from "@/features/messages/lib/promptSuggestions";
+import {
+  usersBatchEntryKey,
+  type UsersBatchEntry,
+} from "@/features/profile/hooks";
 
 import {
   activateDesktopNotificationTarget,
@@ -22,7 +30,7 @@ import {
   shouldPlayNotificationSound,
 } from "@/features/notifications/lib/sound";
 import { useNotificationSenderName } from "@/features/notifications/useNotificationSenderName";
-import type { Channel, RelayEvent } from "@/shared/api/types";
+import type { Channel, ChannelMember, RelayEvent } from "@/shared/api/types";
 
 export function useAppShellDesktopNotifications({
   channels,
@@ -57,6 +65,24 @@ export function useAppShellDesktopNotifications({
   });
 
   const resolveSenderName = useNotificationSenderName();
+  const queryClient = useQueryClient();
+  const knownAgentPubkeys = useKnownAgentPubkeys();
+  // Same agent provenance as the timeline formatter: known agents, the
+  // profile flag, or a bot-role (or agent-flagged) member of this channel.
+  const isAgentAuthor = (channelId: string, authorPubkey: string) => {
+    const key = authorPubkey.toLowerCase();
+    return isKnownAgentAuthor(authorPubkey, {
+      agentPubkeys: knownAgentPubkeys,
+      profiles: {
+        [key]:
+          queryClient.getQueryData<UsersBatchEntry>(usersBatchEntryKey(key))
+            ?.summary ?? undefined,
+      },
+      members: queryClient.getQueryData<ChannelMember[]>(
+        channelMembersQueryKey(channelId),
+      ),
+    });
+  };
 
   const handleChannelNotification = React.useEffectEvent(
     (_channelId: string, event: RelayEvent) => {
@@ -83,6 +109,7 @@ export function useAppShellDesktopNotifications({
         senderName: resolveSenderName(event.pubkey),
         channelName,
         content: event.content,
+        authorIsAgent: isAgentAuthor(channel.id, event.pubkey),
       });
 
       void sendDesktopNotification({
@@ -126,6 +153,7 @@ export function useAppShellDesktopNotifications({
         senderName: resolveSenderName(event.pubkey),
         channelName,
         content: event.content,
+        authorIsAgent: isAgentAuthor(channelId, event.pubkey),
       });
 
       void sendDesktopNotification({

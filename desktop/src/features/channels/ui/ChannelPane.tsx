@@ -1,3 +1,4 @@
+import { latestPromptSuggestions } from "@/features/messages/lib/promptSuggestions";
 import * as React from "react";
 import { LogIn } from "lucide-react";
 import { AnimatePresence } from "motion/react";
@@ -801,6 +802,11 @@ export const ChannelPane = React.memo(function ChannelPane({
                   {timeoutActive ? <ComposerTimeoutBanner /> : null}
                   <ComposerDockBackdrop gutterClassName="inset-x-5" />
                   <MessageComposer
+                    suggestedPrompts={
+                      isTimelineLoading || botTypingEntries.length > 0
+                        ? null
+                        : latestPromptSuggestions(visibleMessages)
+                    }
                     channelId={activeChannel?.id ?? null}
                     channelName={activeChannel?.name ?? "channel"}
                     channelType={activeChannel?.channelType ?? null}

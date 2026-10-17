@@ -1,0 +1,82 @@
+{
+  "surface": "public",
+  "baseUrl": "http://127.0.0.1:4173",
+  "appBaseUrls": {
+    "desktop": "http://127.0.0.1:4173"
+  },
+  "captureSpecAppDir": "desktop",
+  "routes": [
+    {
+      "path": "/prompt-suggestions",
+      "appDir": "desktop",
+      "filePattern": "^desktop/(tests/visual-evidence/prompt-suggestions\\.capture\\.ts|src/features/messages/ui/PromptSuggestions\\.tsx)$",
+      "capturesComponent": [
+        "PromptSuggestions",
+        "MessageComposer",
+        "MessageThreadPanel",
+        "MessageAgentOwner",
+        "MessageMetaSegments",
+        "MessageRow",
+        "ChannelPane",
+        "MessageHeader",
+        "SearchResultItem",
+        "TopbarSearch"
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "name": "prompt-suggestions",
+      "routePath": "/prompt-suggestions",
+      "appDir": "desktop",
+      "purpose": "Offer optional next prompts without disrupting free text, then append only to the selected conversation draft. Mocked relay UI contract; native live-client checks are recorded separately.",
+      "components": [
+        "PromptSuggestions",
+        "MessageComposer",
+        "MessageThreadPanel",
+        "MessageAgentOwner",
+        "MessageMetaSegments",
+        "MessageRow",
+        "ChannelPane",
+        "MessageHeader",
+        "SearchResultItem",
+        "TopbarSearch"
+      ],
+      "steps": [
+        "01-free-text",
+        "02-editable-draft",
+        "03-dismissed",
+        "04-thread-suggestions",
+        "05-thread-draft",
+        "06-inbox-preview",
+        "07-search-preview"
+      ],
+      "requireVideo": true,
+      "successCriteria": [
+        {
+          "description": "Selecting a suggestion retains the existing draft and sends nothing.",
+          "evidenceStates": [
+            "02-editable-draft",
+            "05-thread-draft"
+          ],
+          "proof": "visual"
+        },
+        {
+          "description": "Dismissal leaves the draft editable with no suggestion controls.",
+          "evidenceStates": [
+            "03-dismissed"
+          ],
+          "proof": "visual"
+        },
+        {
+          "description": "Known-agent metadata is hidden in real inbox and search previews.",
+          "evidenceStates": [
+            "06-inbox-preview",
+            "07-search-preview"
+          ],
+          "proof": "visual"
+        }
+      ]
+    }
+  ]
+}
