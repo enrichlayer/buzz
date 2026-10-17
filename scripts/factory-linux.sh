@@ -17,9 +17,13 @@ case "${1:-}" in
     just desktop-install-ci
     ;;
   check)
+    # DEV-13542: disposable incremental units exhausted the 20 GB workspace.
+    # Keep every check, but do not retain a cache this validation never reuses.
+    export CARGO_INCREMENTAL=0
     mkdir -p .tmp/factory-artifacts
     # Pipefail preserves the first failing check in the remote exit receipt.
     {
+      python3 scripts/test-factory-linux.py
       node --test desktop/scripts/build-enrichlayer-release-config.test.mjs
       python3 scripts/test-enrichlayer-updater.py
       python3 scripts/test-buzz-r2.py
