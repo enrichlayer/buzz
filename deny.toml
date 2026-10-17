@@ -1,5 +1,18 @@
 [advisories]
 ignore = [
+    # Maintenance-only exceptions require explicit maintainer approval.
+    # Remove each when its owning DEV-13167 replacement reaches the locked graph.
+    { id = "RUSTSEC-2026-0150", reason = "unmaintained audiopus_sys via opus; replacement tracked in DEV-13167" },
+    { id = "RUSTSEC-2020-0168", reason = "unmaintained mach via user-idle; replacement tracked in DEV-13167" },
+    { id = "RUSTSEC-2024-0370", reason = "unmaintained proc-macro-error via stable Tauri GTK; removal tracked in DEV-13167" },
+    { id = "RUSTSEC-2025-0081", reason = "unmaintained unic-char-property via stable Tauri urlpattern; removal tracked in DEV-13167" },
+    { id = "RUSTSEC-2025-0075", reason = "unmaintained unic-char-range via stable Tauri urlpattern; removal tracked in DEV-13167" },
+    { id = "RUSTSEC-2025-0080", reason = "unmaintained unic-common via stable Tauri urlpattern; removal tracked in DEV-13167" },
+    { id = "RUSTSEC-2025-0100", reason = "unmaintained unic-ucd-ident via stable Tauri urlpattern; removal tracked in DEV-13167" },
+    { id = "RUSTSEC-2025-0098", reason = "unmaintained unic-ucd-version via stable Tauri urlpattern; removal tracked in DEV-13167" },
+    { id = "RUSTSEC-2026-0371", reason = "unmaintained zbus_names via Linux D-Bus/keyring; replacement tracked in DEV-13167" },
+    { id = "RUSTSEC-2026-0370", reason = "unmaintained zvariant via Linux D-Bus/keyring; replacement tracked in DEV-13167" },
+    { id = "RUSTSEC-2026-0372", reason = "unmaintained zvariant_derive via Linux D-Bus/keyring; replacement tracked in DEV-13167" },
     # instant 0.1.13 — unmaintained crate. Transitive dep: nostr → instant.
     # Will be resolved when nostr crate updates its dependencies.
     { id = "RUSTSEC-2024-0384", reason = "transitive dep via nostr; no upstream fix available" },
