@@ -179,14 +179,100 @@ test("task review lookup binds the signed task marker and exact commit", async (
         ]
       : [];
   }, address);
-  assert.deepEqual(calls[0]["#a"], [address]);
+  // #a is post-filtered by the relay, so it must not bound the root query.
+  assert.equal(calls[0]["#a"], undefined);
+  assert.equal(
+    calls.find((filter) => filter.kinds[0] === 1619)["#E"],
+    undefined,
+  );
   assert.equal(reviews.length, 1);
   assert.equal(reviews[0].commit, "c".repeat(40));
   assert.equal(reviews[0].sessionContext.taskAddress, address);
+  const many = Array.from({ length: 201 }, (_, index) => ({
+    ...root,
+    id: (index + 1).toString(16).padStart(64, "0"),
+  }));
   await assert.rejects(
-    fetchLinearTaskReviews(async () => Array(200).fill(root), address),
+    fetchLinearTaskReviews(
+      async (filter) => (filter.kinds[0] === 1618 ? many : []),
+      address,
+    ),
     /limit/,
   );
+});
+
+test("task review lookup survives relay-wide history beyond the SQL limit", async () => {
+  const other = "f".repeat(64);
+  const root = {
+    id: "d".repeat(64),
+    pubkey: owner,
+    kind: 1618,
+    content: "Review connected work",
+    created_at: 5,
+    tags: [
+      ["a", `30617:${owner}:repo`],
+      ["a", address, "", "buzz-task"],
+      ["e", "b".repeat(64), "", "buzz-session"],
+      ["c", "c".repeat(40)],
+    ],
+  };
+  const unrelatedRoots = Array.from({ length: 600 }, (_, index) => ({
+    ...root,
+    id: `1${index.toString(16).padStart(63, "0")}`,
+    pubkey: other,
+    created_at: 1000 + index,
+    tags: [["a", `30617:${other}:repo`]],
+  }));
+  const update = {
+    id: "9".repeat(64),
+    pubkey: owner,
+    kind: 1619,
+    content: "",
+    created_at: 6,
+    tags: [
+      ["E", root.id],
+      ["c", "2".repeat(40)],
+    ],
+  };
+  const unrelatedUpdates = Array.from({ length: 600 }, (_, index) => ({
+    ...update,
+    id: `2${index.toString(16).padStart(63, "0")}`,
+    pubkey: other,
+    created_at: 1000 + index,
+    tags: [["E", "8".repeat(64)]],
+  }));
+  const store = [root, update, ...unrelatedRoots, ...unrelatedUpdates];
+  // Model the relay: kinds, authors, #e and until are applied in SQL before
+  // LIMIT; #a and uppercase #E are applied to the limited page afterwards.
+  const relay = async (filter) =>
+    store
+      .filter(
+        (event) =>
+          filter.kinds.includes(event.kind) &&
+          (!filter.authors || filter.authors.includes(event.pubkey)) &&
+          (!filter["#e"] ||
+            event.tags.some(
+              (tag) => tag[0] === "e" && filter["#e"].includes(tag[1]),
+            )) &&
+          (filter.until === undefined || event.created_at <= filter.until),
+      )
+      .sort((left, right) => right.created_at - left.created_at)
+      .slice(0, filter.limit)
+      .filter(
+        (event) =>
+          (!filter["#a"] ||
+            event.tags.some(
+              (tag) => tag[0] === "a" && filter["#a"].includes(tag[1]),
+            )) &&
+          (!filter["#E"] ||
+            event.tags.some(
+              (tag) => tag[0] === "E" && filter["#E"].includes(tag[1]),
+            )),
+      );
+  const reviews = await fetchLinearTaskReviews(relay, address);
+  assert.equal(reviews.length, 1);
+  assert.equal(reviews[0].id, root.id);
+  assert.equal(reviews[0].commit, "2".repeat(40));
 });
 
 test("task threads use signed roots and exclude replies and other channels", async () => {
