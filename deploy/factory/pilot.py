@@ -362,6 +362,8 @@ def main():
     except (
         ValueError,
         KeyError,
+        TypeError,
+        AttributeError,
         OSError,
         RuntimeError,
         subprocess.TimeoutExpired,
