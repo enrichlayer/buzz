@@ -1,5 +1,7 @@
 import { Search } from "lucide-react";
 import * as React from "react";
+import { useKnownAgentPubkeys } from "@/features/agents/useKnownAgentPubkeys";
+import { isKnownAgentAuthor } from "@/features/messages/lib/promptSuggestions";
 import { resolveUserLabel } from "@/features/profile/lib/identity";
 import { getMinimumSearchQueryLength } from "@/features/search/hooks";
 import { parseSearchOperators } from "@/features/search/lib/parseSearchOperators";
@@ -417,6 +419,7 @@ export function TopbarSearch({
     limit: SEARCH_RESULT_LIMIT,
     scopeChannelId,
   });
+  const knownAgentPubkeys = useKnownAgentPubkeys();
   const trimmedQuery = query.trim();
   // Bind highlights to the debounced result source so stale results can never
   // pair with newly typed text during the debounce window.
@@ -692,8 +695,10 @@ export function TopbarSearch({
                 result.hit.content,
                 resultQuery,
                 96,
-                resultProfiles?.[result.hit.pubkey.toLowerCase()]?.isAgent ===
-                  true,
+                isKnownAgentAuthor(result.hit.pubkey, {
+                  agentPubkeys: knownAgentPubkeys,
+                  profiles: resultProfiles,
+                }),
               );
     const trailingLabel =
       result.kind === "channel"

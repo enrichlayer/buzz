@@ -34,7 +34,7 @@ export function PromptSuggestions({
           key={suggestion.prompt}
           type="button"
           title={suggestion.prompt}
-          className="max-w-full whitespace-normal break-all rounded-full border border-border/60 px-3 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+          className="max-w-full whitespace-normal break-words rounded-full border border-border/60 px-3 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
           onClick={() => {
             if (onInsert(suggestion)) onDismiss();
           }}

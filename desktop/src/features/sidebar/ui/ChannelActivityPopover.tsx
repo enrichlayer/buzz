@@ -5,6 +5,7 @@ import { useAppShell } from "@/app/AppShellContext";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import type { ActiveChannelTurnSummary } from "@/features/agents/activeAgentTurnsStore";
 import { formatElapsed } from "@/features/agents/ui/agentSessionUtils";
+import { useKnownAgentPubkeys } from "@/features/agents/useKnownAgentPubkeys";
 import { useOpenAgentActivity } from "@/features/agents/useOpenAgentActivity";
 import { buildInboxItems, type InboxItem } from "@/features/home/lib/inbox";
 import { getGroupedInboxItemIds } from "@/features/home/useHomeInboxReadState";
@@ -285,6 +286,7 @@ export function ChannelActivityPopover({
     enabled: open,
   });
   const profiles = profilesQuery.data?.profiles;
+  const knownAgentPubkeys = useKnownAgentPubkeys();
   const activityReadAtByMessageId = React.useMemo(
     () =>
       new Map(
@@ -298,6 +300,7 @@ export function ChannelActivityPopover({
   const activityItems = React.useMemo(() => {
     if (!open) return [];
     return buildInboxItems({
+      agentPubkeys: knownAgentPubkeys,
       channels: [channel],
       currentPubkey: identityQuery.data?.pubkey,
       feed: buildChannelActivityFeed(unreadChannelFeedItems),
@@ -309,6 +312,7 @@ export function ChannelActivityPopover({
     channel,
     activityReadAtByMessageId,
     identityQuery.data?.pubkey,
+    knownAgentPubkeys,
     open,
     profiles,
     unreadChannelFeedItems,

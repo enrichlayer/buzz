@@ -853,7 +853,11 @@ function MessageComposerImpl({
             <PromptSuggestions
               key={`${channelId}:${draftKey}:${suggestedPrompts.messageId}`}
               source={suggestedPrompts}
-              onDismiss={suggestionDismissal.dismiss}
+              onDismiss={() => {
+                suggestionDismissal.dismiss();
+                // The chips unmount; keep keyboard focus in the composer.
+                richText.focusEnd();
+              }}
               onInsert={(suggestion) => {
                 if (
                   !richText.editor ||

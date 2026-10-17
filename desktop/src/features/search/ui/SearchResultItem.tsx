@@ -1,4 +1,8 @@
-import { stripPromptSuggestionFooter } from "@/features/messages/lib/promptSuggestions";
+import { useKnownAgentPubkeys } from "@/features/agents/useKnownAgentPubkeys";
+import {
+  isKnownAgentAuthor,
+  stripPromptSuggestionFooter,
+} from "@/features/messages/lib/promptSuggestions";
 import type * as React from "react";
 import {
   ArrowRight,
@@ -234,8 +238,11 @@ export function MessageResultBody({
   });
   const avatarUrl =
     resultProfiles?.[hit.pubkey.toLowerCase()]?.avatarUrl ?? null;
-  const authorIsAgent =
-    resultProfiles?.[hit.pubkey.toLowerCase()]?.isAgent === true;
+  const knownAgentPubkeys = useKnownAgentPubkeys();
+  const authorIsAgent = isKnownAgentAuthor(hit.pubkey, {
+    agentPubkeys: knownAgentPubkeys,
+    profiles: resultProfiles,
+  });
 
   return (
     <div className="min-w-0 flex-1">
