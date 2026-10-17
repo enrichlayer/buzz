@@ -1,3 +1,5 @@
+import { SelectionFeedback } from "@/shared/ui/annotations/SelectionFeedback";
+import { parseAnnotationMessage } from "@/shared/ui/annotations/annotationModel";
 import * as React from "react";
 import { AlertTriangle } from "lucide-react";
 import {
@@ -41,6 +43,7 @@ import { parseWaveMessageContent } from "@/features/messages/lib/waveMessage";
 import { resolveSnapshotSharedBy } from "@/features/messages/lib/snapshotSharedBy";
 import { resolveMentionProps } from "@/shared/lib/resolveMentionNames";
 import type { VideoReviewContext } from "@/shared/ui/VideoPlayer";
+import { SourceAnnotation } from "@/shared/ui/annotations";
 import { VideoReviewCommentMarkdown } from "@/shared/ui/VideoReviewCommentMarkdown";
 import { MessageActionBar } from "./MessageActionBar";
 import { editMessage } from "@/shared/api/tauri";
@@ -370,7 +373,12 @@ export const MessageRow = React.memo(
         collapseDepthGuideActions.map((action) => [action.depth, action]),
       );
     }, [collapseDepthGuideActions]);
+    const annotation = React.useMemo(
+      () => parseAnnotationMessage(message.body),
+      [message.body],
+    );
     const renderBody = () => {
+      if (annotation) return <SelectionFeedback value={annotation} />;
       const KindCard = getMessageKindCard(message.kind);
       if (KindCard) {
         return (
@@ -618,21 +626,36 @@ export const MessageRow = React.memo(
         </div>
       ) : null;
 
+    const authorContent = message.pubkey ? (
+      <MessageAuthorWithIndicators
+        authorName={message.author}
+        ownerPubkey={message.ownerPubkey}
+        pubkey={message.pubkey}
+        role={profilePopoverRole}
+      >
+        {authorNode}
+      </MessageAuthorWithIndicators>
+    ) : (
+      authorNode
+    );
     const headerNode = isDisplayedAsContinuation ? null : (
       // pe reserves the measured action-rail footprint (0px until measured) so
       // header content ends before the rail's left edge in every rail state.
-      <MessageHeaderRow className="pe-[var(--message-action-rail-width,0px)]">
-        {message.pubkey ? (
-          <MessageAuthorWithIndicators
-            authorName={message.author}
-            ownerPubkey={message.ownerPubkey}
-            pubkey={message.pubkey}
-            role={profilePopoverRole}
-          >
-            {authorNode}
-          </MessageAuthorWithIndicators>
+      // In narrow threads, reserve the rail beside the author only; owner and
+      // timestamp metadata can use the full width below it.
+      <MessageHeaderRow
+        className={
+          layoutVariant === "thread-reply"
+            ? undefined
+            : "pe-[var(--message-action-rail-width,0px)]"
+        }
+      >
+        {layoutVariant === "thread-reply" ? (
+          <span className="inline-flex min-w-0 basis-full pe-[var(--message-action-rail-width,0px)]">
+            {authorContent}
+          </span>
         ) : (
-          authorNode
+          authorContent
         )}
         {/* Author is not a segment: "Alice 9:53 AM" needs no divider. */}
         <MessageMetaSegments
@@ -651,7 +674,16 @@ export const MessageRow = React.memo(
     const messageBodyNode = (
       <>
         <SentFromThreadLine channelId={channelId} tags={message.tags} />
-        {renderBody()}
+        {isAuthorAgent && !message.pending ? (
+          <SourceAnnotation
+            key={message.id}
+            source={{ sourceId: message.id, text: message.body, channelId }}
+          >
+            {renderBody()}
+          </SourceAnnotation>
+        ) : (
+          renderBody()
+        )}
         {channelId && !message.pending ? (
           <ArtifactAttachments
             channelId={channelId}

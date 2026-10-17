@@ -26,6 +26,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 const _channelId = 'chan-1';
 
+// Message-action fixtures exercise real UI behavior without opening the
+// lifecycle notifier's platform connectivity stream. The suite checks this seam.
+class _ResumedAppLifecycle extends AppLifecycleNotifier {
+  @override
+  AppLifecycleState build() => AppLifecycleState.resumed;
+}
+
 TimelineMessage _message({
   String id = 'msg-1',
   String pubkey = 'alice',
@@ -148,6 +155,7 @@ Future<void> _pumpSheet(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        appLifecycleProvider.overrideWith(_ResumedAppLifecycle.new),
         savedPrefsProvider.overrideWithValue(prefs),
         myPubkeyProvider.overrideWithValue('self'),
         readStateProvider.overrideWith(
@@ -211,6 +219,7 @@ Future<void> _pumpImageSheet(
 }) async {
   await tester.pumpWidget(
     ProviderScope(
+      overrides: [appLifecycleProvider.overrideWith(_ResumedAppLifecycle.new)],
       child: MaterialApp(
         theme: AppTheme.light(),
         home: Scaffold(
@@ -318,6 +327,7 @@ Future<_MessageActionsPopoverHarness> _pumpMessageActionsPopover(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        appLifecycleProvider.overrideWith(_ResumedAppLifecycle.new),
         savedPrefsProvider.overrideWithValue(prefs),
         myPubkeyProvider.overrideWithValue('self'),
         readStateProvider.overrideWith(
@@ -409,16 +419,26 @@ class _FakeChannelActions extends ChannelActions {
 }
 
 void main() {
-  // Some sheets build the app lifecycle, which listens for network changes.
-  // That listen is asynchronous, so a missing plugin fails whichever test
-  // happens to be running. Flutter documents mock handlers as cleared after
-  // each test, so install it before every test.
+  const connectivityChannel = MethodChannel(
+    'dev.fluttercommunity.plus/connectivity_status',
+  );
+  final connectivityCalls = <String>[];
   setUp(() {
+    connectivityCalls.clear();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(
-          const MethodChannel('dev.fluttercommunity.plus/connectivity_status'),
-          (_) async => null,
-        );
+        .setMockMethodCallHandler(connectivityChannel, (call) async {
+          connectivityCalls.add(call.method);
+          return null;
+        });
+  });
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(connectivityChannel, null);
+    expect(
+      connectivityCalls,
+      isEmpty,
+      reason: 'Message-action fixtures must not access platform connectivity',
+    );
   });
 
   testWidgets(
@@ -811,6 +831,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            appLifecycleProvider.overrideWith(_ResumedAppLifecycle.new),
             savedPrefsProvider.overrideWithValue(await _mockPrefs()),
             myPubkeyProvider.overrideWithValue('self'),
             readStateProvider.overrideWith(
@@ -946,6 +967,9 @@ void main() {
                 ),
               ),
               reminderServiceProvider.overrideWithValue(null),
+              // DEV-12937: the reaction surface reads presence/lifecycle, but
+              // this ownership fixture must never open a platform stream.
+              appLifecycleProvider.overrideWith(_ResumedAppLifecycle.new),
             ],
             child: MaterialApp(
               home: Consumer(
@@ -1757,7 +1781,10 @@ void main() {
 
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [savedPrefsProvider.overrideWithValue(prefs)],
+          overrides: [
+            appLifecycleProvider.overrideWith(_ResumedAppLifecycle.new),
+            savedPrefsProvider.overrideWithValue(prefs),
+          ],
           child: MaterialApp(
             theme: AppTheme.light(),
             builder: (context, child) => MediaQuery(

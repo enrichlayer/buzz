@@ -153,6 +153,15 @@ if name == "cargo" and sys.argv[1] == "build":
             (self.root / ".tmp/factory-artifacts/buzz-linux.tar.gz").is_file()
         )
 
+    def test_check_disables_incremental_even_when_inherited(self):
+        # DEV-13542: an inherited CARGO_INCREMENTAL=1 must not re-enable the
+        # incremental cache that exhausted the remote workspace.
+        result = self.run_check(CARGO_INCREMENTAL="1")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        records = [json.loads(line) for line in self.record.read_text().splitlines()]
+        self.assertTrue(records)
+        self.assertTrue(all(r["incremental"] == "0" for r in records), records)
+
     def test_unit_failure_after_clippy_cleanup_preserves_verdict(self):
         result = self.run_check(JUST_EXIT="19", JUST_FAIL_PHASE="test-unit")
         self.assertEqual(result.returncode, 19, result.stderr + result.stdout)

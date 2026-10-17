@@ -95,6 +95,34 @@ test("a mounted card receives an answer after terminal CLOSED without remounting
   registry.reset();
 });
 
+test("a mounted card receives an answer after initial subscription failure", async () => {
+  const subscriptions = [];
+  let attempts = 0;
+  const registry = createChannelArtifactRegistry({
+    subscribeLive: async (_filter, onEvent) => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("temporary connection failure");
+      subscriptions.push({ onEvent });
+      return () => {};
+    },
+    fetchEvents: async () => [],
+    isRegisteredType: (type) => type === "buzz.agent_prompt",
+    releaseGraceMs: GRACE_MS,
+    closedRetryDelaysMs: [5],
+  });
+  const store = registry.acquire(CHANNEL);
+  for (let elapsed = 0; attempts < 2 && elapsed < 100; elapsed += 5)
+    await wait(5);
+  assert.equal(attempts, 2, "the mounted store retries a rejected REQ");
+  assert.equal(registry.size(), 1);
+  const answer = prompt("2".repeat(64));
+  answer.content = '{"status":"answered"}';
+  subscriptions[0].onEvent(answer);
+  assert.equal(store.getHead(D)?.content, '{"status":"answered"}');
+  registry.release(CHANNEL, store);
+  registry.reset();
+});
+
 test("terminal CLOSED retry is bounded and reset cancels a pending retry", async () => {
   const { registry, subscriptions } = harness();
   registry.acquire(CHANNEL);

@@ -26,6 +26,9 @@ export type MessageComposerEditTarget = {
 };
 
 export type MessageComposerProps = {
+  suggestedPrompts?:
+    | import("../lib/promptSuggestions").PromptSuggestionSource
+    | null;
   audienceContext?: {
     rootTags?: readonly string[][];
     type: "thread";
@@ -86,6 +89,8 @@ export type MessageComposerProps = {
   } | null;
   onPrepareSendChannel?: (pubkeys?: string[]) => Promise<string | null>;
   onPreparingMentionSendChange?: (isPreparing: boolean) => void;
+  /** Registers a draft-preserving plain-text insertion seam for host actions. */
+  onInsertTextReady?: (insertText: ((text: string) => void) | null) => void;
   onSend: (
     content: string,
     mentionPubkeys: string[],

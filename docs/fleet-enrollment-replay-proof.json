@@ -1,0 +1,26 @@
+{
+  "recorded_at": "2026-10-12T14:54:46.858867+00:00",
+  "verification_actor": "agent",
+  "user_direction": "You need to run it",
+  "enrollment_verified": true,
+  "runtime_id": "01a12f38-bcd6-7560-ac93-c4c395e31212",
+  "pubkey": "3bb9df659695d52cb5689d64b1d6c730f02d00ee9980c4b013234b5c6d98e423",
+  "channel": "134f0c59-68f7-45bb-a7d8-2bb5fe7026ed",
+  "display_name": "Local DEV-12832",
+  "events": {
+    "directory": "169275f3f3def8b229c5df85c189c3382c35fc015d76d3c590eb532e9ee455e1",
+    "membership": "e44b981b5a3c160de2783d971e9aaad677b2eb5ef12d6e5bbaed051c96519993",
+    "profile": "8e35f72bd8b7e2d52b0727438524c42c5310d35200bc5213acfe73d2a4f18bbc"
+  },
+  "same_identity_and_events": true,
+  "native_ui": {
+    "app": "Buzz Dev",
+    "profile_visible": true,
+    "runtime_description_visible": true,
+    "presence": "offline",
+    "original_outbound_message_visible": true,
+    "thread_has_replies": false
+  },
+  "human_performed": false,
+  "full_flow_accepted": false
+}

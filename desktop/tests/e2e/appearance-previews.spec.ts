@@ -52,7 +52,7 @@ async function scrubTo(control: Locator, option: Locator) {
   const optionBox = await option.boundingBox();
   if (!controlBox || !optionBox) throw new Error("Segment geometry is missing");
 
-  const selectedOption = control.locator('button[aria-pressed="true"]');
+  const selectedOption = control.locator('[role="radio"][aria-checked="true"]');
   const selectedOptionBox = await selectedOption.boundingBox();
   if (!selectedOptionBox)
     throw new Error("Starting segment geometry is missing");
@@ -106,7 +106,7 @@ test("appearance samples preview locally and commit only on selection", async ({
   await page.evaluate(() => window.dispatchEvent(new Event("blur")));
   await expect(linkSample.locator("[data-link-preview-inline]")).toHaveCount(0);
   await expect(page.getByTestId("link-preview-style-compact")).toHaveAttribute(
-    "aria-pressed",
+    "aria-checked",
     "true",
   );
 

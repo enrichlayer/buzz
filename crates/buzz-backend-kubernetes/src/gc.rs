@@ -90,7 +90,10 @@ pub fn plan(
     };
 
     // Orphan sweep: only with a server clock.
-    if let Some(now) = now {
+    if let Some(now) = now.and_then(|clock| {
+        k8s_openapi::jiff::Timestamp::new(clock.timestamp(), clock.timestamp_subsec_nanos() as i32)
+            .ok()
+    }) {
         for secret in secrets {
             if !secret_is_ours(secret, identity) {
                 continue;
@@ -105,7 +108,7 @@ pub fn plan(
                 // No server-assigned timestamp means no age proof. Skip.
                 continue;
             };
-            if (now - created.0).num_seconds() >= ORPHAN_SECRET_MIN_AGE_SECS {
+            if now.duration_since(created.0).as_secs() >= ORPHAN_SECRET_MIN_AGE_SECS {
                 plan.secrets.push(name.to_string());
             }
         }
@@ -176,7 +179,13 @@ mod tests {
                     .into_iter()
                     .collect::<BTreeMap<_, _>>(),
                 ),
-                creation_timestamp: Some(Time(now - chrono::Duration::seconds(age_secs))),
+                creation_timestamp: Some(Time(
+                    k8s_openapi::jiff::Timestamp::new(
+                        now.timestamp() - age_secs,
+                        now.timestamp_subsec_nanos() as i32,
+                    )
+                    .unwrap(),
+                )),
                 ..Default::default()
             },
             ..Default::default()

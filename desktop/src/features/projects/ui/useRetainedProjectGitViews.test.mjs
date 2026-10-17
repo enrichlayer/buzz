@@ -333,6 +333,7 @@ async function renderWorkspaceReviews(initialProps) {
       pullRequestsLoading: props.isLoading,
       selectedPullRequest: props.selectedPullRequest,
       selectedPullRequestId: props.selectedPullRequestId,
+      ...props.workspaceOverrides,
     });
   }
   const rootRoute = createRootRoute({ component: Panel });
@@ -488,5 +489,49 @@ test("selected review chrome and diff query stay aligned across fetch phases", a
   } finally {
     await panel.unmount();
     await unmountSelection();
+  }
+});
+
+test("pending cold discovery loads while disabled external snapshots retain their recovery UI", async () => {
+  const { screen } = await import("@testing-library/react");
+  const { projectRepositorySnapshotLoading } = await import(
+    "../useResolvedProjectRepository.ts"
+  );
+  const input = {
+    isLoading: false,
+    pullRequests: [],
+    selectedPullRequest: null,
+    selectedPullRequestId: null,
+  };
+  const unresolved = { kind: "unresolved" };
+  const external = { kind: "external", host: "github.com" };
+  const panel = await renderWorkspaceReviews({
+    ...input,
+    workspaceOverrides: {
+      initialTab: "overview",
+      repoHost: unresolved,
+      snapshotLoading: projectRepositorySnapshotLoading(unresolved, true),
+    },
+  });
+  try {
+    assert.ok(screen.getByLabelText("Loading repository"));
+    assert.equal(screen.queryByText("Repository not initialized"), null);
+    await panel.rerender({
+      ...input,
+      workspaceOverrides: {
+        initialTab: "overview",
+        repoHost: external,
+        snapshotLoading: projectRepositorySnapshotLoading(external, true),
+      },
+    });
+    assert.ok(screen.getByText("Code hosted on github.com"));
+    assert.ok(
+      screen.getByText(
+        "Clone this repository locally to explore its files, commits, and contributors in Buzz.",
+      ),
+    );
+    assert.equal(screen.queryByLabelText("Loading repository"), null);
+  } finally {
+    await panel.unmount();
   }
 });

@@ -1,5 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const port = Number(process.env.BUZZ_E2E_PORT ?? "4173");
+if (!Number.isInteger(port) || port < 1 || port > 65535) {
+  throw new Error("BUZZ_E2E_PORT must be an integer between 1 and 65535");
+}
+const baseURL = `http://127.0.0.1:${port}`;
+
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 30_000,
@@ -10,7 +16,7 @@ export default defineConfig({
     ["html", { open: "never", outputFolder: "playwright-report" }],
   ],
   use: {
-    baseURL: "http://127.0.0.1:4173",
+    baseURL,
     screenshot: "only-on-failure",
     trace: "on-first-retry",
     video: "retain-on-failure",
@@ -19,6 +25,7 @@ export default defineConfig({
     {
       name: "smoke",
       testMatch: [
+        "**/project-review-workspace.spec.ts",
         "**/smoke.spec.ts",
         "**/mock-subscription-readiness.spec.ts",
         "**/owned-agent-discovery.spec.ts",
@@ -44,7 +51,12 @@ export default defineConfig({
         "**/invites-settings-screenshots.spec.ts",
         "**/messaging.spec.ts",
         "**/code-fence-plugins.spec.ts",
+        "**/runtime-session-plugins.spec.ts",
+        "**/session-annotations.spec.ts",
+        "**/agent-output-modes.spec.ts",
+        "**/agent-thread-session-archive.spec.ts",
         "**/question-card.spec.ts",
+        "**/prompt-suggestions.spec.ts",
         "**/bestie.spec.ts",
         "**/message-feedback-snapshots.spec.ts",
         "**/message-copy-link.spec.ts",
@@ -190,6 +202,7 @@ export default defineConfig({
     {
       name: "integration",
       testMatch: [
+        "**/project-review-workspace.live.spec.ts",
         "**/agents.spec.ts",
         "**/agent-availability.spec.ts",
         "**/agent-snapshot-recipient.spec.ts",
@@ -218,9 +231,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "python3 -m http.server 4173 -d dist",
+    command: `python3 -m http.server ${port} -d dist`,
     cwd: ".",
-    reuseExistingServer: !process.env.CI,
-    url: "http://127.0.0.1:4173",
+    reuseExistingServer: !process.env.CI && !process.env.BUZZ_E2E_PORT,
+    url: baseURL,
   },
 });

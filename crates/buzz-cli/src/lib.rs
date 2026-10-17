@@ -304,6 +304,24 @@ impl RespondToArg {
 
 #[derive(Subcommand)]
 pub enum AgentsCmd {
+    /// Enroll an external runtime using a durable, owner-authorized agent identity
+    Enroll {
+        /// Private directory holding credentials and the signed enrollment journal
+        #[arg(long)]
+        state_dir: std::path::PathBuf,
+        /// Existing channel where the owner may add agents
+        #[arg(long)]
+        channel: String,
+        /// Stable runtime identity supplied by its launcher (not a display name)
+        #[arg(long)]
+        runtime_id: String,
+        /// Runtime cohort: local, herdr, or factory
+        #[arg(long, value_parser = ["local", "herdr", "factory"])]
+        cohort: String,
+        /// Public agent display name
+        #[arg(long)]
+        display_name: String,
+    },
     /// Open a prefilled create-agent form in the owner's Buzz Desktop
     DraftCreate {
         /// Current channel UUID; the new agent is added here after save
@@ -438,6 +456,49 @@ pub enum MessagesCmd {
         #[arg(long = "mention")]
         mentions: Vec<String>,
     },
+    /// Sign a message without publishing it
+    #[command(
+        after_help = "Examples:\n  echo 'durable message' | buzz messages sign --channel <UUID> --content -\n  buzz messages sign --channel <UUID> --content-file message.md"
+    )]
+    Sign {
+        /// Channel UUID
+        #[arg(long)]
+        channel: String,
+        /// Message text. Use '-' to read from stdin.
+        #[arg(
+            long,
+            required_unless_present = "content_file",
+            conflicts_with = "content_file"
+        )]
+        content: Option<String>,
+        /// Read message text from this file, or '-' for stdin.
+        #[arg(long)]
+        content_file: Option<String>,
+        /// Nostr event kind (default 9)
+        #[arg(long)]
+        kind: Option<u16>,
+        /// Immediate parent event ID for a reply
+        #[arg(long)]
+        reply_to: Option<String>,
+        /// Also mark the signed event for Nostr-network broadcast
+        #[arg(long, default_value_t = false)]
+        broadcast: bool,
+        /// Pubkey to mention (hex or npub; repeatable)
+        #[arg(long = "mention")]
+        mentions: Vec<String>,
+    },
+    /// Publish a complete signed message event without rebuilding or re-signing it
+    PublishEvent {
+        /// Expected channel UUID
+        #[arg(long)]
+        channel: String,
+        /// Expected immediate parent event ID; omit only for a top-level event
+        #[arg(long)]
+        reply_to: Option<String>,
+        /// Signed event JSON file, or '-' for stdin
+        #[arg(long)]
+        event_file: String,
+    },
     /// Send a code diff / patch to a channel
     SendDiff {
         /// Channel UUID
@@ -519,6 +580,24 @@ pub enum MessagesCmd {
         #[arg(long)]
         since: Option<i64>,
         /// Comma-separated event kinds to filter (e.g. 1,1984)
+        #[arg(long)]
+        kinds: Option<String>,
+    },
+    /// Retrieve an exhaustive bounded channel history and verify every event
+    #[command(
+        after_help = "Output is a newest-first JSON array of canonical signed events. Any malformed event, invalid ID/signature, channel mismatch, or bound exhaustion fails without partial stdout."
+    )]
+    GetVerified {
+        /// Channel UUID
+        #[arg(long)]
+        channel: String,
+        /// Exhaustive result bound; saturation is an error rather than truncation
+        #[arg(long)]
+        max_events: u32,
+        /// Inclusive Unix timestamp lower bound
+        #[arg(long)]
+        since: Option<i64>,
+        /// Comma-separated event kinds
         #[arg(long)]
         kinds: Option<String>,
     },
@@ -1696,6 +1775,12 @@ pub enum PrCmd {
         /// Channel where this pull request originated (NIP-29 h-tag)
         #[arg(long)]
         channel: Option<String>,
+        /// Canonical Buzz thread root; inherited by thread-scoped session MCP tools
+        #[arg(long)]
+        thread: Option<String>,
+        /// Linked Linear issue URL (https://linear.app/workspace/issue/TEAM-123)
+        #[arg(long)]
+        linear_issue: Option<String>,
         /// Root patch event id this PR revises
         #[arg(long)]
         revision_of: Option<String>,
@@ -1750,6 +1835,9 @@ pub enum PrCmd {
         /// Repo identifier (d-tag)
         #[arg(long)]
         repo_id: String,
+        /// Only reviews associated with this canonical coding thread
+        #[arg(long)]
+        thread: Option<String>,
         /// Filter by PR author pubkey
         #[arg(long)]
         author: Option<String>,
@@ -2462,6 +2550,7 @@ mod tests {
                 "archived",
                 "draft-create",
                 "draft-update",
+                "enroll",
                 "unarchive"
             ]
         );
@@ -2471,9 +2560,12 @@ mod tests {
                 "delete",
                 "edit",
                 "get",
+                "get-verified",
+                "publish-event",
                 "search",
                 "send",
                 "send-diff",
+                "sign",
                 "thread",
                 "vote"
             ]
@@ -2606,7 +2698,7 @@ mod tests {
     #[test]
     fn subcommand_counts_are_stable() {
         let expected: Vec<(&str, usize)> = vec![
-            ("agents", 5),
+            ("agents", 6),
             ("canvas", 4),
             ("channels", 16),
             ("dms", 4),
@@ -2614,7 +2706,7 @@ mod tests {
             ("feed", 1),
             ("issues", 6),
             ("media", 1),
-            ("messages", 8),
+            ("messages", 11),
             ("pack", 2),
             ("patches", 4),
             ("pr", 5),

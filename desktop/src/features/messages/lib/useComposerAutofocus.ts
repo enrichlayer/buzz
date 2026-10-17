@@ -1,3 +1,5 @@
+import type { Editor } from "@tiptap/core";
+import { TextSelection } from "@tiptap/pm/state";
 import * as React from "react";
 
 /**
@@ -5,10 +7,10 @@ import * as React from "react";
  * changes (channel switch, thread open).
  *
  * Matches the behaviour of Slack/Discord/Signal: the composer is ready to
- * accept typing without an explicit click. The `focus` callback is expected
- * to no-op until the underlying editor is mounted, and to change identity
- * once that happens — so listing it as a dep recovers from the
- * editor-not-ready-yet case on first render.
+ * accept typing without an explicit click. Wait for the editor and check
+ * focus ownership in the frame that actually focuses it. Tiptap's focus
+ * command queues another frame, which can steal focus from a menu opened
+ * after an earlier ownership check.
  *
  * The effect trigger deliberately excludes `disabled`: callers pass a
  * disabled flag that includes transient state like `isSending`, which would
@@ -20,11 +22,10 @@ import * as React from "react";
  * Guards:
  *  - Skip if the composer is currently disabled (archived channel, no
  *    channel, or in-flight send at the moment of mount).
- *  - Skip if focus already lives in another text-entry surface (open
- *    dialog input, search box, etc.) so we don't yank focus from the user.
+ *  - Skip if focus already lives in a text-entry surface or open overlay.
  */
 export function useComposerAutofocus(
-  focus: () => void,
+  editor: Editor | null,
   draftKey: string | null | undefined,
   disabled: boolean,
 ) {
@@ -35,20 +36,32 @@ export function useComposerAutofocus(
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: draftKey is the trigger; disabled is read via ref
   React.useEffect(() => {
-    if (disabledRef.current) return;
-    if (typeof document === "undefined") return;
-    const active = document.activeElement as HTMLElement | null;
-    if (active && active !== document.body) {
-      const tag = active.tagName;
-      if (
-        tag === "INPUT" ||
-        tag === "TEXTAREA" ||
-        tag === "SELECT" ||
-        active.isContentEditable
-      ) {
-        return;
+    if (!editor || typeof document === "undefined") return;
+    const frame = requestAnimationFrame(() => {
+      if (disabledRef.current || editor.isDestroyed) return;
+      const active = document.activeElement as HTMLElement | null;
+      if (active && active !== document.body) {
+        const tag = active.tagName;
+        if (
+          tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          tag === "SELECT" ||
+          active.isContentEditable ||
+          active.closest('[role="dialog"], [role="menu"], [role="listbox"]') ||
+          active.getAttribute("aria-expanded") === "true"
+        ) {
+          return;
+        }
       }
-    }
-    focus();
-  }, [draftKey, focus]);
+      // Already in a frame outside React's commit. Focus synchronously so no
+      // second queued Tiptap focus can outlive this ownership check.
+      editor.view.dispatch(
+        editor.state.tr
+          .setSelection(TextSelection.atEnd(editor.state.doc))
+          .scrollIntoView(),
+      );
+      editor.view.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [draftKey, editor]);
 }

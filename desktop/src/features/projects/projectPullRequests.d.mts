@@ -1,4 +1,5 @@
 import type { RelayEvent } from "@/shared/api/types";
+import type { SessionReviewContext } from "./sessionReviewContext";
 
 export type ProjectPullRequestUpdate = {
   id: string;
@@ -18,6 +19,9 @@ export type ProjectPullRequestComment = {
   createdAt: number;
   commit: string | null;
   anchor: ProjectPullRequestCommentAnchor | null;
+  repoAddress?: string | null;
+  replyTo?: string | null;
+  threadAction?: "resolve" | "reopen" | null;
   inlineCommentStatus: "current" | "outdated" | null;
   isInlineComment: boolean;
   isApproval: boolean;
@@ -69,6 +73,7 @@ export function normalizeProjectPullRequestCommentAnchor(
 ): ProjectPullRequestCommentAnchor | null;
 
 export type ProjectPullRequest = {
+  sessionContext?: SessionReviewContext | null;
   id: string;
   title: string;
   content: string;

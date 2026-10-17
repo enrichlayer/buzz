@@ -25,6 +25,7 @@ pub(crate) mod git_bash;
 pub(crate) mod global_config;
 mod managed_node_paths;
 mod nest;
+mod output_mode;
 mod pair_admission;
 pub(crate) mod parallelism;
 mod persona_avatars;
@@ -91,6 +92,10 @@ pub(crate) use global_config::{
 };
 pub(crate) use managed_node_paths::*;
 pub use nest::*;
+pub(crate) use output_mode::{
+    apply_agent_output_mode_env, effective_agent_output_mode, insert_agent_output_mode_env,
+    AgentOutputMode, ACP_OUTPUT_MODE_ENV_VAR,
+};
 pub use pair_admission::*;
 pub use parallelism::{acp_agents_value, effective_parallelism, harness_max_parallelism};
 pub use personas::*;

@@ -1,5 +1,10 @@
+import { DEMO_PLUGINS } from "@/shared/plugins/runtime/demoCompatibility";
 import * as React from "react";
 import { getCodeFenceRenderer } from "@/shared/plugins/codeFences";
+import {
+  RuntimePluginRenderer,
+  useRuntimeCodeFencePlugin,
+} from "@/shared/plugins/runtime";
 import {
   extractLanguage,
   getCodeBlockText,
@@ -25,10 +30,32 @@ export function FencedCodeBlock({ children }: { children?: React.ReactNode }) {
     <MarkdownCodeBlock language={language}>{children}</MarkdownCodeBlock>
   );
   const FenceRenderer = getCodeFenceRenderer(language);
-  if (!FenceRenderer) return codeBlock;
+  const runtimePlugin = useRuntimeCodeFencePlugin(language);
+  if (FenceRenderer) {
+    return (
+      <React.Suspense fallback={codeBlock}>
+        <FenceRenderer code={getCodeBlockText(children)} fallback={codeBlock} />
+      </React.Suspense>
+    );
+  }
+  if (!runtimePlugin)
+    return (
+      <>
+        {DEMO_PLUGINS.some((p) => p.fence === language) && (
+          <p className="text-sm text-muted-foreground" role="note">
+            Coding demo renderer is missing or disabled. Open Settings → Plugins
+            to enable it, or install its manifest if it is missing. Source is
+            shown below.
+          </p>
+        )}
+        {codeBlock}
+      </>
+    );
   return (
-    <React.Suspense fallback={codeBlock}>
-      <FenceRenderer code={getCodeBlockText(children)} fallback={codeBlock} />
-    </React.Suspense>
+    <RuntimePluginRenderer
+      code={getCodeBlockText(children)}
+      fallback={codeBlock}
+      manifest={runtimePlugin}
+    />
   );
 }
