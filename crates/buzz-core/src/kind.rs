@@ -467,6 +467,9 @@ pub const KIND_PRESENCE_UPDATE: u32 = 20001;
 pub const KIND_PAIRING: u32 = 24134;
 /// Ephemeral: typing indicator for a channel.
 pub const KIND_TYPING_INDICATOR: u32 = 20002;
+/// Ephemeral: an owner's presence for its agents. Content is the status, each
+/// `p` tag names one agent the signer owns. Never the signer's own presence.
+pub const KIND_AGENT_PRESENCE: u32 = 20003;
 /// Ephemeral: owner-scoped encrypted agent observer telemetry and control frame.
 pub const KIND_AGENT_OBSERVER_FRAME: u32 = 24200;
 /// Ephemeral: huddle emoji reaction burst. Channel-scoped to the ephemeral
@@ -639,6 +642,11 @@ pub const KIND_GIT_STATUS_DRAFT: u32 = 1633;
 /// announcement, never a project. See `docs/nips/NIP-MP.md`.
 pub const KIND_PROJECT: u32 = 30621;
 
+/// Channel-scoped, replaceable mirror of an external Linear project.
+pub const KIND_LINEAR_PROJECT: u32 = 30623;
+/// Channel-scoped, replaceable mirror of an external Linear issue, without a repository requirement.
+pub const KIND_LINEAR_TASK: u32 = 30624;
+
 /// All registered kind constants — used for duplicate detection and iteration.
 pub const ALL_KINDS: &[u32] = &[
     KIND_PROFILE,
@@ -703,6 +711,7 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_THREAD_WINDOW_BOUNDS,
     KIND_PRESENCE_UPDATE,
     KIND_TYPING_INDICATOR,
+    KIND_AGENT_PRESENCE,
     KIND_HUDDLE_REACTION,
     KIND_BLOSSOM_AUTH,
     KIND_PAIRING,
@@ -775,6 +784,8 @@ pub const ALL_KINDS: &[u32] = &[
     KIND_GIT_STATUS_CLOSED,
     KIND_GIT_STATUS_DRAFT,
     KIND_PROJECT,
+    KIND_LINEAR_PROJECT,
+    KIND_LINEAR_TASK,
 ];
 
 /// Returns `true` if `kind` is in the ephemeral range (20000–29999).

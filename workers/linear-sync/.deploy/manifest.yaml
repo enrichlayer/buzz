@@ -1,0 +1,37 @@
+name: buzz-linear-sync-private
+hosts: ovh-us-east-vin-1b
+services:
+  - buzz-linear-sync-private.service
+contents:
+  - dst: /etc/buzz-linear-sync-private
+    type: dir
+    file_info: {mode: "0700", owner: root, group: root}
+  - dst: /etc/buzz-linear-sync-private/config.json
+    type: file
+    template: true
+    content: "{{ buzz_linear_sync_config | to_json }}"
+    file_info: {mode: "0600", owner: "1000", group: "1000"}
+  - dst: /etc/buzz-linear-sync-private/runtime.env
+    type: file
+    template: true
+    content: |
+      LINEAR_API_TOKEN={{ buzz_linear_sync_credentials['linear-read-token'] }}
+      BUZZ_PRIVATE_KEY={{ buzz_linear_sync_credentials['buzz-private-key'] }}
+    file_info: {mode: "0600", owner: root, group: root}
+  - dst: /etc/buzz-linear-sync-private/registry-auth.json
+    type: file
+    template: true
+    content: "{{ buzz_linear_sync_registry_auth }}"
+    file_info: {mode: "0600", owner: root, group: root}
+  - dst: /etc/containers/systemd/buzz-linear-sync-private.volume
+    type: file
+    content: |
+      [Volume]
+      VolumeName=buzz-linear-sync-private
+      User=1000
+      Group=1000
+  - dst: /etc/containers/systemd/buzz-linear-sync-private.container
+    src: worker.container.j2
+    type: file
+    template: true
+    file_info: {mode: "0644", owner: root, group: root}

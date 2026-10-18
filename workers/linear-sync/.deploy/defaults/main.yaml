@@ -1,0 +1,19 @@
+# Pilot only: a single remote host and its persistent outbox, never HA with local disks.
+buzz_linear_sync_task_queue: buzz-linear-dev13285-private
+buzz_linear_sync_temporal_address: "10.10.193.197:30022"
+buzz_linear_sync_temporal_namespace: vertical-int
+buzz_linear_sync_config:
+  profile: verticalint
+  workspace: verticalint
+  projectId: 501f2579-28a4-4a94-b747-79a68c506779
+  relay: https://buzz-pilot.enrichlayer.com
+  channel: b2965ed6-aec8-4d57-86a6-a16131b6606f
+  signer: "{{ buzz_linear_sync_signer | mandatory }}"
+  directory: /data/outbox
+  maxRecords: 250
+buzz_linear_sync_credentials: >-
+  {{ lookup('community.hashi_vault.vault_kv2_get',
+            'service/buzz-linear-sync/runtime', engine_mount_point='secret').secret }}
+buzz_linear_sync_registry_auth: >-
+  {{ lookup('community.hashi_vault.vault_kv2_get',
+            'service/buzz-linear-sync/registry', engine_mount_point='secret').secret['auth-json'] }}

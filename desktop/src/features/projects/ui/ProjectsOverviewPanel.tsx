@@ -1,3 +1,4 @@
+import type { LinearWorkRecord } from "../linearWorkModels";
 import {
   CheckCircle2,
   CircleDot,
@@ -55,6 +56,7 @@ type ProjectsOverviewPanelProps = {
 };
 
 type ProjectsOverviewContextPanelProps = {
+  linearWork?: LinearWorkRecord[];
   filter: ProjectsFilter;
   canCreateTarget: boolean;
   issues: ProjectIssue[];
@@ -198,6 +200,7 @@ export function ProjectsActivityIntro({
 }
 
 export function ProjectsOverviewContextPanel({
+  linearWork,
   canCreateTarget,
   filter,
   issues,
@@ -226,6 +229,7 @@ export function ProjectsOverviewContextPanel({
   const context = React.useMemo(
     () =>
       projectsOverviewContext({
+        linearWork,
         filter,
         issues,
         projectReadModels,
@@ -235,6 +239,7 @@ export function ProjectsOverviewContextPanel({
         summaries,
       }),
     [
+      linearWork,
       filter,
       issues,
       projectReadModels,

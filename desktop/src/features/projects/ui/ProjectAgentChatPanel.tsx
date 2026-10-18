@@ -9,6 +9,7 @@ import { normalizeRelayUrl } from "@/features/communities/communityStorage";
 import { useCommunities } from "@/features/communities/useCommunities";
 import type { ProjectDetailAgentContext } from "@/features/projects/lib/projectDetailAgentContext";
 import { projectDetailAgentContextBlock } from "@/features/projects/lib/projectDetailAgentContext";
+import { projectConversationResource } from "../lib/projectConversationResource";
 import { pickDefaultProjectsAgent } from "@/features/projects/lib/projectAgentSelection";
 import {
   projectAgentMembershipInput,
@@ -47,19 +48,7 @@ type ProjectAgentConversation = {
   opener: ProjectsConversationOpener;
 };
 
-export function ProjectAgentChatPanel({
-  canResetWidth = false,
-  constrainToAvailableSpace = true,
-  context,
-  detached = false,
-  homeChannel = null,
-  layout = "pane",
-  onClose,
-  onResetWidth,
-  onResizeStart,
-  sharedHeaderBackdrop,
-  widthPx = 0,
-}: {
+type ProjectAgentChatPanelProps = {
   canResetWidth?: boolean;
   constrainToAvailableSpace?: boolean;
   context: ProjectDetailAgentContext;
@@ -71,7 +60,36 @@ export function ProjectAgentChatPanel({
   onResizeStart?: (event: React.PointerEvent<HTMLButtonElement>) => void;
   sharedHeaderBackdrop?: boolean;
   widthPx?: number;
-}) {
+};
+
+/** Remount conversation state at every issue, identity or community boundary. */
+export function ProjectAgentChatPanel(props: ProjectAgentChatPanelProps) {
+  const { activeCommunity } = useCommunities();
+  const identity = useIdentityQuery();
+  const key = projectsConversationScope(
+    "detail",
+    activeCommunity?.relayUrl
+      ? normalizeRelayUrl(activeCommunity.relayUrl)
+      : null,
+    identity.data?.pubkey ?? null,
+    projectConversationResource(props.context),
+  );
+  return <ProjectAgentChatSession key={key ?? "unscoped"} {...props} />;
+}
+
+function ProjectAgentChatSession({
+  canResetWidth = false,
+  constrainToAvailableSpace = true,
+  context,
+  detached = false,
+  homeChannel = null,
+  layout = "pane",
+  onClose,
+  onResetWidth,
+  onResizeStart,
+  sharedHeaderBackdrop,
+  widthPx = 0,
+}: ProjectAgentChatPanelProps) {
   const { activeCommunity } = useCommunities();
   const identityQuery = useIdentityQuery();
   // Repository coordinates (`kind:owner:dtag`) are not globally unique — the
@@ -90,7 +108,7 @@ export function ProjectAgentChatPanel({
     "detail",
     relayScope,
     signerScope,
-    context.repoAddress,
+    projectConversationResource(context),
   );
   const [isSending, setIsSending] = React.useState(false);
   const [storedConversation, setStoredConversation] =
@@ -204,6 +222,9 @@ export function ProjectAgentChatPanel({
               undefined,
               request.expectedRelayUrl,
               request.expectedSignerPubkey,
+              undefined,
+              undefined,
+              request.parentEventId ? undefined : context.linearTask,
             ),
         });
         if (!conversation) {
@@ -238,6 +259,7 @@ export function ProjectAgentChatPanel({
     },
     [
       contextPayload,
+      context.linearTask,
       conversation,
       homeChannel,
       identityQuery.data?.pubkey,

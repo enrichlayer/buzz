@@ -1,22 +1,40 @@
 name: Enrich Layer Remote macOS Validation
+run-name: ${{ inputs.source_request != '' && format('Buzz native {0}', inputs.source_request) || 'Enrich Layer Remote macOS Validation' }}
 on:
   workflow_dispatch:
+    inputs:
+      source_request:
+        description: Admitted Factory native source request digest
+        type: string
+        required: false
+        default: ''
   workflow_call:
+    inputs:
+      source_request:
+        type: string
+        required: false
+        default: ''
 permissions:
   contents: read
 concurrency:
-  group: enrichlayer-macos-validation-${{ github.ref }}
+  group: enrichlayer-macos-validation-${{ inputs.source_request || github.ref }}
   cancel-in-progress: true
 jobs:
+  source:
+    if: github.repository == 'enrichlayer/buzz' && inputs.source_request != ''
+    uses: ./.github/workflows/enrichlayer-native-source-validation.yml
+    with:
+      source_request: ${{ inputs.source_request }}
   native:
-    if: github.repository == 'enrichlayer/buzz'
+    if: github.repository == 'enrichlayer/buzz' && inputs.source_request == ''
     environment: desktop-candidate
     strategy:
       fail-fast: false
       matrix:
         runner: [macos-15, macos-15-intel]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 120
+    # Intel's cold build and both isolated app packages exceed two hours.
+    timeout-minutes: ${{ matrix.runner == 'macos-15-intel' && 180 || 120 }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -31,6 +49,29 @@ jobs:
             exit 1
           fi
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      # pnpm 11 has no standalone darwin-x64 binary. Keep Hermit's other
+      # toolchain pins and use the JavaScript package at packageManager's pin.
+      - name: Install JavaScript pnpm for Intel macOS
+        id: intel_pnpm
+        if: matrix.runner == 'macos-15-intel'
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          standalone: false
+      - name: Expose JavaScript pnpm to Hermit subprocesses
+        if: matrix.runner == 'macos-15-intel'
+        env:
+          PNPM_BIN: ${{ steps.intel_pnpm.outputs.bin_dest }}
+        run: |
+          # Hermit puts bin/ first again in just/node/cargo subprocesses.
+          # Repoint only this runner checkout's launcher to the same-version JS
+          # package; changing GITHUB_PATH alone still invokes the missing binary.
+          # The action emits a relative-path shell shim, so invoke its original
+          # location through a wrapper instead of moving or symlinking that shim.
+          rm bin/pnpm
+          printf '#!/bin/sh\nexec "%s/pnpm" "$@"\n' "$PNPM_BIN" > bin/pnpm
+          chmod +x bin/pnpm
+          EXPECTED=$(node -p 'require("./package.json").packageManager.replace(/^pnpm@/, "").split("+")[0]')
+          test "$(just --command pnpm --version)" = "$EXPECTED"
       - name: Validate publisher
         run: |
           node --test desktop/scripts/build-enrichlayer-release-config.test.mjs
@@ -38,26 +79,46 @@ jobs:
           python3 scripts/test-buzz-r2.py
           python3 scripts/test-enrichlayer-minisign.py
       - name: Build and test native desktop
+        env:
+          CMAKE_POLICY_VERSION_MINIMUM: '3.5'
         run: |
           set -euo pipefail
           mkdir -p staged
           just desktop-install-ci
-          just desktop-build desktop-tauri-check desktop-tauri-test 2>&1 | tee staged/native-validation.log
+          just desktop-build desktop-tauri-fmt-check desktop-tauri-clippy desktop-tauri-check desktop-tauri-test 2>&1 | tee staged/native-validation.log
           cargo build --locked --release -p buzz-acp -p buzz-agent -p buzz-backend-kubernetes -p buzz-dev-mcp -p git-credential-nostr -p buzz-cli
           scripts/bundle-sidecars.sh
           tar -czf staged/buzz-cli-macos.tar.gz -C target/release buzz
       - name: Package private unsigned validation app
         env:
+          BUZZ_BUILD_DEMO_SLUG: validation
+          BUZZ_TEST_EXPECTED_DEMO_SLUG: validation
           CMAKE_POLICY_VERSION_MINIMUM: '3.5'
           MACOSX_DEPLOYMENT_TARGET: '10.15'
           CMAKE_OSX_DEPLOYMENT_TARGET: '10.15'
         run: |
           set -euo pipefail
-          cat > desktop/src-tauri/tauri.validation.conf.json <<'JSON'
-          {"identifier":"com.enrichlayer.buzz.validation","bundle":{"createUpdaterArtifacts":false},"plugins":{"updater":{"endpoints":[]}}}
-          JSON
-          (cd desktop && pnpm tauri build --no-sign --bundles app --config src-tauri/tauri.validation.conf.json) 2>&1 | tee staged/native-packaging.log
-          tar -czf staged/Buzz-validation.app.tar.gz -C desktop/src-tauri/target/release/bundle/macos Buzz.app
+          # Two native clients exercise normal Keychain persistence independently.
+          # These are app namespaces, never injected Nostr identities.
+          for slug in validation validation-author; do
+            export BUZZ_BUILD_DEMO_SLUG="$slug"
+            export BUZZ_TEST_EXPECTED_DEMO_SLUG="$slug"
+            python3 - <<'PYCONFIG'
+          import json, os
+          from pathlib import Path
+          slug = os.environ["BUZZ_BUILD_DEMO_SLUG"]
+          assert slug in ("validation", "validation-author")
+          Path("desktop/src-tauri/tauri.validation.conf.json").write_text(json.dumps({
+              "identifier": f"com.enrichlayer.buzz.{slug}",
+              "bundle": {"createUpdaterArtifacts": False},
+              "plugins": {"updater": {"endpoints": []},
+                          "deep-link": {"desktop": {"schemes": [f"buzz-demo-{slug}"]}}},
+          }))
+          PYCONFIG
+            cargo test --manifest-path desktop/src-tauri/Cargo.toml --lib build_identity::tests::compiled_demo_slug_matches_expected -- --ignored --exact 2>&1 | tee "staged/native-identity-$slug.log"
+            (cd desktop && pnpm tauri build --no-sign --bundles app --config src-tauri/tauri.validation.conf.json) 2>&1 | tee "staged/native-packaging-$slug.log"
+            tar -czf "staged/Buzz-$slug.app.tar.gz" -C desktop/src-tauri/target/release/bundle/macos Buzz.app
+          done
       - name: Verify private R2 artifact round trip
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.BUZZ_BUILD_R2_ACCESS_KEY_ID }}
@@ -68,3 +129,30 @@ jobs:
           "$RUNNER_TEMP/buzz-r2/bin/pip" install -r scripts/buzz-r2-requirements.txt
           "$RUNNER_TEMP/buzz-r2/bin/python" scripts/buzz-r2.py upload-build "validation/$GITHUB_SHA/$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT/$RUNNER_KIND" staged
           "$RUNNER_TEMP/buzz-r2/bin/python" scripts/buzz-r2.py fetch-build "validation/$GITHUB_SHA/$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT/$RUNNER_KIND" verified
+  mobile:
+    if: github.repository == 'enrichlayer/buzz' && inputs.source_request == ''
+    environment: desktop-candidate
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+      - name: Validate mobile
+        run: |
+          set -euo pipefail
+          mkdir -p staged
+          just mobile-install mobile-check mobile-test 2>&1 | tee staged/mobile-validation.log
+      - name: Retain private mobile validation log
+        if: always()
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BUZZ_BUILD_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BUZZ_BUILD_R2_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          test -f staged/mobile-validation.log
+          python3 -m venv "$RUNNER_TEMP/buzz-r2"
+          "$RUNNER_TEMP/buzz-r2/bin/pip" install -r scripts/buzz-r2-requirements.txt
+          "$RUNNER_TEMP/buzz-r2/bin/python" scripts/buzz-r2.py upload-build "validation/$GITHUB_SHA/$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT/mobile" staged
+          "$RUNNER_TEMP/buzz-r2/bin/python" scripts/buzz-r2.py fetch-build "validation/$GITHUB_SHA/$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT/mobile" verified

@@ -73,3 +73,80 @@ fn codex_adapter_availability_outdated_for_older_1x_binary() {
         assert!(codex_adapter_is_outdated(&bin));
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn probe_codex_acp_version_returns_version_when_descendant_holds_pipe_open() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::time::Instant;
+
+    // Simulate a process that forks a background child which inherits stdout
+    // and stays alive, while the parent writes version and exits 0.
+    //
+    // The probe writes the child's stdout to a temp file, then reads from the
+    // file after the parent process exits.  Because the file has reached EOF
+    // (the parent closed its write end), read_to_end() returns immediately
+    // without waiting for the descendant to close its inherited fd.
+    //
+    // `sleep 60 &` starts a descendant that inherits the parent's stdout fd
+    // without making the direct child wait for a nested subshell to exit.
+    let dir = std::env::temp_dir().join(format!("buzz-probe-descendant-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let bin = dir.join("codex-acp");
+    std::fs::write(
+        &bin,
+        "#!/bin/sh\necho '@agentclientprotocol/codex-acp 1.1.2'\nsleep 60 &\nexit 0\n",
+    )
+    .expect("write script");
+    std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).expect("chmod script");
+
+    let start = Instant::now();
+    let path = crate::managed_agents::readiness::cli_probe::augmented_path();
+    // Retry like `probe_fresh_script`: a parallel fork can briefly hold the
+    // fresh script's write descriptor, so exec fails with ETXTBSY.
+    let mut version =
+        super::super::codex_version_probe::probe_codex_acp_version_result(&bin, path.as_deref());
+    for _ in 0..4 {
+        if version.is_ok() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        version = super::super::codex_version_probe::probe_codex_acp_version_result(
+            &bin,
+            path.as_deref(),
+        );
+    }
+    let elapsed = start.elapsed();
+    let _ = std::fs::remove_dir_all(dir);
+
+    // Must return within ~1 s: non-blocking read, no waiting for descendant.
+    // Give a 9 s margin for parallel pre-push suites.
+    assert!(
+        elapsed.as_secs() < 10,
+        "probe must not block on descendant pipe; elapsed: {elapsed:?}"
+    );
+    assert_eq!(
+        version,
+        Ok((1, 1, 2)),
+        "version must be parsed even when descendant holds pipe open"
+    );
+}
+
+/// Probes a script the test has just written, retrying briefly when the probe
+/// yields nothing.
+///
+/// On Linux, exec of a freshly written file can fail with ETXTBSY while a
+/// parallel test thread's fork still holds the write descriptor between fork
+/// and exec. The probe maps any spawn error to `None`, so a success-expecting
+/// test retries a few times; a genuine regression still returns `None` on
+/// every attempt.
+#[cfg(unix)]
+pub(super) fn probe_fresh_script(bin: &std::path::Path) -> Option<(u64, u64, u64)> {
+    for _ in 0..5 {
+        if let Some(version) = super::super::probe_codex_acp_version(bin) {
+            return Some(version);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    None
+}

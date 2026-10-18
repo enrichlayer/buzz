@@ -37,6 +37,7 @@ import { formatTime } from "@/features/messages/lib/dateFormatters";
 // can exercise the exact same source the renderer uses.
 import { applyEditTagOverlay } from "@/features/messages/lib/applyEditTagOverlay.mjs";
 import { truncateNpub } from "@/shared/lib/pubkey";
+import { parsePromptSuggestions } from "@/features/messages/lib/promptSuggestions";
 
 const HEX_RE = /^[0-9a-f]+$/i;
 
@@ -458,6 +459,11 @@ export function formatTimelineMessages(
     const authorProfile = profiles?.[authorPubkey.toLowerCase()];
     const isAgent = role === "bot" || authorProfile?.isAgent === true;
     const ownerPubkey = isAgent ? (authorProfile?.ownerPubkey ?? null) : null;
+    const rawBody = edit ? edit.content : event.content;
+    // Agent suggestion footers are presentation metadata: strip them here so
+    // every surface built on this formatter shows clean text. Human messages
+    // keep their text and never supply suggestions.
+    const suggestionFooter = isAgent ? parsePromptSuggestions(rawBody) : null;
     return {
       id: event.id,
       renderKey: event.localKey ?? event.id,
@@ -486,7 +492,8 @@ export function formatTimelineMessages(
           ? respondToLookup?.get(authorPubkey.toLowerCase())
           : undefined,
       time: formatTime(event.created_at),
-      body: edit ? edit.content : event.content,
+      body: suggestionFooter?.body ?? rawBody,
+      promptSuggestions: suggestionFooter?.suggestions,
       parentId: thread.parentId,
       rootId: thread.rootId,
       depth: getDepth(event),

@@ -1,3 +1,4 @@
+import { linearWorkLinkFromAddress } from "@/shared/lib/linearWorkLink";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
 import {
   isChannelReferenceOpenable,
@@ -7,11 +8,15 @@ import {
 export function ProjectOriginReference({
   agentName,
   channelId,
+  threadRootId,
+  taskAddress,
 }: {
   agentName?: string | null;
   channelId?: string | null;
+  threadRootId?: string | null;
+  taskAddress?: string | null;
 }) {
-  const { goChannel } = useAppNavigation();
+  const { goChannel, goProject } = useAppNavigation();
   const channel = useChannelReference(channelId);
 
   if (channelId) {
@@ -36,12 +41,23 @@ export function ProjectOriginReference({
         </span>
         {isOpenable ? (
           <button
-            aria-label={`Open author-claimed origin channel #${channel.name}`}
+            aria-label={
+              threadRootId
+                ? `Open coding session in #${channel.name}`
+                : `Open author-claimed origin channel #${channel.name}`
+            }
             className="min-w-0 truncate font-medium text-foreground underline-offset-2 hover:underline"
-            onClick={() => void goChannel(channel.id)}
+            onClick={() =>
+              void goChannel(
+                channel.id,
+                threadRootId
+                  ? { messageId: threadRootId, threadRootId }
+                  : undefined,
+              )
+            }
             type="button"
           >
-            #{channel.name}
+            {threadRootId ? "Coding session" : `#${channel.name}`}
           </button>
         ) : (
           <span className="shrink-0 whitespace-nowrap">a private channel</span>
@@ -52,6 +68,15 @@ export function ProjectOriginReference({
         >
           (author-claimed)
         </span>
+        {isOpenable && taskAddress && linearWorkLinkFromAddress(taskAddress) ? (
+          <button
+            type="button"
+            className="ml-2 font-medium text-foreground underline-offset-2 hover:underline"
+            onClick={() => void goProject(taskAddress)}
+          >
+            Open task
+          </button>
+        ) : null}
       </span>
     );
   }

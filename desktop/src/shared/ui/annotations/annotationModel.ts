@@ -28,6 +28,8 @@ export type AnnotationAnchor = AnnotationDestination & {
 };
 
 export type AnnotationSubmitRequest = {
+  /** Captured send destination, separate from the quoted source provenance. */
+  destination?: AnnotationDestination;
   anchor: AnnotationAnchor;
   /** Ready-to-send user text containing both the quote and feedback. */
   message: string;
@@ -62,8 +64,8 @@ export function formatAnnotationMessage(
   const range = anchor.codeRange;
   const block = range?.blockId.match(/:code:(\d+)$/)?.[1];
   const location = range
-    ? `Response · code block ${block ?? "selected"} · ${range.startLine === range.endLine ? `line ${range.startLine}` : `lines ${range.startLine}–${range.endLine}`}`
-    : "Response · selected text";
+    ? `Selection · code block ${block ?? "selected"} · ${range.startLine === range.endLine ? `line ${range.startLine}` : `lines ${range.startLine}–${range.endLine}`}`
+    : "Selection · selected text";
   return [
     location,
     "",
@@ -93,7 +95,7 @@ export function annotationMetadata(anchor: AnnotationAnchor) {
 /** Recognize our complete annotation envelope; arbitrary Markdown stays untouched. */
 export function parseAnnotationMessage(message: string) {
   const match = message.match(
-    /^(Response · (?:selected text|code block [^\n]+)|Reply to selection)\n\n([\s\S]*?)\n\n```buzz-annotation\n([^\n]+)\n```\s*$/,
+    /^((?:Response|Selection) · (?:selected text|code block [^\n]+)|Reply to selection)\n\n([\s\S]*?)\n\n```buzz-annotation\n([^\n]+)\n```\s*$/,
   );
   if (!match) return null;
   try {

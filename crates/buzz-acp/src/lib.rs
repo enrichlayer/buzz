@@ -3970,6 +3970,7 @@ async fn run_harness(
                     &mut respawn_tasks,
                     observer.clone(),
                     Some(&ctx.rest_client),
+                    &mut last_activity,
                 ) == LoopAction::Exit
                 {
                     break;
@@ -5212,7 +5213,14 @@ fn handle_prompt_result(
     respawn_tasks: &mut tokio::task::JoinSet<()>,
     observer: Option<observer::ObserverHandle>,
     rest_client: Option<&relay::RestClient>,
+    last_activity: &mut tokio::time::Instant,
 ) -> LoopAction {
+    // Start a full idle interval when channel work settles, before releasing
+    // its in-flight guard. Heartbeats must not keep an otherwise idle pool alive.
+    match &result.source {
+        PromptSource::Channel(_) => *last_activity = tokio::time::Instant::now(),
+        PromptSource::Heartbeat => {}
+    }
     let before = pool.task_map().len();
     let agent_index = result.agent.index;
     let successful_steer_deliveries = pool
@@ -11261,6 +11269,114 @@ mod error_outcome_emission_tests {
         agent.state.set_scope_owner_generation(scope, generation);
     }
 
+    // Exercise result handling and both production idle decisions with a fake clock.
+    // No relay or provider is used; cat supplies only an owned process handle.
+    async fn assert_completion_idle_window(channel_turn: bool) {
+        let channel_id = Uuid::new_v4();
+        let scope = scope::SessionScope::Conversation { channel_id };
+        let mut agent = dummy_agent(0).await;
+        let mut pool = AgentPool::from_slots(vec![None]);
+        if channel_turn {
+            bind_agent_scope_owner(&mut pool, &mut agent, scope.clone());
+        }
+        let task_id = pool.join_set.spawn(async {}).id();
+        pool.task_map_mut().insert(
+            task_id,
+            crate::pool::TaskMeta {
+                agent_index: 0,
+                channel_id: channel_turn.then_some(channel_id),
+                scope: channel_turn.then_some(scope.clone()),
+                turn_id: "idle-window".into(),
+                recoverable_batch: None,
+                control_tx: None,
+                steer_tx: None,
+                successful_steer_deliveries: HashSet::new(),
+            },
+        );
+        let mut queue = EventQueue::new(config::DedupMode::Queue);
+        let config = test_config();
+        let mut heartbeat_in_flight = !channel_turn;
+        let mut crash_history = vec![SlotCircuit {
+            crash_times: Vec::new(),
+            open_until: None,
+            respawn_in_flight: false,
+        }];
+        let (respawn_tx, _respawn_rx) = mpsc::channel(8);
+        let mut respawn_tasks = tokio::task::JoinSet::new();
+        let bound = Duration::from_secs(30);
+        let mut last_activity = tokio::time::Instant::now();
+        tokio::time::advance(bound * 2).await;
+        let completed_at = tokio::time::Instant::now();
+        let result = PromptResult {
+            agent,
+            source: if channel_turn {
+                PromptSource::Channel(scope)
+            } else {
+                PromptSource::Heartbeat
+            },
+            turn_id: "idle-window".into(),
+            outcome: PromptOutcome::Ok(crate::acp::StopReason::EndTurn),
+            batch: None,
+        };
+        handle_prompt_result(
+            &mut pool,
+            &mut queue,
+            &config,
+            result,
+            &mut heartbeat_in_flight,
+            &HashSet::new(),
+            &mut crash_history,
+            &respawn_tx,
+            &mut respawn_tasks,
+            None,
+            None,
+            &mut last_activity,
+        );
+        // Match the main loop: consume finished prompt tasks before the idle check.
+        while pool.join_set.join_next().await.is_some() {}
+        assert!(pool.task_map().is_empty());
+        assert!(!heartbeat_in_flight);
+        assert!(!queue.has_undispatched_work());
+        let sleep_due = |now| {
+            idle_pool_sleep_due(
+                true,
+                last_activity,
+                now,
+                bound,
+                heartbeat_in_flight,
+                !pool.join_set.is_empty(),
+                queue.has_undispatched_work(),
+                any_respawn_in_flight(&crash_history),
+            )
+        };
+        assert_eq!(sleep_due(completed_at), !channel_turn);
+        assert_eq!(
+            inactivity_expired(last_activity, completed_at, bound, false),
+            !channel_turn
+        );
+        if channel_turn {
+            assert_eq!(last_activity, completed_at);
+            assert!(!sleep_due(completed_at + bound - Duration::from_millis(1)));
+        }
+        assert!(sleep_due(completed_at + bound));
+        assert!(inactivity_expired(
+            last_activity,
+            completed_at + bound,
+            bound,
+            false
+        ));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn completed_channel_turn_gets_a_full_bounded_idle_window() {
+        assert_completion_idle_window(true).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn completed_heartbeat_does_not_extend_the_idle_window() {
+        assert_completion_idle_window(false).await;
+    }
+
     #[tokio::test]
     async fn successful_native_steer_is_transferred_to_live_session_delivery_state() {
         let channel_id = Uuid::new_v4();
@@ -11332,6 +11448,7 @@ mod error_outcome_emission_tests {
             &mut respawn_tasks,
             None,
             None,
+            &mut tokio::time::Instant::now(),
         );
 
         let returned = pool.agents_mut()[0].as_ref().expect("returned agent");
@@ -11412,6 +11529,7 @@ mod error_outcome_emission_tests {
             &mut respawn_tasks,
             None,
             None,
+            &mut tokio::time::Instant::now(),
         );
 
         let returned = pool.agents_mut()[0].as_ref().expect("returned agent");
@@ -11533,6 +11651,7 @@ mod error_outcome_emission_tests {
             &mut respawn_tasks,
             None,
             None,
+            &mut tokio::time::Instant::now(),
         );
 
         let returned = pool.agents_mut()[0].as_ref().expect("returned agent");
@@ -11602,6 +11721,7 @@ mod error_outcome_emission_tests {
             &mut respawn_tasks,
             Some(observer.clone()),
             None,
+            &mut tokio::time::Instant::now(),
         );
 
         let turn_errors: Vec<_> = observer
@@ -11871,6 +11991,7 @@ mod error_outcome_emission_tests {
                 &mut respawn_tasks,
                 Some(observer.clone()),
                 None,
+                &mut tokio::time::Instant::now(),
             );
             let events = observer.snapshot();
             let turn_error = events.iter().find(|e| e.kind == "turn_error").unwrap();
@@ -11966,6 +12087,7 @@ mod error_outcome_emission_tests {
                 &mut respawn_tasks,
                 None,
                 None,
+                &mut tokio::time::Instant::now(),
             );
             (
                 queue.pending_channels(),
@@ -12075,6 +12197,7 @@ mod error_outcome_emission_tests {
                 &mut respawn_tasks,
                 None,
                 None,
+                &mut tokio::time::Instant::now(),
             );
             (
                 queue.pending_channels(),
@@ -12170,6 +12293,7 @@ mod error_outcome_emission_tests {
             &mut respawn_tasks,
             Some(observer.clone()),
             None,
+            &mut tokio::time::Instant::now(),
         );
 
         let events = observer.snapshot();
@@ -12267,6 +12391,7 @@ mod error_outcome_emission_tests {
             &mut respawn_tasks,
             Some(observer.clone()),
             None,
+            &mut tokio::time::Instant::now(),
         );
 
         let events = observer.snapshot();
@@ -12388,6 +12513,7 @@ mod error_outcome_emission_tests {
             &mut respawn_tasks,
             Some(observer.clone()),
             None,
+            &mut tokio::time::Instant::now(),
         );
 
         // Batch preserved as a cancelled merge, not dead-lettered — same
@@ -12524,6 +12650,7 @@ mod error_outcome_emission_tests {
             &mut respawn_tasks,
             Some(observer.clone()),
             None,
+            &mut tokio::time::Instant::now(),
         );
 
         // No batch to merge — the queue has nothing pending for any channel.
@@ -12655,6 +12782,7 @@ mod error_outcome_emission_tests {
                 &mut respawn_tasks,
                 None,
                 None,
+                &mut tokio::time::Instant::now(),
             ),
             LoopAction::Continue
         ));
@@ -12807,6 +12935,7 @@ mod error_outcome_emission_tests {
             &mut respawn_tasks,
             None,
             None,
+            &mut tokio::time::Instant::now(),
         );
 
         // The batch must not be requeued: pending_channels returns 0.
@@ -12915,6 +13044,7 @@ mod error_outcome_emission_tests {
             &mut respawn_tasks,
             Some(observer.clone()),
             Some(&rest),
+            &mut tokio::time::Instant::now(),
         );
 
         // The batch must not be requeued: pending_channels returns 0.
@@ -13186,6 +13316,7 @@ mod error_outcome_emission_tests {
             &mut respawn_tasks,
             None,
             None,
+            &mut tokio::time::Instant::now(),
         );
 
         // Non-auth application error: batch IS requeued (first attempt, retry budget > 0).

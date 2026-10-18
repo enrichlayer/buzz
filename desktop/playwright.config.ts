@@ -25,6 +25,8 @@ export default defineConfig({
     {
       name: "smoke",
       testMatch: [
+        "**/project-review-workspace.spec.ts",
+        "**/linear-issue-work.spec.ts",
         "**/smoke.spec.ts",
         "**/mock-subscription-readiness.spec.ts",
         "**/owned-agent-discovery.spec.ts",
@@ -55,6 +57,7 @@ export default defineConfig({
         "**/agent-output-modes.spec.ts",
         "**/agent-thread-session-archive.spec.ts",
         "**/question-card.spec.ts",
+        "**/prompt-suggestions.spec.ts",
         "**/bestie.spec.ts",
         "**/message-feedback-snapshots.spec.ts",
         "**/message-copy-link.spec.ts",
@@ -200,6 +203,7 @@ export default defineConfig({
     {
       name: "integration",
       testMatch: [
+        "**/project-review-workspace.live.spec.ts",
         "**/agents.spec.ts",
         "**/agent-availability.spec.ts",
         "**/agent-snapshot-recipient.spec.ts",

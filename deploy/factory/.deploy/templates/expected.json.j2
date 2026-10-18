@@ -1,0 +1,8 @@
+{
+  "image": {{ buzz_pilot_image | to_json }},
+  "source_sha": {{ buzz_pilot_source_sha | to_json }},
+  "postgres_image": {{ buzz_pilot_postgres_image | to_json }},
+  "redis_image": {{ buzz_pilot_redis_image | to_json }},
+  "hostname": {{ buzz_pilot_hostname | to_json }},
+  "http_port": {{ buzz_pilot_http_port | int }}
+}

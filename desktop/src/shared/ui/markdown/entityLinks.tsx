@@ -122,6 +122,14 @@ function EntityMetadataTooltip({
 
 function entityLinkPresentation(link: ParsedEntityLink) {
   switch (link.type) {
+    case "linear-task":
+    case "linear-project":
+      return {
+        ariaLabel: `Open Linear ${link.type === "linear-task" ? "task" : "project"} in Buzz`,
+        icon: "issue" as const,
+        label: `Linear ${link.type === "linear-task" ? "task" : "project"}`,
+        tooltipFooter: "Linear work in Buzz",
+      };
     case "repo":
       return {
         ariaLabel: link.commitHash

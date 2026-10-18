@@ -1,3 +1,4 @@
+import { useLinearWork } from "../useLinearWork";
 import * as React from "react";
 
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
@@ -105,6 +106,8 @@ import {
   useOpenProjectTerminalHandler,
 } from "./projectsViewWorkItems";
 
+import { LinearWorkList } from "./LinearWorkList";
+
 const MANY_PROJECTS_THRESHOLD = 12;
 const PROJECTS_CONTEXT_POD_MIN_VIEWPORT_PX = 1024;
 
@@ -116,6 +119,8 @@ export function ProjectsView() {
   const { handleContentScroll, scrollIndicatorRef } =
     useProjectsScrollIndicator();
   const projectsQuery = useProjectsQuery();
+  const linearWorkQuery = useLinearWork();
+  const linearWork = linearWorkQuery.isError ? undefined : linearWorkQuery.data;
   const identityQuery = useIdentityQuery();
   const managedAgentsQuery = useManagedAgentsQuery();
   const projectReadModels = projectsQuery.data ?? [];
@@ -562,7 +567,14 @@ export function ProjectsView() {
     );
   }
 
-  if (projectReadModels.length === 0) {
+  if (
+    projectReadModels.length === 0 &&
+    !linearWorkQuery.isLoading &&
+    !linearWorkQuery.isError &&
+    !linearWork?.length &&
+    filter !== "issues" &&
+    filter !== "projects"
+  ) {
     return (
       <>
         <ProjectCreationDialog
@@ -648,6 +660,7 @@ export function ProjectsView() {
   );
 
   const contextPanelProps = {
+    linearWork,
     canCreateTarget: editableProjects.length > 0,
     filter,
     issues: contextIssues,
@@ -822,6 +835,10 @@ export function ProjectsView() {
                     >
                       {filter === "all" ? (
                         <ProjectsOverviewPanel>
+                          <LinearWorkList
+                            mode="projects"
+                            searchQuery={searchQuery}
+                          />
                           <ProjectsActivityIntro digest={activityDigest} />
                           <section className="space-y-3">
                             {activityFeed}
@@ -867,38 +884,50 @@ export function ProjectsView() {
                                   viewMode={viewMode}
                                 />
                               ) : filter === "issues" ? (
-                                <ProjectsIssuesList
-                                  embedded={viewMode === "list"}
-                                  emptyMessage={
-                                    searchQuery.trim()
-                                      ? "No matching tasks"
-                                      : undefined
-                                  }
-                                  error={projectsWorkItemsQuery.error}
-                                  failedSections={
-                                    projectsWorkItemsQuery.data?.issues
-                                      .failedSections ?? []
-                                  }
-                                  isLoading={projectsWorkItemsQuery.isLoading}
-                                  isRetrying={
-                                    projectsWorkItemsQuery.isFetching &&
-                                    !projectsWorkItemsQuery.isLoading
-                                  }
-                                  issues={visibleIssues}
-                                  onOpen={handleOpenIssue}
-                                  onRetry={() =>
-                                    void projectsWorkItemsQuery.refetch()
-                                  }
-                                  profiles={profiles}
-                                  viewMode={viewMode}
-                                />
+                                <>
+                                  <LinearWorkList
+                                    mode="tasks"
+                                    searchQuery={searchQuery}
+                                  />
+                                  <ProjectsIssuesList
+                                    embedded={viewMode === "list"}
+                                    emptyMessage={
+                                      searchQuery.trim()
+                                        ? "No matching tasks"
+                                        : undefined
+                                    }
+                                    error={projectsWorkItemsQuery.error}
+                                    failedSections={
+                                      projectsWorkItemsQuery.data?.issues
+                                        .failedSections ?? []
+                                    }
+                                    isLoading={projectsWorkItemsQuery.isLoading}
+                                    isRetrying={
+                                      projectsWorkItemsQuery.isFetching &&
+                                      !projectsWorkItemsQuery.isLoading
+                                    }
+                                    issues={visibleIssues}
+                                    onOpen={handleOpenIssue}
+                                    onRetry={() =>
+                                      void projectsWorkItemsQuery.refetch()
+                                    }
+                                    profiles={profiles}
+                                    viewMode={viewMode}
+                                  />
+                                </>
                               ) : filter === "channels" ? (
                                 <ProjectsChannelsList
                                   projects={projectReadModels}
                                   searchQuery={searchQuery}
                                 />
                               ) : filter === "projects" ? (
-                                projectItems
+                                <>
+                                  <LinearWorkList
+                                    mode="projects"
+                                    searchQuery={searchQuery}
+                                  />
+                                  {projectItems}
+                                </>
                               ) : (
                                 repositoryItems
                               )}

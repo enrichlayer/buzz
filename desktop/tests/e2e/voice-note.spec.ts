@@ -917,6 +917,7 @@ test("starting a duplicate voice-note player pauses the other instance", async (
           __BUZZ_E2E_EMIT_MOCK_MESSAGE__?: (input: {
             channelName: string;
             content: string;
+            createdAt?: number;
             extraTags: string[][];
           }) => unknown;
         }
@@ -935,8 +936,14 @@ test("starting a duplicate voice-note player pauses the other instance", async (
           ],
         ],
       };
-      emit(input);
-      emit(input);
+      // Distinct timestamps keep the two cards in a fixed order. Same-second
+      // events are tie-broken by random event id, and the live and windowed
+      // timeline paths break that tie in opposite directions, so identical
+      // timestamps let the cards swap DOM positions mid-test and the nth()
+      // locators then address the other player.
+      const createdAt = Math.floor(Date.now() / 1000);
+      emit({ ...input, createdAt });
+      emit({ ...input, createdAt: createdAt + 1 });
     },
     { audioUrl: AUDIO_URL },
   );
