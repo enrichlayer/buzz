@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { renderToStaticMarkup } from "react-dom/server";
+import { JSDOM } from "jsdom";
 
 // Source-path tests for AgentSnapshotImportDialog ResultBody rendering.
 //
@@ -33,29 +35,12 @@ function findAll(element, predicate) {
   return matches;
 }
 
-/**
- * Collect all string leaves in the element tree.
- */
+/** Render child components so disclosure assertions cover the visible text. */
 function collectText(element) {
-  const texts = [];
-  const queue = [element];
-  while (queue.length > 0) {
-    const node = queue.shift();
-    if (typeof node === "string") {
-      texts.push(node);
-      continue;
-    }
-    if (!node || typeof node !== "object") continue;
-    const children = node.props?.children;
-    if (Array.isArray(children)) {
-      queue.push(...children.flat(Infinity).filter(Boolean));
-    } else if (typeof children === "string") {
-      texts.push(children);
-    } else if (children && typeof children === "object") {
-      queue.push(children);
-    }
-  }
-  return texts;
+  const dom = new JSDOM(renderToStaticMarkup(element));
+  const text = dom.window.document.body.textContent;
+  dom.window.close();
+  return [text];
 }
 
 function makeResult(overrides = {}) {

@@ -94,7 +94,13 @@ function renderApp() {
           <CommunityOnboardingProvider
             enabled={huddleWindowChannelId() === null}
           >
-            <ThemeProvider defaultTheme="buzz">
+            <ThemeProvider
+              defaultTheme={
+                import.meta.env.VITE_EL_BUZZ === "1"
+                  ? "plugin:enrichlayer.el-buzz:dark"
+                  : "buzz"
+              }
+            >
               <TooltipProvider>
                 <EmojiBurstProvider>
                   <PoofBurstProvider>
@@ -178,6 +184,23 @@ async function bootstrap() {
       .BrowserPreviewNotice;
   }
   await installE2eBridgeIfConfigured();
+  if (import.meta.env.VITE_EL_BUZZ === "1") {
+    const { initializeBundledRuntimePlugin } = await import(
+      "@/shared/plugins/runtime/store"
+    );
+    const { parseRuntimePluginManifest } = await import(
+      "@/shared/plugins/runtime/schema"
+    );
+    const bundled = await import("../public/plugins/el-buzz.json");
+    const parsed = parseRuntimePluginManifest(JSON.stringify(bundled.default));
+    if (!parsed.ok) throw new Error(parsed.error);
+    const initialized = await initializeBundledRuntimePlugin(parsed.manifest);
+    if (!initialized.ok) {
+      // The store retains the error for Settings recovery. Rendering the app
+      // keeps that recovery reachable; the next launch retries a failed save.
+      console.error(initialized.error);
+    }
+  }
   await migrateLegacyCommunityStorageBeforeRender();
   renderApp();
 }

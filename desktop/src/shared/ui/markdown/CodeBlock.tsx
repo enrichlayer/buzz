@@ -1,16 +1,9 @@
 import * as React from "react";
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
-import {
-  getSingletonHighlighter,
-  type HighlighterGeneric,
-  type BundledLanguage,
-  type BundledTheme,
-  type ThemedToken,
-} from "shiki";
+import type { ThemedToken } from "shiki";
+import { useCodeTokens } from "./useCodeTokens";
 
-import { useTheme } from "@/shared/theme/ThemeProvider";
-import { resolveShikiThemeName } from "@/shared/theme/theme-loader";
 import { copyCodeBlockToClipboard } from "@/shared/lib/codeBlockClipboard";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
@@ -19,32 +12,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 
 import { getReactNodeText } from "./utils";
 
-let shikiHighlighter: HighlighterGeneric<BundledLanguage, BundledTheme> | null =
-  null;
-let shikiInitPromise: Promise<void> | null = null;
-const loadedLangs = new Set<string>();
-const loadedThemes = new Set<string>();
-const tokenCache = new Map<string, ThemedToken[][]>();
-const MAX_CACHE_ENTRIES = 100;
-const MAX_LOADED_LANGUAGES = 30;
-const MAX_HIGHLIGHT_LINES = 150;
 export const CODE_BLOCK_CLASS =
   "code-block-lines block min-w-full whitespace-pre font-mono text-sm font-medium text-foreground";
 const DIFF_ADD_RE = /\s*\/\/\s*\[!code\s*\+\+\]\s*$/;
 const DIFF_REMOVE_RE = /\s*\/\/\s*\[!code\s*--\]\s*$/;
-
-function ensureHighlighter(): Promise<void> {
-  if (shikiHighlighter) return Promise.resolve();
-  if (!shikiInitPromise) {
-    shikiInitPromise = getSingletonHighlighter({
-      themes: [],
-      langs: [],
-    }).then((h) => {
-      shikiHighlighter = h;
-    });
-  }
-  return shikiInitPromise;
-}
 
 export function extractLanguage(className?: string): string {
   if (typeof className !== "string") return "";
@@ -134,85 +105,13 @@ export function MarkdownCodeBlock({
 export function SyntaxHighlightedCode({
   className,
   code,
-  language,
+  language: languageHint,
   ...props
 }: {
   code: string;
   language: string;
 } & React.ComponentProps<"code">) {
-  const { themeName } = useTheme();
-  // Buzz aliases ("buzz" / "buzz-dark") are not bundled Shiki themes — resolve
-  // to the real bundle (github-light / github-dark) before touching Shiki, or
-  // it throws and code blocks fall back to plain text.
-  const shikiTheme = resolveShikiThemeName(themeName);
-  const [loadedKey, setLoadedKey] = React.useState(0);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    async function loadAssets() {
-      try {
-        await ensureHighlighter();
-        if (!shikiHighlighter || cancelled) return;
-        let loaded = false;
-        if (!loadedLangs.has(language)) {
-          if (loadedLangs.size >= MAX_LOADED_LANGUAGES) return;
-          try {
-            await shikiHighlighter.loadLanguage(language as BundledLanguage);
-            loadedLangs.add(language);
-            loaded = true;
-          } catch {
-            return;
-          }
-        }
-        if (!loadedThemes.has(shikiTheme)) {
-          try {
-            await shikiHighlighter.loadTheme(shikiTheme as BundledTheme);
-            loadedThemes.add(shikiTheme);
-            loaded = true;
-          } catch {
-            return;
-          }
-        }
-        if (loaded && !cancelled) setLoadedKey((k) => k + 1);
-      } catch {
-        /* ignore */
-      }
-    }
-    if (!loadedLangs.has(language) || !loadedThemes.has(shikiTheme)) {
-      loadAssets();
-    }
-    return () => {
-      cancelled = true;
-    };
-  }, [language, shikiTheme]);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: loadedKey intentionally triggers re-memoization after async asset loading
-  const tokens = React.useMemo(() => {
-    if (
-      !shikiHighlighter ||
-      !loadedLangs.has(language) ||
-      !loadedThemes.has(shikiTheme)
-    )
-      return null;
-    if ((code.match(/\n/g) || []).length > MAX_HIGHLIGHT_LINES) return null;
-    const cacheKey = `${language}:${shikiTheme}:${code}`;
-    const cached = tokenCache.get(cacheKey);
-    if (cached) return cached;
-    try {
-      const result = shikiHighlighter.codeToTokens(code, {
-        lang: language as BundledLanguage,
-        theme: shikiTheme as BundledTheme,
-      });
-      if (tokenCache.size >= MAX_CACHE_ENTRIES) {
-        const firstKey = tokenCache.keys().next().value;
-        if (firstKey !== undefined) tokenCache.delete(firstKey);
-      }
-      tokenCache.set(cacheKey, result.tokens);
-      return result.tokens;
-    } catch {
-      return null;
-    }
-  }, [code, language, shikiTheme, loadedKey]);
+  const tokens = useCodeTokens(code, languageHint);
 
   const codeClassName = cn(CODE_BLOCK_CLASS, className);
 

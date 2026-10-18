@@ -1,3 +1,4 @@
+import { CodeText } from "@/shared/ui/markdown/CodeText";
 import * as React from "react";
 import { Check } from "lucide-react";
 
@@ -125,7 +126,9 @@ export function QuestionPanel({
               className="max-h-72 min-h-24 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-border/70 bg-background p-3 font-mono text-xs text-foreground"
               data-testid="agent-prompt-preview"
             >
-              {previewed?.preview ?? "No preview for this option."}
+              <CodeText
+                code={previewed?.preview ?? "No preview for this option."}
+              />
             </pre>
           </section>
         ) : null}

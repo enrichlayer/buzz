@@ -1,3 +1,4 @@
+import { CodeText } from "@/shared/ui/markdown/CodeText";
 import * as React from "react";
 import { ManualCommandResult } from "./ManualCommandResult";
 import { ShieldCheck, Terminal } from "lucide-react";
@@ -87,7 +88,10 @@ export function PermissionCard({
         className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-background p-3 text-sm leading-6"
         data-testid="permission-command"
       >
-        {display}
+        <CodeText
+          code={display}
+          language={permission.command ? "shellscript" : "json"}
+        />
       </pre>
       <p className="break-all text-sm leading-6">
         <span className="font-medium">Working directory:</span> {permission.cwd}
@@ -182,7 +186,10 @@ export function PermissionCard({
         <details className="text-sm leading-6">
           <summary className="cursor-pointer">Full tool request</summary>
           <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words">
-            {JSON.stringify(permission.toolCall, null, 2)}
+            <CodeText
+              code={JSON.stringify(permission.toolCall, null, 2)}
+              language="json"
+            />
           </pre>
         </details>
       ) : null}

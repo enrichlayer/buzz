@@ -1,3 +1,4 @@
+import { CodeText } from "@/shared/ui/markdown/CodeText";
 import type { ObserverEvent } from "./agentSessionTypes";
 import { describeRawEvent } from "./agentSessionTranscript";
 import { observerEventScrollId } from "./agentSessionPanelLayout";
@@ -37,7 +38,10 @@ export function RawEventRail({ events }: { events: ObserverEvent[] }) {
                   ) : null}
                 </summary>
                 <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap wrap-break-word rounded-md border border-border/40 bg-background/45 p-2 font-mono text-xs leading-5 text-muted-foreground">
-                  {JSON.stringify(event.payload, null, 2)}
+                  <CodeText
+                    code={JSON.stringify(event.payload, null, 2)}
+                    language="json"
+                  />
                 </pre>
               </details>
             ))}

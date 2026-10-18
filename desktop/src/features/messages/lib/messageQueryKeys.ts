@@ -35,11 +35,14 @@ export function sortMessages(messages: RelayEvent[]) {
     if (left.created_at !== right.created_at) {
       return left.created_at - right.created_at;
     }
-    // Tiebreak same-second events on id so the merge order is deterministic.
-    // Without this, two events sharing a created_at can land in a different
-    // position depending on which REQ (history vs live-sub) delivered them
-    // first — reading as a "missing"/shuffled message at a fixed scroll offset.
-    return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+    // Tiebreak same-second events on id so the merge order is deterministic
+    // AND matches the channel-window projection. The window stores the relay's
+    // newest-first order (ascending id within a second) and reverses it for
+    // rendering, so same-second rows render newest-id-first (descending id).
+    // Without a fixed direction, two events sharing a created_at can land in a
+    // different position depending on which REQ (history vs live-sub) delivered
+    // them first — reading as a "missing"/shuffled message at a fixed offset.
+    return left.id < right.id ? 1 : left.id > right.id ? -1 : 0;
   });
 }
 

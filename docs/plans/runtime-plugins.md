@@ -1,16 +1,16 @@
-# Runtime declarative content plugins
+# Runtime declarative plugins
 
 Tracking: [DEV-11398](https://linear.app/verticalint/issue/DEV-11398/)
 
 ## Goal
 
 Let a user install, update, disable, and remove versioned rich-content
-renderers without rebuilding Buzz Desktop. Runtime plugins are app-global
+renderers and themes without rebuilding Buzz Desktop. Runtime plugins are app-global
 definitions stored on the device. They do not cache message or community data.
 
 ## Contract
 
-A plugin is a bounded JSON manifest with schema version `1`, a namespaced id,
+A content plugin is a bounded JSON manifest with schema version `1`, a namespaced id,
 semantic version, and a unique `buzz-*` Markdown fence language. Its layout is
 made from built-in blocks:
 
@@ -51,6 +51,54 @@ initial values retain the dropdown. Omitted presentation or `"dropdown"`
 preserves the original appearance. Switching presentation never changes the
 value or submits the form; the explicit copy/compose button remains the action.
 The review-card example uses this for Approve / Needs changes.
+
+## Theme contributions (v2)
+
+A theme-only manifest uses `schemaVersion: 2` and `kind: "theme"` with the same
+namespaced plugin ID, name and semantic version as content packages. It declares
+one to eight `themes`, each with a unique local ID and a supported built-in syntax
+base matching its light/dark mode:
+
+```json
+{
+  "schemaVersion": 2,
+  "kind": "theme",
+  "id": "example.graphite",
+  "name": "Graphite",
+  "version": "1.0.0",
+  "themes": [{
+    "id": "dark",
+    "name": "Graphite Dark",
+    "mode": "dark",
+    "syntaxTheme": "github-dark",
+    "colors": {
+      "background": "#282828",
+      "foreground": "#f4f4f4",
+      "primary": "#869979",
+      "primary-foreground": "#141414"
+    }
+  }]
+}
+```
+
+Those four colors are required. Optional allowed colors cover card, popover,
+muted, accent, secondary and destructive surfaces and foregrounds; border,
+input, ring; sidebar-background/foreground/accent/accent-foreground/border/ring;
+and status-added/deleted/modified. Values must be opaque six-digit hex colors.
+The validator in `themeSchema.ts` is authoritative. Unknown colors, CSS, remote
+assets and executable values are rejected. Omitted tokens derive from the base.
+
+Appearance lists enabled contributions using `plugin:<package-id>:<theme-id>`.
+Disabling/removing the selected package uses Buzz Dark and displays a recovery
+notice while retaining the desired selection. Re-enabling restores it. Updates
+replace the complete package atomically and clear removed color overrides.
+Theme definitions remain local; only the selected ID participates in existing
+community appearance sync. Another device without the package uses the fallback.
+This version does not pair plugin light/dark contributions for system following.
+
+`desktop/public/plugins/el-buzz.json` is generated from Enrich Layer design
+tokens and can be loaded directly from Settings → Plugins. See
+[el-buzz packaging](el-buzz-brand-and-theme.md) for component and token ownership.
 
 ## Safety and failure behavior
 

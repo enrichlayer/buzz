@@ -244,3 +244,155 @@ test("failed source reads leave the last complete snapshot intact", async () => 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("progress checkpoint reuses unchanged nested drains after a transient failure", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "buzz-linear-resume-"));
+  const progressPath = join(dir, "progress");
+  const relA = "00000000-0000-4000-8000-000000000011";
+  const relB = "00000000-0000-4000-8000-000000000012";
+  const relC = "00000000-0000-4000-8000-000000000013";
+  const relD = "00000000-0000-4000-8000-000000000014";
+  const first = () => ({
+    ...issue(),
+    relations: page([{ id: relA, type: "blocks" }], "r1"),
+  });
+  const second = () => ({
+    ...issue(),
+    id: otherId,
+    identifier: "DEV-2",
+    relations: page([{ id: relC, type: "related" }], "r2"),
+  });
+  let failSecond = true;
+  const queryFor = (calls) => async (q, variables) => {
+    if (q === PROJECT_QUERY)
+      return {
+        viewer: { organization: { id: organizationId, urlKey: "acme" } },
+        project: {
+          id: projectId,
+          name: "Tools",
+          teams: page([]),
+          projectMilestones: page([]),
+        },
+      };
+    if (q === ISSUES_QUERY)
+      return { project: { id: projectId, issues: page([first(), second()]) } };
+    assert.match(q, /relations\(first: 50, after: \$after\)/);
+    if (variables.id === issueId) {
+      calls.first += 1;
+      return {
+        issue: {
+          id: issueId,
+          relations: page([{ id: relB, type: "related" }]),
+        },
+      };
+    }
+    if (variables.id === otherId) {
+      calls.second += 1;
+      if (failSecond) {
+        failSecond = false;
+        throw new Error("transient el-linear failure");
+      }
+      return {
+        issue: { id: otherId, relations: page([{ id: relD, type: "blocks" }]) },
+      };
+    }
+    throw new Error("unexpected nested owner");
+  };
+
+  try {
+    // First attempt drains the first issue, then fails on the second.
+    await assert.rejects(
+      readLinearProjectSnapshot({
+        query: queryFor({ first: 0, second: 0 }),
+        projectId,
+        workspace: "acme",
+        progressPath,
+      }),
+      /transient el-linear failure/,
+    );
+
+    // Second attempt re-enumerates fresh but reuses the first issue's drain.
+    const secondCalls = { first: 0, second: 0 };
+    const snapshot = await readLinearProjectSnapshot({
+      query: queryFor(secondCalls),
+      projectId,
+      workspace: "acme",
+      progressPath,
+    });
+    assert.equal(snapshot.complete, true);
+    assert.equal(snapshot.issues.length, 2);
+    assert.equal(
+      secondCalls.first,
+      0,
+      "unchanged issue must not be re-drained",
+    );
+    assert.equal(secondCalls.second, 1, "failed issue must be re-drained once");
+    assert.equal(snapshot.issues[0].relations.length, 2);
+    assert.equal(snapshot.issues[1].relations.length, 2);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a changed issue is re-drained even when a prior checkpoint exists", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "buzz-linear-resume-"));
+  const progressPath = join(dir, "progress");
+  const relA = "00000000-0000-4000-8000-000000000021";
+  const relB = "00000000-0000-4000-8000-000000000022";
+  let updatedAt = "2026-10-15T01:00:00Z";
+  let nestedCalls = 0;
+  const query = async (q, variables) => {
+    if (q === PROJECT_QUERY)
+      return {
+        viewer: { organization: { id: organizationId, urlKey: "acme" } },
+        project: {
+          id: projectId,
+          teams: page([]),
+          projectMilestones: page([]),
+        },
+      };
+    if (q === ISSUES_QUERY)
+      return {
+        project: {
+          id: projectId,
+          issues: page([
+            {
+              ...issue(),
+              id: otherId,
+              identifier: "DEV-2",
+              updatedAt,
+              relations: page([{ id: relA, type: "related" }], "r1"),
+            },
+          ]),
+        },
+      };
+    assert.match(q, /relations\(first: 50, after: \$after\)/);
+    nestedCalls += 1;
+    return {
+      issue: { id: otherId, relations: page([{ id: relB, type: "blocks" }]) },
+    };
+  };
+
+  try {
+    await readLinearProjectSnapshot({
+      query,
+      projectId,
+      workspace: "acme",
+      progressPath,
+    });
+    assert.equal(nestedCalls, 1);
+
+    // Bump updatedAt: the checkpoint no longer satisfies the drain, so the
+    // nested connection must be re-fetched rather than reused.
+    updatedAt = "2026-10-15T02:00:00Z";
+    await readLinearProjectSnapshot({
+      query,
+      projectId,
+      workspace: "acme",
+      progressPath,
+    });
+    assert.equal(nestedCalls, 2, "changed issue must be re-drained");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

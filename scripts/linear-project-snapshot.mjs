@@ -2,8 +2,8 @@
 /** Read a scoped Linear project through el-linear; never write to Linear. */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdir, writeFile, rename, rm } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { mkdir, writeFile, rename, rm, readFile, readdir } from "node:fs/promises";
+import { dirname, resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
 
@@ -106,6 +106,32 @@ async function completeNested(query, owner, field, selection, first, initial) {
   );
 }
 
+const PROGRESS_SCHEMA = "buzz.linear-project-snapshot.progress.v1";
+
+async function readJson(path) {
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+/** Atomic best-effort checkpoint write; a torn write never corrupts a prior one. */
+async function writeJsonAtomic(path, value) {
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  const temporary = `${path}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporary, JSON.stringify(value), {
+      mode: 0o600,
+      flag: "wx",
+    });
+    await rename(temporary, path);
+  } finally {
+    await rm(temporary, { force: true });
+  }
+}
+
 /** A complete, project-scoped observation suitable for a durable sync input. */
 export async function readLinearProjectSnapshot({
   query: sourceQuery,
@@ -113,6 +139,7 @@ export async function readLinearProjectSnapshot({
   workspace,
   now = () => new Date(),
   maxDurationMs = 15 * 60_000,
+  progressPath = null,
 }) {
   if (!UUID.test(projectId ?? ""))
     throw new Error("An explicit Linear project UUID is required");
@@ -139,6 +166,27 @@ export async function readLinearProjectSnapshot({
     throw new Error(
       "Linear project is missing or outside the authorized scope",
     );
+  // Resumable progress. The issues are always re-enumerated fresh, so a
+  // partial scan can never be mistaken for a complete one; the checkpoint only
+  // skips re-draining an issue's nested connections when the issue is
+  // unchanged (same updatedAt), and `complete: true` is still gated on the
+  // full fresh walk. Issue ids are globally-unique UUIDs, so drained files can
+  // never collide across workspaces.
+  const statePath = progressPath ? join(progressPath, "state.json") : null;
+  const drainedDir = progressPath ? join(progressPath, "drained") : null;
+  let resumeStartedAt = startedAt;
+  if (statePath) {
+    const prior = await readJson(statePath);
+    if (
+      prior?.schema === PROGRESS_SCHEMA &&
+      prior.workspace === workspace &&
+      prior.projectId === projectId &&
+      prior.organizationId === organization.id
+    ) {
+      resumeStartedAt = prior.startedAt ?? startedAt;
+    }
+  }
+  if (drainedDir) await mkdir(drainedDir, { recursive: true, mode: 0o700 });
   const project = data.project;
   project.teams = await completeNested(
     query,
@@ -170,6 +218,18 @@ export async function readLinearProjectSnapshot({
     if (!Number.isFinite(Date.parse(issue.updatedAt)))
       throw new Error("Issue source timestamp is invalid");
     const owner = { type: "issue", id: issue.id };
+    const drainedPath = drainedDir
+      ? join(drainedDir, `issue-${issue.id}.json`)
+      : null;
+    const priorDrain = drainedPath ? await readJson(drainedPath) : null;
+    if (priorDrain?.updatedAt === issue.updatedAt) {
+      // Unchanged since the prior drain; reuse the already-fetched rows instead
+      // of re-issuing up to three nested queries for every issue.
+      issue.labels = priorDrain.labels;
+      issue.relations = priorDrain.relations;
+      issue.inverseRelations = priorDrain.inverseRelations;
+      continue;
+    }
     issue.labels = await completeNested(
       query,
       owner,
@@ -194,6 +254,16 @@ export async function readLinearProjectSnapshot({
       50,
       issue.inverseRelations,
     );
+    if (drainedPath) await writeJsonAtomic(drainedPath, issue);
+  }
+  if (statePath) {
+    await writeJsonAtomic(statePath, {
+      schema: PROGRESS_SCHEMA,
+      organizationId: organization.id,
+      workspace,
+      projectId,
+      startedAt: resumeStartedAt,
+    });
   }
   return {
     schema: "buzz.linear-project-snapshot.v1",
@@ -203,7 +273,7 @@ export async function readLinearProjectSnapshot({
       workspace,
       projectId,
     },
-    startedAt,
+    startedAt: resumeStartedAt,
     completedAt: now().toISOString(),
     // Complete enumeration, not a transactionally consistent Linear database snapshot.
     complete: true,

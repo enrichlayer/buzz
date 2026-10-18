@@ -1,4 +1,5 @@
-import { Diff, Hunk, type ViewType } from "react-diff-view";
+import { SyntaxDiff } from "@/shared/ui/markdown/SyntaxDiff";
+import { Hunk, type ViewType } from "react-diff-view";
 import "react-diff-view/style/index.css";
 import { useMemo } from "react";
 
@@ -136,7 +137,8 @@ export function DiffViewer({
               ) : null}
 
               {file.hunks.length > 0 ? (
-                <Diff
+                <SyntaxDiff
+                  path={label}
                   className={cn(
                     "buzz-diff-table",
                     viewType === "split" ? "min-w-[780px]" : "w-full",
@@ -156,7 +158,7 @@ export function DiffViewer({
                       />
                     ))
                   }
-                </Diff>
+                </SyntaxDiff>
               ) : (
                 <div className="px-3 py-3 text-xs text-muted-foreground">
                   No textual hunks in this diff.

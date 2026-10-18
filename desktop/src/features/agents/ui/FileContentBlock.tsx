@@ -1,3 +1,7 @@
+import { CodeTokens } from "@/shared/ui/markdown/CodeText";
+import { useCodeTokens } from "@/shared/ui/markdown/useCodeTokens";
+import { languageForCodePath } from "@/shared/ui/markdown/codeLanguage";
+import type { ThemedToken } from "shiki";
 import type * as React from "react";
 
 import { cn } from "@/shared/lib/cn";
@@ -66,7 +70,7 @@ export function FileContentBlock({
     <div className="flex max-h-64 flex-col overflow-hidden rounded-md border border-border/50 bg-muted/35 text-xs leading-5 text-foreground">
       <div className="min-h-0 flex-1 overflow-auto">
         <pre className="py-2 font-mono">
-          <FileContentLines lines={lines} />
+          <FileContentLines lines={lines} path={path} />
         </pre>
       </div>
       <div
@@ -79,17 +83,53 @@ export function FileContentBlock({
   );
 }
 
-function FileContentLines({ lines }: { lines: FileContentLine[] }) {
-  return lines.map((line, index) => (
-    <FileContentLineView
-      // biome-ignore lint/suspicious/noArrayIndexKey: file content lines are positional
-      key={index}
-      line={line}
-    />
-  ));
+function FileContentLines({
+  lines,
+  path,
+}: {
+  lines: FileContentLine[];
+  path: string;
+}) {
+  const language = languageForCodePath(path);
+  const oldTokens = useCodeTokens(
+    lines
+      .filter((line) => line.kind !== "add")
+      .map((line) => line.text)
+      .join("\n"),
+    language,
+  );
+  const newTokens = useCodeTokens(
+    lines
+      .filter((line) => line.kind !== "remove")
+      .map((line) => line.text)
+      .join("\n"),
+    language,
+  );
+  let oldIndex = 0;
+  let newIndex = 0;
+  return lines.map((line, index) => {
+    const tokens =
+      line.kind === "remove" ? oldTokens?.[oldIndex] : newTokens?.[newIndex];
+    if (line.kind !== "add") oldIndex++;
+    if (line.kind !== "remove") newIndex++;
+    return (
+      <FileContentLineView
+        // biome-ignore lint/suspicious/noArrayIndexKey: file content lines are positional
+        key={index}
+        line={line}
+        tokens={tokens}
+      />
+    );
+  });
 }
 
-function FileContentLineView({ line }: { line: FileContentLine }) {
+function FileContentLineView({
+  line,
+  tokens,
+}: {
+  line: FileContentLine;
+  tokens?: ThemedToken[];
+}) {
   return (
     <span
       className={cn(
@@ -101,7 +141,11 @@ function FileContentLineView({ line }: { line: FileContentLine }) {
         line.kind === "meta" && "text-muted-foreground/70",
       )}
     >
-      {line.text || " "}
+      {tokens && line.text && line.kind !== "meta" ? (
+        <CodeTokens tokens={tokens} />
+      ) : (
+        line.text || " "
+      )}
     </span>
   );
 }

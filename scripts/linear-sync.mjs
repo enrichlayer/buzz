@@ -95,6 +95,7 @@ export async function runLinearSyncOnce(
             linearQueryThroughCli(config.profile, undefined, { signal }),
           workspace: config.workspace,
           projectId: config.projectId,
+          progressPath: join(directory, "snapshot-progress"),
         });
       } catch {
         throw new Error(

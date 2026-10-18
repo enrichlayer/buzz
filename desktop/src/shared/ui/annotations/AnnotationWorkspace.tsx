@@ -72,6 +72,7 @@ export function AnnotationWorkspace({
       document.removeEventListener("pointerup", schedule);
       document.removeEventListener("keyup", schedule);
       document.removeEventListener("keydown", onShortcut);
+      registry.navigationGeneration++;
       registry.changed = () => {};
     };
   }, [registry]);

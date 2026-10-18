@@ -1,3 +1,4 @@
+import { CodeText } from "@/shared/ui/markdown/CodeText";
 import { AlertTriangle, Copy, GitMerge, SquareTerminal } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
@@ -248,7 +249,10 @@ export function MergePullRequestButton({
           </div>
           {preparedRecovery ? (
             <pre className="overflow-x-auto rounded-md bg-background/80 p-2 font-mono text-xs text-foreground">
-              {recoveryCommands.join("\n")}
+              <CodeText
+                code={recoveryCommands.join("\n")}
+                language="shellscript"
+              />
             </pre>
           ) : (
             <p className="rounded-md bg-background/80 p-2 text-xs text-muted-foreground">

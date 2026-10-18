@@ -13,11 +13,14 @@ export async function fetchThreadReviews(
   channelId: string,
   threadRootId: string,
 ) {
+  // Match the Rust CLI's normalization so an uppercase hex id from the UI
+  // still finds the signed lowercase marker (pr_session.rs lowercases).
+  const wantedThreadRootId = threadRootId.toLowerCase();
   const roots = await fetchEvents({
     kinds: [1618],
     // NIP-34 events are stored globally; their h-tag is signed provenance,
     // not channel storage. Scope by the canonical thread and verify h below.
-    "#e": [threadRootId],
+    "#e": [wantedThreadRootId],
     limit: LIMIT,
   });
   if (roots.length >= LIMIT)
@@ -28,7 +31,7 @@ export async function fetchThreadReviews(
     (root) =>
       root.kind === 1618 &&
       root.tags.some((tag) => tag[0] === "h" && tag[1] === channelId) &&
-      sessionReviewContext(root)?.threadRootId === threadRootId,
+      sessionReviewContext(root)?.threadRootId === wantedThreadRootId,
   );
   if (!scoped.length) return [];
   const ids = scoped.map((root) => root.id);
