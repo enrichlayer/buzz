@@ -31,7 +31,7 @@ if ! acquire_lock; then
     echo "Unexpected file at $LOCK; remove it if no installer is running." >&2
     exit 1
   fi
-  if [[ "$holder" =~ ^[0-9]+$ ]] && kill -0 "$holder" 2>/dev/null; then
+  if [[ "$holder" =~ ^[0-9]+$ ]] && kill -0 "$holder" 2>/dev/null && ps -p "$holder" -o args= 2>/dev/null | grep -q "install-local-macos"; then
     echo "Another Buzz Local Coding install is running (pid $holder). Wait for it to finish." >&2
     exit 1
   fi
@@ -83,7 +83,12 @@ if [[ -e "$DEST" ]]; then
   echo "Previous app preserved at $BACKUP/Buzz Local Coding.app"
 fi
 if ! mv "$STAGED/Buzz Local Coding.app" "$DEST"; then
-  if [[ -n "$BACKUP" ]]; then mv "$BACKUP/Buzz Local Coding.app" "$DEST"; fi
+  if [[ -n "$BACKUP" ]]; then
+    mv "$BACKUP/Buzz Local Coding.app" "$DEST"
+    # The restore emptied the backup; drop it so an empty directory is not
+    # mistaken for a kept backup by the pruning pass below.
+    rmdir "$BACKUP" 2>/dev/null || true
+  fi
   echo "Install failed; previous app restored when available." >&2
   exit 1
 fi
