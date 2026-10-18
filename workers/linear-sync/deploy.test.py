@@ -2,7 +2,9 @@
 from pathlib import Path
 import os
 import re
+import shutil
 import subprocess
+import tempfile
 import unittest
 
 import jinja2
@@ -11,7 +13,7 @@ import yaml
 ROOT = Path(__file__).parent / ".deploy"
 
 
-def runtime_command(rendered, image):
+def runtime_command(rendered, image, data_dir=None):
     """Exercise the rendered worker's user and tmpfs options with real Podman."""
     command = ["podman", "run", "--rm", "--network=none"]
     for line in rendered.splitlines():
@@ -21,6 +23,11 @@ def runtime_command(rendered, image):
             command.extend(["--tmpfs", line.removeprefix("Tmpfs=")])
         elif line == "ReadOnly=true":
             command.append("--read-only")
+    if data_dir:
+        # Stand-in for the Quadlet named volume, which is owned by uid/gid 1000
+        # (see the .volume unit in manifest.yaml). A bind mount lets the test
+        # prove the read-only rootfs still leaves /data writable to the worker.
+        command.extend(["--volume", f"{data_dir}:/data"])
     command.extend(["--entrypoint=node", image, "-e", r"""
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -32,11 +39,14 @@ assert.equal(home.mode & 0o777, 0o700);
 fs.writeFileSync('/home/node/probe', 'private', {mode: 0o600});
 assert.equal(fs.readFileSync('/home/node/probe', 'utf8'), 'private');
 fs.writeFileSync('/tmp/probe', 'temporary');
+fs.writeFileSync('/data/probe', 'private', {mode: 0o600});
+assert.equal(fs.readFileSync('/data/probe', 'utf8'), 'private');
 const root = fs.readFileSync('/proc/self/mountinfo', 'utf8')
   .split('\n').find(line => line.split(' ')[4] === '/');
 assert.ok(root.split(' ')[5].split(',').includes('ro'));
 assert.throws(() => fs.writeFileSync('/rootfs-write-probe', 'no'));
 console.log('worker tmpfs runtime passed');
+console.log('worker data volume passed');
 """])
     return command
 
@@ -59,11 +69,22 @@ class DeploymentContract(unittest.TestCase):
     def test_non_root_private_home_is_writable_in_podman(self):
         image = os.environ["BUZZ_LINEAR_PODMAN_TEST_IMAGE"]
         rendered = render("ghcr.io/enrichlayer/buzz-linear-sync@sha256:" + "a" * 64)
-        result = subprocess.run(
-            runtime_command(rendered, image), capture_output=True, text=True, timeout=120
-        )
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("worker tmpfs runtime passed", result.stdout)
+        data_dir = tempfile.mkdtemp(prefix="buzz-linear-data-")
+        try:
+            # Mirror the Quadlet named volume's ownership so the probe runs as
+            # the worker uid on a volume it should be able to write.
+            os.chown(data_dir, 1000, 1000)
+            result = subprocess.run(
+                runtime_command(rendered, image, data_dir),
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("worker tmpfs runtime passed", result.stdout)
+            self.assertIn("worker data volume passed", result.stdout)
+        finally:
+            shutil.rmtree(data_dir, ignore_errors=True)
 
     def test_only_immutable_owned_images_can_render(self):
         for bad in ["", "ghcr.io/enrichlayer/buzz-linear-sync:latest", "example.test/worker@sha256:" + "a" * 64]:
@@ -84,6 +105,11 @@ class DeploymentContract(unittest.TestCase):
         for name in ["runtime.env", "registry-auth.json"]:
             self.assertEqual(files[f"/etc/buzz-linear-sync-private/{name}"]["file_info"]["owner"], "root")
             self.assertEqual(files[f"/etc/buzz-linear-sync-private/{name}"]["file_info"]["mode"], "0600")
+        # The named volume the worker writes its outbox to must be owned by the
+        # worker uid/gid, or the first boot fails with a read-only /data.
+        volume = files["/etc/containers/systemd/buzz-linear-sync-private.volume"]["content"]
+        self.assertIn("User=1000", volume)
+        self.assertIn("Group=1000", volume)
 
 
 if __name__ == "__main__":
