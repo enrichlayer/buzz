@@ -146,5 +146,8 @@ test("sortMessages tiebreaks same-second events on id, order-independent", () =>
   const reverse = normalizeTimelineMessages([c, b, a]).map((m) => m.id);
 
   assert.deepEqual(forward, reverse);
-  assert.deepEqual(forward, [a.id, b.id, c.id]);
+  // Same-second rows render in the channel window's order: newest-id-first
+  // (descending id), matching flattenChannelWindowEvents and
+  // reconcileChannelWindowMessages.
+  assert.deepEqual(forward, [c.id, b.id, a.id]);
 });
