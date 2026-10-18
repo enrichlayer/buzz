@@ -67,7 +67,7 @@ jobs:
           # package; changing GITHUB_PATH alone still invokes the missing binary.
           # The action emits a relative-path shell shim, so invoke its original
           # location through a wrapper instead of moving or symlinking that shim.
-          rm bin/pnpm
+          rm -f bin/pnpm
           printf '#!/bin/sh\nexec "%s/pnpm" "$@"\n' "$PNPM_BIN" > bin/pnpm
           chmod +x bin/pnpm
           EXPECTED=$(node -p 'require("./package.json").packageManager.replace(/^pnpm@/, "").split("+")[0]')
