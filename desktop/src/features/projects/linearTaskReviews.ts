@@ -2,33 +2,44 @@ import type { RelayEvent } from "@/shared/api/types";
 import type { RelaySubscriptionFilter } from "@/shared/api/relayClientShared";
 import { eventToProjectPullRequest } from "./projectPullRequests.mjs";
 import { sessionReviewContext } from "./sessionReviewContext";
+import {
+  fetchCompleteReviewEvents,
+  fetchTrustedReviewUpdates,
+} from "./projectReviewFetch";
+
+const SUMMARY_LIMIT = 200;
 
 /** Resolve signed task associations, independently of local conversation history. */
 export async function fetchLinearTaskReviews(
   fetchEvents: (filter: RelaySubscriptionFilter) => Promise<RelayEvent[]>,
   address: string,
 ) {
-  const limit = 200;
-  const roots = await fetchEvents({ kinds: [1618], "#a": [address], limit });
-  if (roots.length >= limit)
+  // #a and uppercase #E are filtered AFTER the relay's SQL LIMIT, so a capped
+  // query silently drops this task's reviews or updates once the relay holds
+  // newer events for other work. Walk SQL-pushed filters, then scope locally.
+  const candidates = await fetchCompleteReviewEvents(
+    { kinds: [1618] },
+    fetchEvents,
+  );
+  const scoped = candidates.filter(
+    (event) =>
+      event.kind === 1618 &&
+      event.tags.some((tag) => tag[0] === "a" && tag[1] === address) &&
+      sessionReviewContext(event)?.taskAddress === address,
+  );
+  if (scoped.length > SUMMARY_LIMIT)
     throw new Error(
       "Task review history exceeds the summary limit. Open Reviews for the full history.",
     );
-  const scoped = roots.filter(
-    (event) =>
-      event.kind === 1618 &&
-      sessionReviewContext(event)?.taskAddress === address,
-  );
   if (!scoped.length) return [];
   const ids = scoped.map((event) => event.id);
   const [updates, statuses] = await Promise.all([
-    fetchEvents({ kinds: [1619], "#E": ids, limit }),
-    fetchEvents({ kinds: [1630, 1631, 1632, 1633], "#e": ids, limit }),
+    fetchTrustedReviewUpdates(scoped, fetchEvents),
+    fetchCompleteReviewEvents(
+      { kinds: [1630, 1631, 1632, 1633], "#e": ids },
+      fetchEvents,
+    ),
   ]);
-  if (updates.length >= limit || statuses.length >= limit)
-    throw new Error(
-      "Task review updates exceed the summary limit. Open Reviews for the full history.",
-    );
   return scoped.map((event) =>
     eventToProjectPullRequest(event, updates, [], statuses),
   );

@@ -31,9 +31,12 @@ export const PROJECT_QUERY = `query BuzzProject($id: String!) {
     }
   }
 }`;
+// Page by immutable creation time. An updatedAt order moves an issue edited
+// mid-scan across the cursor, so a "complete" scan could omit it and the
+// outbox would publish a false retirement for a live issue.
 export const ISSUES_QUERY = `query BuzzProjectIssues($id: String!, $after: String) {
   project(id: $id) {
-    id issues(first: 25, after: $after, includeArchived: true, orderBy: updatedAt) {
+    id issues(first: 25, after: $after, includeArchived: true, orderBy: createdAt) {
       nodes { ${ISSUE_FIELDS} } ${PAGE}
     }
   }
