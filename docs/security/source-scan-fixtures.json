@@ -782,32 +782,6 @@
       "existingOnMain": true,
       "reason": "Malformed Authorization value intentionally submitted to assert HTTP401.",
       "provenance": "scripts/e2e-git-perms.sh:766-774"
-    },
-    {
-      "path": "docs/evidence/agent-steering/2026-10-13/transport.jsonl",
-      "line": 188,
-      "endLine": 188,
-      "rule": "generic-api-key",
-      "matchSha256": "9fc6779d4f3103c4c7fb67570f45c937ea068febbf7caeabcc561c9aee0a2e0e",
-      "captureSha256": "f8478959915c4cb7eb09222d98619251fd9e7c13982a257b1db3b9d44f0da65a",
-      "captureLength": 64,
-      "classification": "public relay authentication challenge",
-      "existingOnMain": true,
-      "reason": "NIP-42 AUTH challenge sent by the ephemeral local test relay to the harness. It is a per-connection nonce that the client signs; it grants no access, and its relay and connection ended on 2026-10-13.",
-      "provenance": "docs/evidence/agent-steering/2026-10-13/transport.jsonl:188 (relay_to_harness ws_frame, case mentions-default)"
-    },
-    {
-      "path": "docs/evidence/agent-steering/2026-10-13/transport.jsonl",
-      "line": 234,
-      "endLine": 234,
-      "rule": "generic-api-key",
-      "matchSha256": "1124a1ad86d2a73913430aa056c5a3dcf5253da0ceb6402f44677558ac80d2c7",
-      "captureSha256": "ed2fd5448ccd64c25f207a5d024361b4f06d0f9581993bc161ef45afc0895059",
-      "captureLength": 64,
-      "classification": "public relay authentication challenge",
-      "existingOnMain": true,
-      "reason": "NIP-42 AUTH challenge sent by the ephemeral local test relay to the harness. It is a per-connection nonce that the client signs; it grants no access, and its relay and connection ended on 2026-10-13.",
-      "provenance": "docs/evidence/agent-steering/2026-10-13/transport.jsonl:234 (relay_to_harness ws_frame, case mention-filter-disabled)"
     }
   ]
 }

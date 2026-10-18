@@ -280,6 +280,8 @@ All four readbacks passed signature and canonical-ID verification using the desk
 
 ## Raw evidence
 
-The complete captured transport is [transport.jsonl](transport.jsonl); it includes command exits, response durations, subscriptions, EVENT frames and cleanup. The startup log is [relay-startup-1.log](relay-startup-1.log). File hashes are in [SHA256SUMS.txt](SHA256SUMS.txt).
+The captured transport is [transport.jsonl](transport.jsonl); it includes command exits, response durations, subscriptions, EVENT frames and cleanup. The startup log is [relay-startup-1.log](relay-startup-1.log). File hashes are in [SHA256SUMS.txt](SHA256SUMS.txt).
+
+DEV-13682 redacts only the two relay-to-harness NIP-42 `AUTH` challenge payloads at lines 188 and 234 (`mentions-default` and `mention-filter-disabled`) as `[REDACTED NIP-42 AUTH challenge]`. Case, direction, timestamps and frame kind are unchanged. `SHA256SUMS.txt` now hashes the redacted transport; the other evidence files and signed-event verification are unchanged. This is a later redaction of the October 13 capture, not a new runtime run.
 
 This establishes current-source relay/harness/ACP delivery in the tested configuration. It does not establish the October 9 deployment configuration, OrbStack’s original startup cause, or an actual LLM following steering.
