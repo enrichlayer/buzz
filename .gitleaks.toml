@@ -606,3 +606,19 @@ regexTarget = "match"
 paths = ['''(?:^|/)(?:tree/)?scripts/e2e\-git\-perms\.sh$''']
 regexes = ['''(?s)^curl\ \-sf\ \-\-max\-time\ "\$CURL_TIMEOUT"\ \-o\ /dev/null\ \-w\ "%\{http_code\}"\ \\\
 \ \ \ \ \-H\ "Authorization:\ Bearer\ invalid\-token"$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "public relay authentication challenge at docs/evidence/agent-steering/2026-10-13/transport.jsonl"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?docs/evidence/agent\-steering/2026\-10\-13/transport\.jsonl$''']
+regexes = ['''(?s)^AUTH",\ "22074f28aa05cb39c1991e26ceef78ced04aed9e12176bc0d8879507dc15fb6c"$''']
+
+[[allowlists]]
+targetRules = ["generic-api-key"]
+description = "public relay authentication challenge at docs/evidence/agent-steering/2026-10-13/transport.jsonl"
+condition = "AND"
+regexTarget = "match"
+paths = ['''(?:^|/)(?:tree/)?docs/evidence/agent\-steering/2026\-10\-13/transport\.jsonl$''']
+regexes = ['''(?s)^AUTH",\ "fee8370a632598886e4e0234332495883a5d282594775bab26ebc0f1ea65fc47"$''']
