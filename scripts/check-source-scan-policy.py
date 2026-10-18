@@ -108,10 +108,10 @@ def main():
             (f["File"], f["RuleID"], digest(f["Match"])) for f in baseline
         )
         if observed != expected:
-            # Name path and rule only; the match itself stays out of CI logs.
+            # Name path, rule and match digest only; the match stays out of CI logs.
             def describe(counter):
-                return "".join("\n  %s (%s) x%d" % (path, rule, count)
-                               for (path, rule, _), count in sorted(counter.items()))
+                return "".join("\n  %s (%s) matchSha256=%s x%d" % (path, rule, match, count)
+                               for (path, rule, match), count in sorted(counter.items()))
             unexpected, missing = observed - expected, expected - observed
             raise RuntimeError("Fixture baseline changed: %s unexpected, %s missing; classify before updating policy%s%s" % (
                 sum(unexpected.values()), sum(missing.values()),
