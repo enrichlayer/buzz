@@ -1,3 +1,6 @@
+import type { RuntimePluginStoreState } from "../plugins/runtime/types";
+import { getPluginTheme, getPluginThemes } from "./plugin-themes";
+import { isPluginThemeName } from "../plugins/runtime/themeSchema";
 /**
  * Theme Loader
  *
@@ -6,6 +9,7 @@
  */
 
 import type { ThemeRegistrationRaw } from "shiki";
+
 import {
   type TerminalPalette,
   extractTerminalPalette,
@@ -36,10 +40,10 @@ export const BUZZ_THEME_NAME = "buzz";
 export const BUZZ_DARK_THEME_NAME = "buzz-dark";
 
 /** The Shiki bundle Buzz borrows its base palette from. */
-export const BUZZ_BASE_THEME: SyntaxThemeName = "github-light";
+export const BUZZ_BASE_THEME: BuiltinThemeName = "github-light";
 
 /** The Shiki bundle Buzz Dark borrows its base palette from. */
-export const BUZZ_DARK_BASE_THEME: SyntaxThemeName = "github-dark";
+export const BUZZ_DARK_BASE_THEME: BuiltinThemeName = "github-dark";
 
 /**
  * Resolve a theme name to the real Shiki bundled theme it maps to.
@@ -52,109 +56,30 @@ export const BUZZ_DARK_BASE_THEME: SyntaxThemeName = "github-dark";
  * first; passing a raw Buzz alias makes Shiki throw and code blocks fall
  * back to unhighlighted plain text.
  */
-export function resolveShikiThemeName(name: string): SyntaxThemeName {
+export function resolveShikiThemeName(name: string): BuiltinThemeName {
+  if (isPluginThemeName(name))
+    return resolveShikiThemeName(
+      getPluginTheme(name)?.syntaxTheme ?? "github-dark",
+    );
   if (name === BUZZ_THEME_NAME) return BUZZ_BASE_THEME;
   if (name === BUZZ_DARK_THEME_NAME) return BUZZ_DARK_BASE_THEME;
-  return name as SyntaxThemeName;
+  return name as BuiltinThemeName;
 }
 
 // Available themes. "buzz" is a Buzz-branded theme that reuses the
 // github-light palette plus a sidebar gradient; the rest are the Shiki
 // bundled syntax themes, alphabetically sorted.
-export const SYNTAX_THEMES = [
-  "buzz",
-  "buzz-dark",
-  "andromeeda",
-  "aurora-x",
-  "ayu-dark",
-  "catppuccin-frappe",
-  "catppuccin-latte",
-  "catppuccin-macchiato",
-  "catppuccin-mocha",
-  "dark-plus",
-  "dracula",
-  "dracula-soft",
-  "everforest-dark",
-  "everforest-light",
-  "github-dark",
-  "github-dark-default",
-  "github-dark-dimmed",
-  "github-dark-high-contrast",
-  "github-light",
-  "github-light-default",
-  "github-light-high-contrast",
-  "gruvbox-dark-hard",
-  "gruvbox-dark-medium",
-  "gruvbox-dark-soft",
-  "gruvbox-light-hard",
-  "gruvbox-light-medium",
-  "gruvbox-light-soft",
-  "houston",
-  "kanagawa-dragon",
-  "kanagawa-lotus",
-  "kanagawa-wave",
-  "laserwave",
-  "light-plus",
-  "material-theme",
-  "material-theme-darker",
-  "material-theme-lighter",
-  "material-theme-ocean",
-  "material-theme-palenight",
-  "min-dark",
-  "min-light",
-  "monokai",
-  "night-owl",
-  "nord",
-  "one-dark-pro",
-  "one-light",
-  "plastic",
-  "poimandres",
-  "red",
-  "rose-pine",
-  "rose-pine-dawn",
-  "rose-pine-moon",
-  "slack-dark",
-  "slack-ochin",
-  "snazzy-light",
-  "solarized-dark",
-  "solarized-light",
-  "synthwave-84",
-  "tokyo-night",
-  "vesper",
-  "vitesse-black",
-  "vitesse-dark",
-  "vitesse-light",
-] as const;
-
-export type SyntaxThemeName = (typeof SYNTAX_THEMES)[number];
-
-// Known light themes — used by the theme picker to show sun/moon icons
-// for themes that haven't been loaded yet.
-export const LIGHT_THEMES: ReadonlySet<SyntaxThemeName> = new Set([
-  "buzz",
-  "catppuccin-latte",
-  "everforest-light",
-  "github-light",
-  "github-light-default",
-  "github-light-high-contrast",
-  "gruvbox-light-hard",
-  "gruvbox-light-medium",
-  "gruvbox-light-soft",
-  "kanagawa-lotus",
-  "light-plus",
-  "material-theme-lighter",
-  "min-light",
-  "one-light",
-  "rose-pine-dawn",
-  "slack-ochin",
-  "snazzy-light",
-  "solarized-light",
-  "vitesse-light",
-]);
+export { SYNTAX_THEMES, LIGHT_THEMES } from "./theme-catalog";
+import {
+  SYNTAX_THEMES,
+  LIGHT_THEMES,
+  type BuiltinThemeName,
+} from "./theme-catalog";
+export type SyntaxThemeName = BuiltinThemeName | `plugin:${string}`;
 
 // Static theme imports (Vite needs static strings for tree-shaking)
 const themeImports: Record<
-  SyntaxThemeName,
+  BuiltinThemeName,
   () => Promise<{ default: ThemeRegistrationRaw }>
 > = {
   // Buzz reuses the github-light palette; its gradient is applied separately.
@@ -229,7 +154,7 @@ const themeImports: Record<
 };
 
 export function isLightTheme(name: string): boolean {
-  return LIGHT_THEMES.has(name as SyntaxThemeName);
+  return getPluginTheme(name)?.mode === "light" || LIGHT_THEMES.has(name);
 }
 
 /**
@@ -414,7 +339,56 @@ export function extractThemeInfo(
 export async function loadThemeData(
   name: SyntaxThemeName,
 ): Promise<ThemeRegistrationRaw> {
-  const loader = themeImports[name];
+  const contribution = getPluginTheme(name);
+  const baseName = contribution?.syntaxTheme ?? name;
+  const loader = themeImports[baseName as BuiltinThemeName];
+  if (!loader) throw new Error(`Theme ${name} is unavailable`);
   const { default: theme } = await loader();
-  return theme;
+  if (!contribution) return theme;
+  const colors = contribution.colors;
+  return {
+    ...theme,
+    colors: {
+      ...theme.colors,
+      "editor.background": colors.background,
+      "editor.foreground": colors.foreground,
+      ...(colors["status-added"]
+        ? { "gitDecoration.addedResourceForeground": colors["status-added"] }
+        : {}),
+      ...(colors["status-deleted"]
+        ? {
+            "gitDecoration.deletedResourceForeground": colors["status-deleted"],
+          }
+        : {}),
+      ...(colors["status-modified"]
+        ? { "editorGutter.modifiedBackground": colors["status-modified"] }
+        : {}),
+    },
+  };
+}
+
+/** Enumerate bundled and enabled plugin themes; callers subscribe to store changes. */
+export function getThemeNames(
+  snapshot?: RuntimePluginStoreState,
+): SyntaxThemeName[] {
+  return [
+    ...SYNTAX_THEMES,
+    ...getPluginThemes(snapshot).map((theme) => theme.selection),
+  ];
+}
+
+/** Whether a theme can currently be loaded on this device. */
+export function isAvailableTheme(name: string): name is SyntaxThemeName {
+  return (
+    (SYNTAX_THEMES as readonly string[]).includes(name) ||
+    Boolean(getPluginTheme(name))
+  );
+}
+
+/** Persist namespaced preferences even on devices without their theme package. */
+export function isThemeSelection(name: string): name is SyntaxThemeName {
+  return (
+    (SYNTAX_THEMES as readonly string[]).includes(name) ||
+    isPluginThemeName(name)
+  );
 }

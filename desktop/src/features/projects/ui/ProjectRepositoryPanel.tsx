@@ -1,3 +1,5 @@
+import { languageForCodePath as languageForPath } from "@/shared/ui/markdown/codeLanguage";
+export { languageForCodePath as languageForPath } from "@/shared/ui/markdown/codeLanguage";
 import {
   Braces,
   ChevronRight,
@@ -156,48 +158,6 @@ function RepositoryCommitCell({
 
 export function baseName(path: string) {
   return path.split("/").pop() || path;
-}
-
-const FILE_LANGUAGE_BY_EXTENSION: Record<string, string> = {
-  c: "c",
-  cc: "cpp",
-  cpp: "cpp",
-  cs: "csharp",
-  css: "css",
-  dart: "dart",
-  go: "go",
-  h: "c",
-  hpp: "cpp",
-  html: "html",
-  java: "java",
-  js: "javascript",
-  json: "json",
-  jsx: "jsx",
-  kt: "kotlin",
-  kts: "kotlin",
-  md: "markdown",
-  mjs: "javascript",
-  mts: "typescript",
-  py: "python",
-  rb: "ruby",
-  rs: "rust",
-  sh: "bash",
-  sql: "sql",
-  swift: "swift",
-  toml: "toml",
-  ts: "typescript",
-  tsx: "tsx",
-  yaml: "yaml",
-  yml: "yaml",
-  zig: "zig",
-};
-
-export function languageForPath(path: string) {
-  const fileName = baseName(path).toLowerCase();
-  if (fileName === "dockerfile") return "dockerfile";
-  if (fileName === "makefile") return "make";
-  const extension = fileName.split(".").pop();
-  return extension ? FILE_LANGUAGE_BY_EXTENSION[extension] : undefined;
 }
 
 type FileIconVisual = {

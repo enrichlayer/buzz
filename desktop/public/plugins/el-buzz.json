@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 2,
+  "kind": "theme",
+  "id": "enrichlayer.el-buzz",
+  "name": "el-buzz",
+  "version": "1.0.0",
+  "description": "Enrich Layer charcoal surfaces, sage controls and restrained pink accents.",
+  "themes": [
+    {
+      "id": "dark",
+      "name": "el-buzz",
+      "mode": "dark",
+      "syntaxTheme": "github-dark",
+      "colors": {
+        "background": "#282828",
+        "foreground": "#ffffff",
+        "card": "#313131",
+        "card-foreground": "#ffffff",
+        "popover": "#2a2a2a",
+        "popover-foreground": "#ffffff",
+        "primary": "#869978",
+        "primary-foreground": "#111827",
+        "secondary": "#fa4b9a",
+        "secondary-foreground": "#111827",
+        "muted": "#27272a",
+        "muted-foreground": "#a1a1aa",
+        "accent": "#343633",
+        "accent-foreground": "#ffffff",
+        "border": "#4d4d4d",
+        "input": "#2d2d2d",
+        "ring": "#869978",
+        "destructive": "#dc2626",
+        "destructive-foreground": "#ffffff",
+        "sidebar-background": "#2a2a2a",
+        "sidebar-foreground": "#ffffff",
+        "sidebar-accent": "#343633",
+        "sidebar-accent-foreground": "#ffffff",
+        "sidebar-border": "#4d4d4d",
+        "sidebar-ring": "#869978",
+        "status-added": "#8fc9a3",
+        "status-deleted": "#f0a0a0",
+        "status-modified": "#d4b76a"
+      }
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "productName": "el-buzz",
+  "build": {
+    "beforeBuildCommand": "pnpm build:el-buzz"
+  },
+  "bundle": {
+    "icon": [
+      "icons/el-buzz/32x32.png",
+      "icons/el-buzz/128x128.png",
+      "icons/el-buzz/128x128@2x.png",
+      "icons/el-buzz/icon.icns",
+      "icons/el-buzz/icon.ico"
+    ]
+  }
+}

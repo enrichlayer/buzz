@@ -45,11 +45,7 @@ import { ImageMosaic } from "./markdown/ImageMosaic";
 import { copyImageToClipboard, downloadImage } from "./markdown/imageActions";
 import { ImageGalleryStatus } from "./markdown/ImageGalleryStatus";
 import { ImageLightboxZoomControls } from "./markdown/ImageLightboxZoomControls";
-import {
-  CODE_BLOCK_CLASS,
-  extractLanguage,
-  SyntaxHighlightedCode,
-} from "./markdown/CodeBlock";
+import { extractLanguage, SyntaxHighlightedCode } from "./markdown/CodeBlock";
 import { FencedCodeBlock } from "./markdown/FencedCodeBlock";
 import { EntityLinkAnchor, useOpenEntityLink } from "./markdown/entityLinks";
 import { ExternalLinkAnchor } from "./markdown/ExternalLinkAnchor";
@@ -1415,22 +1411,8 @@ export function createMarkdownComponents(
       if (isFencedCodeBlock || rawCode.endsWith("\n") || code.includes("\n")) {
         const language = extractLanguage(className);
 
-        if (language) {
-          return (
-            <SyntaxHighlightedCode code={code} language={language} {...props} />
-          );
-        }
-
-        const lines = code.split("\n");
         return (
-          <code {...props} className={CODE_BLOCK_CLASS}>
-            {lines.map((line, i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: lines are positional
-              <span key={i} data-line="">
-                {line}
-              </span>
-            ))}
-          </code>
+          <SyntaxHighlightedCode code={code} language={language} {...props} />
         );
       }
 

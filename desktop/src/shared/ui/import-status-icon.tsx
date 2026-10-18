@@ -1,12 +1,12 @@
 import { Check, X } from "lucide-react";
 
-import { Spinner } from "@/shared/ui/spinner";
+import { BuzzActivity } from "@el/buzz-ui";
 
 export type ImportItemStatus = "pending" | "importing" | "done" | "error";
 
 /**
  * Tiny status indicator used in sequential-import dialogs (persona batch
- * import, team import). Renders a spinner while importing, a check on
+ * import, team import). Renders activity dots while importing, a check on
  * success, an X on failure, and nothing while pending.
  */
 export function ImportStatusIcon({
@@ -17,7 +17,11 @@ export function ImportStatusIcon({
   switch (status) {
     case "importing":
       return (
-        <Spinner className="h-4 w-4 shrink-0 border-2 text-muted-foreground" />
+        <BuzzActivity
+          variant="inline"
+          label="Importing"
+          className="text-muted-foreground"
+        />
       );
     case "done":
       return <Check className="h-4 w-4 shrink-0 text-green-500" />;

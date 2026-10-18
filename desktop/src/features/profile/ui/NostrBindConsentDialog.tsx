@@ -1,3 +1,4 @@
+import { CodeText } from "@/shared/ui/markdown/CodeText";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ChevronDown } from "lucide-react";
@@ -160,7 +161,7 @@ function SignedResponseControls({
         data-testid="nostr-bind-signed-response"
       >
         <code className="whitespace-pre-wrap break-all font-mono text-xs leading-5 text-foreground">
-          {signedResponse}
+          <CodeText code={signedResponse} language="json" />
         </code>
       </pre>
 
