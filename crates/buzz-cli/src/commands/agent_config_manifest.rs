@@ -136,7 +136,7 @@ fn reference(base: &Path, spec: &SpecReference) -> Result<(), CliError> {
     Ok(())
 }
 
-fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, CliError> {
+pub(super) fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, CliError> {
     let metadata = fs::metadata(path).map_err(|_| usage("cannot inspect configuration input"))?;
     if !metadata.is_file() || metadata.len() > limit {
         return Err(usage("configuration input must be a bounded regular file"));

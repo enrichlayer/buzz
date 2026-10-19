@@ -441,6 +441,30 @@ pub enum AgentsConfigCmd {
         #[arg(long)]
         file: std::path::PathBuf,
     },
+    /// Verify a signed public handoff against independently supplied expected scope, offline
+    VerifyHandoff {
+        /// Original manifest and its pinned spec files
+        #[arg(long)]
+        file: std::path::PathBuf,
+        /// Immutable owner-signed handoff envelope
+        #[arg(long)]
+        handoff: std::path::PathBuf,
+        /// Independent protected-operator public scope and generation pins
+        #[arg(long)]
+        expected: std::path::PathBuf,
+    },
+    /// Match authenticated signed relay heads to an independently selected public handoff
+    VerifyHeads {
+        /// Original manifest and its pinned spec files
+        #[arg(long)]
+        file: std::path::PathBuf,
+        /// Immutable owner-signed handoff envelope
+        #[arg(long)]
+        handoff: std::path::PathBuf,
+        /// Independent protected-operator public scope and generation pins
+        #[arg(long)]
+        expected: std::path::PathBuf,
+    },
     /// Read current signed relay state and print a digest for an apply
     Plan {
         #[arg(long)]
@@ -2298,9 +2322,24 @@ fn normalize_auth_tag_input(input: &str) -> String {
 async fn run(cli: Cli) -> Result<(), CliError> {
     let relay_url = client::normalize_relay_url(&cli.relay);
 
-    if let Cmd::Agents(AgentsCmd::Config(AgentsConfigCmd::Validate { ref file })) = cli.command {
-        println!("{}", commands::agent_config::validate_file(file)?);
-        return Ok(());
+    if let Cmd::Agents(AgentsCmd::Config(ref config)) = cli.command {
+        let local = match config {
+            AgentsConfigCmd::Validate { file } => {
+                Some(commands::agent_config::validate_file(file)?)
+            }
+            AgentsConfigCmd::VerifyHandoff {
+                file,
+                handoff,
+                expected,
+            } => Some(commands::agent_config_handoff::verify_files(
+                file, handoff, expected,
+            )?),
+            _ => None,
+        };
+        if let Some(result) = local {
+            println!("{result}");
+            return Ok(());
+        }
     }
 
     // Pack commands are local-only — no relay connection needed.

@@ -187,3 +187,104 @@ The protected operator must:
 This first CLI slice has no protected-host receipt ingestion protocol. The
 existing operator owns live qualification and reports those results separately.
 Do not perform a live apply against placeholder or unqualified channels.
+
+## Offline handoff verification
+
+A protected host can verify the public contract with no relay credentials,
+network calls or enrollment-state reads/writes:
+
+```sh
+buzz agents config verify-handoff --file agents.json \
+  --handoff config-<manifest_sha256>-<handoff_sha256>.handoff.json \
+  --expected expected-public-scope.json
+```
+
+The operator supplies `expected-public-scope.json` independently through existing
+managed custody. Do not derive its authority or generation pins from an untrusted
+handoff, filename or directory lookup. Its strict schema is:
+
+```json
+{
+  "version": 1,
+  "relay": "https://buzz.example.com",
+  "owner": "<expected-owner-pubkey>",
+  "channel": "<existing-channel-uuid>",
+  "cohort": "openrig",
+  "rig_id": "<existing-rig-id>",
+  "handoff_sha256": "<selected-signed-content-sha256>",
+  "authorization_event_id": "<selected-authorization-event-id>",
+  "agents": [{
+    "key": "engineering-manager",
+    "seat": "engineering.manager",
+    "runtime_id": "<qualified-runtime-id>",
+    "pubkey": "<independently-qualified-buzz-public-key>"
+  }]
+}
+```
+
+The scope must name exactly the configured Buzz communicators, with normalized
+relay/channel values and no extra fields. A single manager is sufficient. Private
+pod workers need no Buzz identity. Existing Buzz identities require exact adoption
+and retained custody; genuinely first enrollment may use `adoption: null` after
+the operator qualifies absence/custody and then independently verifies the new
+key through the existing enrollment path. This verifier never provisions a key
+and cannot establish that absence or credential ownership itself.
+
+The command checks exact spec file bytes, normalized typed manifest and policy
+digests, Nostr event ID/signature, kind/domain, complete signed payload and selected
+identity/scope/generation equality. Expected scope is bounded to 128 KiB, handoff
+envelopes to 512 KiB; existing manifest/spec bounds still apply. It hashes the
+original UTF-8 signed content, so host JSON serialization cannot change its
+generation identity. It emits `signed_configuration_verified`, digests and the
+minimal public identity/policy/head projection.
+
+Verification is **offline**: canonical imports/models/effort, native custody,
+current signed relay heads, stale/replay activation fencing, runtime and effective
+policy remain pending or not verified in the output. A pinned generation can be
+historical. No author classification, mention authority, recovery release or
+activation follows from this command. The existing protected owner performs those
+checks and atomically binds the selected generation in its host authorization
+path. The command adds no runtime receipt ingestion protocol.
+
+## Authenticated signed head verification
+
+After offline verification, the same public inputs can be checked against the
+independently selected community through the existing authenticated Buzz client:
+
+```sh
+buzz agents config verify-heads --file agents.json \
+  --handoff config-<manifest_sha256>-<handoff_sha256>.handoff.json \
+  --expected expected-public-scope.json
+```
+
+Use the existing managed reader credential and normal CLI auth configuration.
+An enrolled manager can read this state; the owner provisioning key is not
+required. The command takes no enrollment state directory and does not read or
+write enrollment journals, enroll identities, publish events or launch anything.
+It performs the unchanged offline checks first and requires the authenticated
+client's relay URL to equal the independently pinned community URL before reads.
+
+It uses existing strong queries to obtain the selected agent's signed kind:0
+profile, the **expected owner's** kind:30177 directory and the relay's kind:39002
+channel membership. The relay signing key is resolved through the existing
+community URL's relay-info read. Every head must have a valid event ID/signature,
+expected author/kind/address, and the exact ID selected by the handoff. Missing or
+ambiguous responses fail. Both the owner and every configured communicator must
+remain channel members. Directory policy must exactly match the manifest's
+`respond_to` and ordered allowlist, with its existing name/parallelism checks.
+This checks the public policy; it does not classify allowlisted keys as humans,
+peers or mention targets, or establish native effective policy. Existing producer
+policy modes are preserved; a native requirement for finite author authority
+still requires the protected host's finite policy qualification.
+
+Success adds `current_signed_heads_match: true`, `observed_heads` with exact
+verified membership/profile/directory IDs and authors, and
+`verification.current_heads: "matched_sequential_strong_reads"`. The signed
+artifact remains unchanged. These are sequential observations, not an atomic
+relay snapshot: a head can change after its read. The selected digest proves
+artifact authenticity and selection, not recency or replay prevention.
+`generation_freshness` remains `not_verified`; native custody, canonical native
+spec/import validation, runtime, effective policy and activation remain pending.
+The existing protected owner must revalidate the relevant authority and bind
+the chosen generation atomically in its activation/request authorization path.
+This command adds no activation store, recovery release or runtime receipt.

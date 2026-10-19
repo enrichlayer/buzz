@@ -2,6 +2,7 @@
 //! a process, imports a purported host receipt, or equates enrollment with life.
 
 use super::{
+    agent_config_handoff::{self as handoff, pending, verify_handoff, SignedHandoff, HANDOFF_TAG},
     agent_config_manifest as manifest, agent_config_state as state, agent_enrollment as enrollment,
 };
 use crate::{client::BuzzClient, error::CliError, AgentsConfigCmd};
@@ -69,40 +70,6 @@ fn enrollment_marker(journal: &enrollment::Journal) -> EnrollmentMarker {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-struct SignedHandoff {
-    handoff: Value,
-    authorization: Event,
-}
-
-const HANDOFF_TAG: &str = "buzz-agent-config-handoff-v1";
-
-fn verify_handoff(envelope: &SignedHandoff, manifest: &Manifest) -> Result<(), CliError> {
-    let event = &envelope.authorization;
-    let signed: Value = serde_json::from_str(&event.content)
-        .map_err(|_| usage("invalid signed handoff content"))?;
-    if buzz_core::verify_event(event).is_err()
-        || event.pubkey.to_hex() != manifest.owner
-        || event.kind != Kind::TextNote
-        || signed != envelope.handoff
-        || serde_json::to_value(&event.tags).map_err(|_| usage("invalid handoff tags"))?
-            != json!([["t", HANDOFF_TAG]])
-        || signed["operation"] != "openrig-runtime-handoff"
-        || signed["version"] != 1
-        || signed["manifest_sha256"] != digest(manifest)?
-        || signed["relay"] != manifest.relay
-        || signed["owner"] != manifest.owner
-        || signed["channel"] != manifest.channel
-        || signed["runtime"] != json!(manifest.runtime)
-    {
-        return Err(usage(
-            "handoff authorization signature, configuration or scope mismatch",
-        ));
-    }
-    Ok(())
-}
-
 fn binding(manifest: &Manifest, agent: &Agent) -> enrollment::Binding {
     enrollment::Binding {
         relay: manifest.relay.clone(),
@@ -129,14 +96,15 @@ fn require_scope(client: &BuzzClient, manifest: &Manifest) -> Result<(), CliErro
     Ok(())
 }
 
-async fn query_one(
+/// Read at most one signed head at an exact author/kind/address coordinate.
+pub(super) async fn query_one(
     client: &BuzzClient,
     filter: Value,
     author: &PublicKey,
     kind: u16,
     d: Option<&str>,
 ) -> Result<Option<Event>, CliError> {
-    let body = client.query(&filter).await?;
+    let body = client.query_bounded(&filter, 1024 * 1024).await?;
     if body.len() > 1024 * 1024 {
         return Err(usage("configuration readback exceeds size limit"));
     }
@@ -165,8 +133,12 @@ async fn query_one(
     Ok(Some(event))
 }
 
-async fn membership(client: &BuzzClient, manifest: &Manifest) -> Result<Event, CliError> {
-    let info: Value = serde_json::from_str(&client.get_public("/").await?)
+/// Resolve the scoped relay signer and require its signed owner membership.
+pub(super) async fn membership(
+    client: &BuzzClient,
+    manifest: &Manifest,
+) -> Result<Event, CliError> {
+    let info: Value = serde_json::from_str(&client.get_public_bounded("/", 1024 * 1024).await?)
         .map_err(|_| usage("invalid relay identity readback"))?;
     let relay = info
         .get("self")
@@ -191,19 +163,25 @@ async fn membership(client: &BuzzClient, manifest: &Manifest) -> Result<Event, C
     Ok(event)
 }
 
-async fn directory(client: &BuzzClient, pubkey: &str) -> Result<Option<Event>, CliError> {
+/// Read the explicitly expected owner's directory, independent of reader identity.
+pub(super) async fn directory(
+    client: &BuzzClient,
+    owner: &PublicKey,
+    pubkey: &str,
+) -> Result<Option<Event>, CliError> {
     query_one(
         client,
-        json!({"kinds":[30177], "authors":[client.keys().public_key().to_hex()],
+        json!({"kinds":[30177], "authors":[owner.to_hex()],
         "#d":[pubkey], "limit":1, "consistency":"strong"}),
-        &client.keys().public_key(),
+        owner,
         30177,
         Some(pubkey),
     )
     .await
 }
 
-fn policy_matches(event: &Event, agent: &Agent) -> bool {
+/// Compare public directory policy to the normalized selected configuration.
+pub(super) fn policy_matches(event: &Event, agent: &Agent) -> bool {
     let Ok(content) = serde_json::from_str::<Value>(&event.content) else {
         return false;
     };
@@ -312,7 +290,7 @@ async fn make_plan(
                 None,
             )
             .await?;
-            let policy = directory(client, &pubkey).await?;
+            let policy = directory(client, &client.keys().public_key(), &pubkey).await?;
             snapshot.pubkey = Some(pubkey.clone());
             snapshot.profile_event = profile.map(|event| event.id.to_hex());
             snapshot.directory_event = policy.as_ref().map(|event| event.id.to_hex());
@@ -332,12 +310,6 @@ async fn make_plan(
         membership_event: members.id.to_hex(),
         agents: snapshots,
     })
-}
-
-fn pending() -> Value {
-    json!({"canonical_spec_validation":"pending_protected_operator",
-        "protected_runtime":"pending_protected_operator", "effective_runtime_policy":"pending_protected_operator",
-        "presence":"unknown", "messaging_evidence":"not_verified"})
 }
 
 pub(crate) fn validate_file(file: &Path) -> Result<Value, CliError> {
@@ -401,7 +373,7 @@ async fn publish_policy(
     // NIP-33 has no conditional write; check immediately before publication and
     // require exact signed head readback afterward. Concurrent writers still
     // require the existing single-publisher discipline.
-    if directory(client, &intent.pubkey)
+    if directory(client, &client.keys().public_key(), &intent.pubkey)
         .await?
         .as_ref()
         .map(|event| event.id)
@@ -412,7 +384,11 @@ async fn publish_policy(
         ));
     }
     enrollment::publish_exact(client, &intent.event).await?;
-    if directory(client, &intent.pubkey).await?.as_ref() != Some(&intent.event) {
+    if directory(client, &client.keys().public_key(), &intent.pubkey)
+        .await?
+        .as_ref()
+        != Some(&intent.event)
+    {
         return Err(CliError::Conflict(
             "policy ACK is not current-head readback; journal retained".into(),
         ));
@@ -428,11 +404,13 @@ async fn reconcile_policy(
     pubkey: &str,
     state_dir: &Path,
 ) -> Result<Event, CliError> {
-    let current = directory(client, pubkey).await?.ok_or_else(|| {
-        CliError::Conflict(
-            "managed directory is absent; refusing to resurrect a removed agent".into(),
-        )
-    })?;
+    let current = directory(client, &client.keys().public_key(), pubkey)
+        .await?
+        .ok_or_else(|| {
+            CliError::Conflict(
+                "managed directory is absent; refusing to resurrect a removed agent".into(),
+            )
+        })?;
     let hash = digest(manifest)?;
     let active = state_dir.join(format!("config-policy-{}.active.json", agent.key));
     if let Some(progress) = state::read_private::<PolicyProgress>(&active)? {
@@ -698,6 +676,16 @@ pub(super) async fn execute(
 ) -> Result<Value, CliError> {
     match command {
         AgentsConfigCmd::Validate { file } => validate_file(&file),
+        AgentsConfigCmd::VerifyHandoff {
+            file,
+            handoff,
+            expected,
+        } => handoff::verify_files(&file, &handoff, &expected),
+        AgentsConfigCmd::VerifyHeads {
+            file,
+            handoff,
+            expected,
+        } => super::agent_config_heads::verify_files(client, &file, &handoff, &expected).await,
         AgentsConfigCmd::Plan { file, state_dir } => {
             let manifest = manifest::load(&file)?;
             public_plan(&make_plan(client, &manifest, &state_dir).await?)

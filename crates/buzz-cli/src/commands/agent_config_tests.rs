@@ -1,12 +1,14 @@
 use super::*;
 use axum::{
     extract::State,
+    response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
 use nostr::Keys;
 use sha2::{Digest, Sha256};
 use std::{
+    collections::HashMap,
     fs,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -15,27 +17,72 @@ use std::{
 };
 
 #[derive(Clone)]
+struct RawRead {
+    path: &'static str,
+    status: u16,
+    chunked: bool,
+}
+
+fn raw_read_response(state: &Relay, path: &str) -> Option<axum::response::Response> {
+    let selected = state.raw_read.lock().unwrap();
+    let selected = selected.as_ref().filter(|selected| selected.path == path)?;
+    let body = axum::body::Body::from("x".repeat(1024 * 1024 + 1));
+    // An unknown-length stream lets Hyper frame genuine chunked HTTP. Setting
+    // Transfer-Encoding on a known-length body creates conflicting framing.
+    let body = if selected.chunked {
+        axum::body::Body::from_stream(body.into_data_stream())
+    } else {
+        body
+    };
+    Some(
+        axum::http::Response::builder()
+            .status(selected.status)
+            .body(body)
+            .unwrap(),
+    )
+}
+
+#[derive(Clone)]
 struct Relay {
     keys: Keys,
     owner: String,
+    raw_read: Arc<Mutex<Option<RawRead>>>,
     events: Arc<Mutex<Vec<Event>>>,
     reject_policy: Arc<AtomicBool>,
     revoked: Arc<AtomicBool>,
     changed_members: Arc<AtomicBool>,
     forge_directory: Arc<AtomicBool>,
     posts: Arc<AtomicUsize>,
+    reads: Arc<Mutex<Vec<Value>>>,
+    overrides: Arc<Mutex<HashMap<u16, Vec<Event>>>>,
 }
 
-async fn query(State(state): State<Relay>, Json(filters): Json<Vec<Value>>) -> Json<Vec<Event>> {
+async fn query(
+    State(state): State<Relay>,
+    Json(filters): Json<Vec<Value>>,
+) -> axum::response::Response {
+    if let Some(response) = raw_read_response(&state, "/query") {
+        return response;
+    }
     assert_eq!(filters.len(), 1);
     let filter = &filters[0];
     assert_eq!(filter["consistency"], "strong");
+    state.reads.lock().unwrap().push(filter.clone());
+    if let Some(events) = state
+        .overrides
+        .lock()
+        .unwrap()
+        .get(&(filter["kinds"][0].as_u64().unwrap() as u16))
+    {
+        return Json(events.clone()).into_response();
+    }
     let events = state.events.lock().unwrap();
     if filter["kinds"][0] == 30177 && state.forge_directory.load(Ordering::SeqCst) {
         return Json(vec![EventBuilder::new(Kind::Custom(30177), "{}")
             .tag(Tag::parse(["d", filter["#d"][0].as_str().unwrap()]).unwrap())
             .sign_with_keys(&Keys::generate())
-            .unwrap()]);
+            .unwrap()])
+        .into_response();
     }
     if filter["kinds"][0] == 39002 {
         let channel = filter["#d"][0].as_str().unwrap();
@@ -61,7 +108,8 @@ async fn query(State(state): State<Relay>, Json(filters): Json<Vec<Value>>) -> J
             .tags(tags)
             .custom_created_at(Timestamp::from(100))
             .sign_with_keys(&state.keys)
-            .unwrap()]);
+            .unwrap()])
+        .into_response();
     }
     let mut matches: Vec<_> = events
         .iter()
@@ -83,7 +131,7 @@ async fn query(State(state): State<Relay>, Json(filters): Json<Vec<Value>>) -> J
             .then_with(|| a.id.cmp(&b.id))
     });
     matches.truncate(1);
-    Json(matches)
+    Json(matches).into_response()
 }
 
 async fn publish(State(state): State<Relay>, Json(event): Json<Event>) -> Json<Value> {
@@ -120,6 +168,7 @@ impl Fixture {
         let owner = Keys::generate();
         let relay = Relay {
             keys: Keys::generate(),
+            raw_read: Arc::new(Mutex::new(None)),
             owner: owner.public_key().to_hex(),
             events: Arc::new(Mutex::new(Vec::new())),
             reject_policy: Arc::new(AtomicBool::new(false)),
@@ -127,14 +176,19 @@ impl Fixture {
             changed_members: Arc::new(AtomicBool::new(false)),
             forge_directory: Arc::new(AtomicBool::new(false)),
             posts: Arc::new(AtomicUsize::new(0)),
+            reads: Arc::new(Mutex::new(Vec::new())),
+            overrides: Arc::new(Mutex::new(HashMap::new())),
         };
         let relay_key = relay.keys.public_key().to_hex();
         let router = Router::new()
             .route(
                 "/",
-                get(move || {
+                get(move |State(state): State<Relay>| {
                     let key = relay_key.clone();
-                    async move { Json(json!({"self":key})) }
+                    async move {
+                        raw_read_response(&state, "/")
+                            .unwrap_or_else(|| Json(json!({"self":key})).into_response())
+                    }
                 }),
             )
             .route("/query", post(query))
@@ -359,6 +413,23 @@ async fn partial_policy_failure_replays_exact_events_and_keeps_runtime_pending()
         serde_json::from_slice(&fs::read(result["handoff_file"].as_str().unwrap()).unwrap())
             .unwrap();
     verify_handoff(&handoff, &manifest).unwrap();
+    // Feed an actual producer generation to the same offline consumer used by
+    // the protected host. Native authority and current-head checks stay pending.
+    let expected = fixture.file.with_file_name("expected-consumer.json");
+    fs::write(&expected, serde_json::to_vec(&json!({"version":1,
+        "relay":manifest.relay,"owner":manifest.owner,"channel":manifest.channel,
+        "cohort":manifest.runtime.cohort,"rig_id":manifest.runtime.rig_id,
+        "handoff_sha256":result["handoff_sha256"],"authorization_event_id":result["authorization_event_id"],
+        "agents":[{"key":manifest.agents[0].key,"seat":manifest.agents[0].seat,
+            "runtime_id":manifest.agents[0].runtime_id,"pubkey":result["agents"][0]["pubkey"]}]})).unwrap()).unwrap();
+    let verified = handoff::verify_files(
+        &fixture.file,
+        Path::new(result["handoff_generation_file"].as_str().unwrap()),
+        &expected,
+    )
+    .unwrap();
+    assert_eq!(verified["signed_configuration_verified"], true);
+    assert_eq!(verified["verification"]["current_heads"], "not_verified");
     let public = result.to_string() + &serde_json::to_string(&handoff).unwrap();
     assert!(!public.contains("private_key"));
     assert!(!public.contains("auth_tag"));
@@ -380,6 +451,7 @@ async fn partial_policy_failure_replays_exact_events_and_keeps_runtime_pending()
     );
     let current = directory(
         &fixture.client,
+        &fixture.client.keys().public_key(),
         result["agents"][0]["pubkey"].as_str().unwrap(),
     )
     .await
@@ -602,7 +674,10 @@ async fn competing_policy_during_partial_apply_is_not_overwritten() {
     assert!(fixture.apply().await.is_err());
     let plan = fixture.plan().await;
     let pubkey = plan.agents[0].pubkey.as_ref().unwrap();
-    let current = directory(&fixture.client, pubkey).await.unwrap().unwrap();
+    let current = directory(&fixture.client, &fixture.client.keys().public_key(), pubkey)
+        .await
+        .unwrap()
+        .unwrap();
     let concurrent = fixture
         .client
         .sign_event(
@@ -621,7 +696,9 @@ async fn competing_policy_during_partial_apply_is_not_overwritten() {
     assert!(fixture.apply().await.is_err());
     assert_eq!(fixture.posts(), posts);
     assert_eq!(
-        directory(&fixture.client, pubkey).await.unwrap(),
+        directory(&fixture.client, &fixture.client.keys().public_key(), pubkey)
+            .await
+            .unwrap(),
         Some(concurrent)
     );
 }
@@ -715,6 +792,7 @@ async fn completed_a_b_a_reversion_preserves_key_and_signed_generations() {
     verify_handoff(&envelope, &fixture.manifest()).unwrap();
     let policy = directory(
         &fixture.client,
+        &fixture.client.keys().public_key(),
         reverted["agents"][0]["pubkey"].as_str().unwrap(),
     )
     .await
@@ -745,7 +823,10 @@ async fn already_matching_policy_and_profile_refresh_get_current_signed_handoff(
     .sign_with_keys(&keys)
     .unwrap();
     let pubkey = first["agents"][0]["pubkey"].as_str().unwrap();
-    let current = directory(&fixture.client, pubkey).await.unwrap().unwrap();
+    let current = directory(&fixture.client, &fixture.client.keys().public_key(), pubkey)
+        .await
+        .unwrap()
+        .unwrap();
     let policy = fixture
         .client
         .sign_event(
@@ -802,3 +883,6 @@ async fn already_matching_policy_and_profile_refresh_get_current_signed_handoff(
     .unwrap();
     verify_handoff(&envelope, &manifest).unwrap();
 }
+
+#[path = "agent_config_heads_tests.rs"]
+mod current_heads_tests;
