@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import posixpath
 import re
+import tempfile
 import urllib.request
 
 PUBLIC = "https://buzz-downloads.enrichlayer.com"
@@ -127,7 +128,39 @@ def validate_cli_sidecar_directory(directory, version, source_sha, expected_pref
     with (directory / image_name).open("rb") as stream:
         minisign.verify_stream(minisign.pinned_public_key(),
                                signature_path.read_text().strip(), stream)
+    verify_cli_sidecar_executable(receipt, directory / image_name)
     return receipt
+
+
+def verify_cli_sidecar_executable(receipt, image_path):
+    """Bind the receipt's CLI identity to extraction of the signed AppImage."""
+    path, executable_digest, mode = cli_sidecar._extracted_cli(image_path.resolve())
+    expected = receipt["executable"]
+    actual = {
+        "path": path,
+        **executable_digest,
+        "mode": f"{mode:04o}",
+    }
+    if actual != expected:
+        raise ValueError("CLI sidecar executable differs from the signed AppImage")
+
+
+def download_verified_artifact(store, key, expected, destination):
+    """Download one bounded immutable object and verify its catalog digest."""
+    response = store.get(key)
+    if response is None:
+        raise ValueError(f"Missing release artifact: {key}")
+    size = 0
+    hasher = hashlib.sha256()
+    with response["Body"] as source, destination.open("xb") as output:
+        while chunk := source.read(1024 * 1024):
+            size += len(chunk)
+            if size > MAX_ASSET:
+                raise ValueError("Artifact exceeds 4 GiB limit")
+            hasher.update(chunk)
+            output.write(chunk)
+    if {"sha256": hasher.hexdigest(), "size": size} != expected:
+        raise ValueError(f"Release artifact checksum mismatch: {key}")
 
 
 def encode(value):
@@ -357,7 +390,20 @@ def promote(store, version):
         raise ValueError("Release is missing its Linux CLI sidecar")
     if hashlib.sha256(sidecar_data).hexdigest() != release["artifacts"][sidecar_name]["sha256"]:
         raise ValueError("Linux CLI sidecar differs from the immutable release catalog")
-    validate_cli_sidecar(json.loads(sidecar_data), version, release["sha"], release["artifacts"])
+    sidecar = validate_cli_sidecar(json.loads(sidecar_data), version, release["sha"], release["artifacts"])
+    linux_name = updater.asset_name(version, "linux-x86_64")
+    with tempfile.TemporaryDirectory(prefix="buzz-r2-cli-verify-") as temporary:
+        image_path = Path(temporary) / linux_name
+        signature_path = Path(temporary) / (linux_name + ".sig")
+        download_verified_artifact(
+            store, f"{prefix}/{linux_name}", release["artifacts"][linux_name], image_path)
+        download_verified_artifact(
+            store, f"{prefix}/{linux_name}.sig", release["artifacts"][linux_name + ".sig"],
+            signature_path)
+        with image_path.open("rb") as stream:
+            minisign.verify_stream(minisign.pinned_public_key(),
+                                   signature_path.read_text().strip(), stream)
+        verify_cli_sidecar_executable(sidecar, image_path)
     for platform in updater.PLATFORMS:
         name = updater.asset_name(version, platform)
         sig, _ = store.document(f"{prefix}/{name}.sig")

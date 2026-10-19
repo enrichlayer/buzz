@@ -58,6 +58,13 @@ class R2Test(unittest.TestCase):
         self.key = patch.object(r2.minisign, 'pinned_public_key', return_value=fixture.PUBLIC_KEY).start()
         patch.object(r2.updater, 'gh', return_value='a'*40).start()
         self.public = patch.object(r2, 'public_verify').start()
+        self.extracted = patch.object(
+            r2.cli_sidecar, '_extracted_cli',
+            return_value=('usr/bin/buzz', {
+                'sha256': hashlib.sha256(b'fixture-cli').hexdigest(),
+                'size': len(b'fixture-cli'),
+            }, 0o755),
+        ).start()
         self.write_sidecar(
             f"desktop/{'a'*40}/12345/2/linux-x86_64")
 
@@ -294,6 +301,25 @@ class R2Test(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'does not match release artifact'):
             self.publish()
         self.assertEqual(self.store.objects, {})
+
+    def test_publish_rejects_sidecar_executable_from_another_image(self):
+        sidecar = self.directory / r2.cli_sidecar_name('1.2.3')
+        receipt = json.loads(sidecar.read_bytes())
+        receipt['executable']['sha256'] = hashlib.sha256(b'another-cli').hexdigest()
+        sidecar.write_bytes(r2.encode(receipt))
+        with self.assertRaisesRegex(ValueError, 'executable differs from the signed AppImage'):
+            self.publish()
+        self.assertEqual(self.store.objects, {})
+
+    def test_promote_reextracts_cli_from_the_immutable_signed_image(self):
+        self.publish()
+        self.extracted.return_value = ('usr/bin/buzz', {
+            'sha256': hashlib.sha256(b'another-cli').hexdigest(),
+            'size': len(b'another-cli'),
+        }, 0o755)
+        with self.assertRaisesRegex(ValueError, 'executable differs from the signed AppImage'):
+            r2.promote(self.store, '1.2.3')
+        self.assertIsNone(self.store.get('latest.json'))
 
     def test_sdk_conditional_write_and_cache_contract(self):
         from unittest.mock import Mock
