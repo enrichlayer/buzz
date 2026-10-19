@@ -776,6 +776,23 @@ impl BuzzClient {
     /// `x-auth-tag` header — the endpoint is public relay metadata, not a
     /// membership-scoped resource.
     pub async fn get_public(&self, path: &str) -> Result<String, CliError> {
+        self.get_public_with_limit(path, None).await
+    }
+
+    /// Read public relay metadata with a streaming body limit, including errors.
+    pub async fn get_public_bounded(
+        &self,
+        path: &str,
+        max_bytes: usize,
+    ) -> Result<String, CliError> {
+        self.get_public_with_limit(path, Some(max_bytes)).await
+    }
+
+    async fn get_public_with_limit(
+        &self,
+        path: &str,
+        max_bytes: Option<usize>,
+    ) -> Result<String, CliError> {
         let url = format!("{}{path}", self.relay_url);
         let resp = self
             .http
@@ -783,7 +800,7 @@ impl BuzzClient {
             .header("Accept", "application/nostr+json")
             .send()
             .await?;
-        self.handle_response(resp).await
+        self.handle_response_with_limit(resp, max_bytes).await
     }
 
     /// Execute a one-shot query via the HTTP bridge.
@@ -796,6 +813,24 @@ impl BuzzClient {
     /// Execute a one-shot query with multiple filters via the HTTP bridge.
     /// Each filter is ORed by the relay (standard Nostr REQ behavior).
     pub async fn query_multi(&self, filters: &[serde_json::Value]) -> Result<String, CliError> {
+        self.query_multi_with_limit(filters, None).await
+    }
+
+    /// Query signed state with a streaming body limit on success and error responses.
+    pub async fn query_bounded(
+        &self,
+        filter: &serde_json::Value,
+        max_bytes: usize,
+    ) -> Result<String, CliError> {
+        self.query_multi_with_limit(std::slice::from_ref(filter), Some(max_bytes))
+            .await
+    }
+
+    async fn query_multi_with_limit(
+        &self,
+        filters: &[serde_json::Value],
+        max_bytes: Option<usize>,
+    ) -> Result<String, CliError> {
         let url = format!("{}/query", self.relay_url);
         let body = bytes::Bytes::from(
             serde_json::to_vec(filters)
@@ -816,7 +851,7 @@ impl BuzzClient {
                     )
                     .send()
                     .await?;
-                self.handle_response(resp).await
+                self.handle_response_with_limit(resp, max_bytes).await
             }
         })
         .await
@@ -1373,9 +1408,40 @@ impl BuzzClient {
     }
 
     async fn handle_response(&self, resp: reqwest::Response) -> Result<String, CliError> {
-        if !resp.status().is_success() {
-            let status = resp.status().as_u16();
-            let body = resp.text().await.unwrap_or_default();
+        self.handle_response_with_limit(resp, None).await
+    }
+
+    async fn handle_response_with_limit(
+        &self,
+        mut resp: reqwest::Response,
+        max_bytes: Option<usize>,
+    ) -> Result<String, CliError> {
+        let status = resp.status();
+        let body = if let Some(limit) = max_bytes {
+            let too_large =
+                || CliError::Other(format!("relay response exceeds {limit} byte limit"));
+            if resp
+                .content_length()
+                .is_some_and(|length| length > limit as u64)
+            {
+                return Err(too_large());
+            }
+            let mut bytes = Vec::new();
+            while let Some(chunk) = resp.chunk().await? {
+                if chunk.len() > limit.saturating_sub(bytes.len()) {
+                    return Err(too_large());
+                }
+                bytes.extend_from_slice(&chunk);
+            }
+            String::from_utf8(bytes)
+                .map_err(|_| CliError::Other("relay response is not UTF-8".into()))?
+        } else if status.is_success() {
+            resp.text().await?
+        } else {
+            resp.text().await.unwrap_or_default()
+        };
+        if !status.is_success() {
+            let status = status.as_u16();
             let message = serde_json::from_str::<serde_json::Value>(&body)
                 .ok()
                 .and_then(|v| {
@@ -1399,7 +1465,7 @@ impl BuzzClient {
                 body: message,
             });
         }
-        Ok(resp.text().await?)
+        Ok(body)
     }
 }
 
@@ -2664,3 +2730,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "client_bounded_tests.rs"]
+mod bounded_response_tests;

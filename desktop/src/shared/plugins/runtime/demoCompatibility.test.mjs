@@ -47,6 +47,7 @@ test("bundled plugin manifests parse and meet demo contract", () => {
 
 test("an enabled duplicate for the same fence is reported over a disabled one", () => {
   const manifest = {
+    schemaVersion: 1,
     id: "example.review-card",
     version: "1.0.0",
     fenceLanguage: "buzz-review-card",
@@ -59,6 +60,46 @@ test("an enabled duplicate for the same fence is reported over a disabled one", 
   );
   assert.equal(
     demoPluginStatus("buzz-review-card", [disabled, { ...disabled }]),
+    "Disabled",
+  );
+});
+
+test("theme plugins do not participate in content renderer compatibility", () => {
+  const theme = parseRuntimePluginManifest(
+    readFileSync(
+      new URL("../../../../public/plugins/el-buzz.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const content = parseRuntimePluginManifest(
+    readFileSync(
+      new URL(
+        "../../../../../docs/examples/runtime-plugins/review-card.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.equal(theme.ok, true, theme.error);
+  assert.equal(theme.manifest.schemaVersion, 2);
+  assert.equal(content.ok, true, content.error);
+  const installedTheme = { manifest: theme.manifest, enabled: true };
+  assert.equal(
+    demoPluginStatus("buzz-review-card", [installedTheme]),
+    "Missing",
+  );
+  assert.equal(
+    demoPluginStatus("buzz-review-card", [
+      installedTheme,
+      { manifest: content.manifest, enabled: true },
+    ]),
+    "Ready",
+  );
+  assert.equal(
+    demoPluginStatus("buzz-review-card", [
+      installedTheme,
+      { manifest: content.manifest, enabled: false },
+    ]),
     "Disabled",
   );
 });

@@ -307,6 +307,9 @@ impl RespondToArg {
 
 #[derive(Subcommand)]
 pub enum AgentsCmd {
+    /// Reconcile durable Buzz identities from a secret-free configuration
+    #[command(subcommand)]
+    Config(AgentsConfigCmd),
     /// Enroll an external runtime using a durable, owner-authorized agent identity
     Enroll {
         /// Private directory holding credentials and the signed enrollment journal
@@ -318,8 +321,8 @@ pub enum AgentsCmd {
         /// Stable runtime identity supplied by its launcher (not a display name)
         #[arg(long)]
         runtime_id: String,
-        /// Runtime cohort: local, herdr, or factory
-        #[arg(long, value_parser = ["local", "herdr", "factory"])]
+        /// Runtime cohort: local, herdr, factory, or openrig
+        #[arg(long, value_parser = ["local", "herdr", "factory", "openrig"])]
         cohort: String,
         /// Public agent display name
         #[arg(long)]
@@ -428,6 +431,64 @@ Examples:\n  \
 buzz agents archived"
     )]
     Archived,
+}
+
+/// Declarative Buzz enrollment. Runtime handoffs require the protected operator.
+#[derive(Subcommand)]
+pub enum AgentsConfigCmd {
+    /// Validate a JSON manifest and referenced bytes without credentials or writes
+    Validate {
+        #[arg(long)]
+        file: std::path::PathBuf,
+    },
+    /// Verify a signed public handoff against independently supplied expected scope, offline
+    VerifyHandoff {
+        /// Original manifest and its pinned spec files
+        #[arg(long)]
+        file: std::path::PathBuf,
+        /// Immutable owner-signed handoff envelope
+        #[arg(long)]
+        handoff: std::path::PathBuf,
+        /// Independent protected-operator public scope and generation pins
+        #[arg(long)]
+        expected: std::path::PathBuf,
+    },
+    /// Match authenticated signed relay heads to an independently selected public handoff
+    VerifyHeads {
+        /// Original manifest and its pinned spec files
+        #[arg(long)]
+        file: std::path::PathBuf,
+        /// Immutable owner-signed handoff envelope
+        #[arg(long)]
+        handoff: std::path::PathBuf,
+        /// Independent protected-operator public scope and generation pins
+        #[arg(long)]
+        expected: std::path::PathBuf,
+    },
+    /// Read current signed relay state and print a digest for an apply
+    Plan {
+        #[arg(long)]
+        file: std::path::PathBuf,
+        #[arg(long)]
+        state_dir: std::path::PathBuf,
+    },
+    /// Apply the current plan; write a signed handoff without launching processes
+    Apply {
+        #[arg(long)]
+        file: std::path::PathBuf,
+        #[arg(long)]
+        state_dir: std::path::PathBuf,
+        /// Exact plan_sha256 from the latest config plan output
+        #[arg(long)]
+        plan: String,
+    },
+    /// Read configuration, handoff and relay state; runtime proofs remain separate
+    Status {
+        #[arg(long)]
+        file: std::path::PathBuf,
+        #[arg(long)]
+        state_dir: std::path::PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2261,6 +2322,26 @@ fn normalize_auth_tag_input(input: &str) -> String {
 async fn run(cli: Cli) -> Result<(), CliError> {
     let relay_url = client::normalize_relay_url(&cli.relay);
 
+    if let Cmd::Agents(AgentsCmd::Config(ref config)) = cli.command {
+        let local = match config {
+            AgentsConfigCmd::Validate { file } => {
+                Some(commands::agent_config::validate_file(file)?)
+            }
+            AgentsConfigCmd::VerifyHandoff {
+                file,
+                handoff,
+                expected,
+            } => Some(commands::agent_config_handoff::verify_files(
+                file, handoff, expected,
+            )?),
+            _ => None,
+        };
+        if let Some(result) = local {
+            println!("{result}");
+            return Ok(());
+        }
+    }
+
     // Pack commands are local-only — no relay connection needed.
     if let Cmd::Pack(ref sub) = cli.command {
         return match sub {
@@ -2553,6 +2634,7 @@ mod tests {
             vec![
                 "archive",
                 "archived",
+                "config",
                 "draft-create",
                 "draft-update",
                 "enroll",
@@ -2703,7 +2785,7 @@ mod tests {
     #[test]
     fn subcommand_counts_are_stable() {
         let expected: Vec<(&str, usize)> = vec![
-            ("agents", 6),
+            ("agents", 7),
             ("canvas", 4),
             ("channels", 16),
             ("dms", 4),

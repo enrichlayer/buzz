@@ -396,28 +396,65 @@ mod tests {
             nsec: String::new(),
             allow_file_transport: false,
         };
-        for body in [
-            "sleep 30 &\necho $! > child.pid\nwait\n",
-            "sleep 30 &\necho $! > child.pid\nexit 0\n",
-            "head -c 1100000 /dev/zero\n",
+        // Only the waiting leader is meant to expire. Give the successful
+        // leader and finite producer time to run, so their assertions exercise
+        // descendant cleanup and capture limits rather than incidental timeout.
+        for (name, body, timeout, bound, expect_success, has_descendant) in [
+            (
+                "timeout with descendant",
+                "sleep 30 &\necho $! > child.pid\nwait\n",
+                Duration::from_millis(200),
+                Duration::from_secs(5),
+                false,
+                true,
+            ),
+            (
+                "successful leader with pipe-holding descendant",
+                "sleep 30 &\necho $! > child.pid\nexit 0\n",
+                Duration::from_secs(5),
+                Duration::from_secs(10),
+                true,
+                true,
+            ),
+            (
+                "capture limit",
+                "head -c 1100000 /dev/zero\n",
+                Duration::from_secs(5),
+                Duration::from_secs(10),
+                false,
+                false,
+            ),
         ] {
             std::fs::write(&script, format!("#!/bin/sh\n{body}")).unwrap();
             std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
             let start = Instant::now();
-            let result = super::run_git_with_timeout(
-                &[],
-                Some(dir.path()),
-                &auth,
-                Duration::from_millis(200),
-                1 << 20,
+            let result =
+                super::run_git_with_timeout(&[], Some(dir.path()), &auth, timeout, 1 << 20);
+            let elapsed = start.elapsed();
+            assert!(
+                elapsed < bound,
+                "{name}: exceeded {bound:?}, elapsed={elapsed:?}, result={result:?}"
             );
-            assert!(start.elapsed() < Duration::from_secs(5));
-            if body.contains("exit 0") {
-                assert!(result.is_ok());
-            } else {
-                assert!(result.is_err());
-            }
-            if let Ok(pid) = std::fs::read_to_string(&pid_file) {
+            assert_eq!(
+                result.is_ok(),
+                expect_success,
+                "{name}: elapsed={elapsed:?}, result={result:?}"
+            );
+            if has_descendant {
+                let pid = match std::fs::read_to_string(&pid_file) {
+                    Ok(pid) => pid,
+                    // The deliberate timeout may expire before the script has
+                    // started its descendant. A successful leader must always
+                    // leave PID evidence before its cleanup is accepted.
+                    Err(error)
+                        if !expect_success && error.kind() == std::io::ErrorKind::NotFound =>
+                    {
+                        continue;
+                    }
+                    Err(error) => {
+                        panic!("{name}: missing descendant PID: {error}; result={result:?}")
+                    }
+                };
                 // Reaping a descendant can lag its group kill briefly.
                 let mut dead = false;
                 for _ in 0..100 {
@@ -435,7 +472,11 @@ mod tests {
                     }
                     std::thread::sleep(Duration::from_millis(10));
                 }
-                assert!(dead, "Git descendant survived bounded runner");
+                assert!(
+                    dead,
+                    "{name}: Git descendant {} survived bounded runner; result={result:?}",
+                    pid.trim()
+                );
                 std::fs::remove_file(&pid_file).unwrap();
             }
         }
