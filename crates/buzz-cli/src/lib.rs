@@ -318,8 +318,8 @@ pub enum AgentsCmd {
         /// Stable runtime identity supplied by its launcher (not a display name)
         #[arg(long)]
         runtime_id: String,
-        /// Runtime cohort: local, herdr, or factory
-        #[arg(long, value_parser = ["local", "herdr", "factory"])]
+        /// Runtime cohort: local, herdr, factory, or openrig
+        #[arg(long, value_parser = ["local", "herdr", "factory", "openrig"])]
         cohort: String,
         /// Public agent display name
         #[arg(long)]
