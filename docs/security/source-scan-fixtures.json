@@ -783,5 +783,27 @@
       "reason": "Malformed Authorization value intentionally submitted to assert HTTP401.",
       "provenance": "scripts/e2e-git-perms.sh:766-774"
     }
+  ],
+  "redactedFixtures": [
+    {
+      "path": "docs/evidence/agent-steering/2026-10-13/transport.jsonl",
+      "line": 188,
+      "rule": "generic-api-key",
+      "matchSha256": "9fc6779d4f3103c4c7fb67570f45c937ea068febbf7caeabcc561c9aee0a2e0e",
+      "classification": "public relay authentication challenge",
+      "reason": "NIP-42 AUTH challenge sent by the ephemeral local test relay to the harness. It is a per-connection nonce that the client signs; it grants no access, and its relay and connection ended on 2026-10-13.",
+      "remediation": "payload redacted",
+      "observedAtCommit": "e0787f805e8e040c2be342caaddebd27c25f86a8"
+    },
+    {
+      "path": "docs/evidence/agent-steering/2026-10-13/transport.jsonl",
+      "line": 234,
+      "rule": "generic-api-key",
+      "matchSha256": "1124a1ad86d2a73913430aa056c5a3dcf5253da0ceb6402f44677558ac80d2c7",
+      "classification": "public relay authentication challenge",
+      "reason": "NIP-42 AUTH challenge sent by the ephemeral local test relay to the harness. It is a per-connection nonce that the client signs; it grants no access, and its relay and connection ended on 2026-10-13.",
+      "remediation": "payload redacted",
+      "observedAtCommit": "e0787f805e8e040c2be342caaddebd27c25f86a8"
+    }
   ]
 }
