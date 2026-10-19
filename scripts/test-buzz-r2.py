@@ -1,8 +1,12 @@
 import base64
+from contextlib import contextmanager
 import hashlib
 import importlib.util
 import io
 import json
+import os
+import stat
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -358,6 +362,290 @@ class R2Test(unittest.TestCase):
         with patch.object(r2.urllib.request, 'urlopen', return_value=response):
             with self.assertRaisesRegex(ValueError, 'checksum mismatch'):
                 r2.public_verify('test', {'sha256': hashlib.sha256(b'good').hexdigest(), 'size': 4})
+
+
+class RetainedCliTest(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.root.chmod(0o700)
+        self.image = self.root / "verified.AppImage"
+        self.image.write_bytes(b"signature verification is a caller prerequisite")
+        self.destination = self.root / "retained-buzz"
+        self.data = b"actual-discovered-cli\n"
+        self.receipt = {"executable": {
+            "path": "opt/actual/buzz", "sha256": hashlib.sha256(self.data).hexdigest(),
+            "size": len(self.data), "mode": "0755",
+        }}
+        self.scratch = None
+
+    @contextmanager
+    def extract(self, argv, *, env):
+        self.assertEqual(argv, [str(self.image.resolve()), "--appimage-extract"])
+        self.assertEqual(set(env), {"PATH", "LANG", "LC_ALL"})
+        self.assertEqual(env["LANG"], "C.UTF-8")
+        self.assertEqual(env["LC_ALL"], "C.UTF-8")
+        with tempfile.TemporaryDirectory(dir=self.root) as temporary:
+            self.scratch = Path(temporary)
+            self.scratch.chmod(0o700)
+            executable = self.scratch / "squashfs-root/opt/actual/buzz"
+            executable.parent.mkdir(parents=True)
+            executable.write_bytes(self.data)
+            executable.chmod(0o755)
+            if getattr(self, "alter", None):
+                self.alter(executable)
+            if getattr(self, "before", None):
+                raise self.before
+            yield self.scratch
+            if getattr(self, "after", None):
+                raise self.after
+
+    def verify(self):
+        return r2.verify_cli_sidecar_executable(
+            self.receipt, self.image, destination=self.destination,
+            run_extractor=self.extract)
+
+    def assert_no_output(self):
+        self.assertFalse(os.path.lexists(self.destination))
+        self.assertEqual(list(self.root.glob(".buzz-cli-*")), [])
+
+    def test_copy_survives_scratch_cleanup_and_preserves_actual_bytes(self):
+        with patch.dict(os.environ, {"APPIMAGE_EXTRACT_AND_RUN": "1", "SECRET": "omit"}):
+            self.assertIsNone(self.verify())
+        self.assertFalse(self.scratch.exists())
+        self.assertEqual(self.destination.read_bytes(), self.data)
+        self.assertEqual(stat.S_IMODE(self.destination.stat().st_mode), 0o755)
+        self.assertEqual(list(self.root.glob(".buzz-cli-*")), [])
+
+    def test_full_tuple_mismatch_refuses_before_copy(self):
+        for field, value in (("path", "usr/bin/buzz"), ("sha256", "0" * 64),
+                             ("size", len(self.data) + 1), ("mode", "0700")):
+            with self.subTest(field=field):
+                expected = self.receipt["executable"].copy()
+                self.receipt["executable"][field] = value
+                try:
+                    with self.assertRaisesRegex(ValueError, "differs"):
+                        self.verify()
+                    self.assert_no_output()
+                finally:
+                    self.receipt["executable"] = expected
+
+    def test_ambiguous_symlink_and_wrong_mode_entries_refuse(self):
+        def duplicate(executable):
+            other = executable.parents[2] / "other/buzz"
+            other.parent.mkdir()
+            other.write_bytes(self.data)
+            other.chmod(0o755)
+
+        def symlink(executable):
+            executable.unlink()
+            executable.symlink_to(self.image)
+
+        for alter in (duplicate, symlink, lambda executable: executable.chmod(0o700)):
+            with self.subTest(alter=alter):
+                self.alter = alter
+                with self.assertRaises(ValueError):
+                    self.verify()
+                self.assert_no_output()
+
+    def test_existing_destination_and_symlink_preserved(self):
+        for symlink in (False, True):
+            with self.subTest(symlink=symlink):
+                if symlink:
+                    self.destination.symlink_to(self.image)
+                else:
+                    self.destination.write_bytes(b"existing")
+                try:
+                    with self.assertRaises(FileExistsError):
+                        self.verify()
+                    if symlink:
+                        self.assertTrue(self.destination.is_symlink())
+                    else:
+                        self.assertEqual(self.destination.read_bytes(), b"existing")
+                    self.assertEqual(list(self.root.glob(".buzz-cli-*")), [])
+                finally:
+                    self.destination.unlink()
+
+    def test_no_replace_commit_race_preserves_winner(self):
+        link = os.link
+
+        def race(*args, **kwargs):
+            self.destination.write_bytes(b"race winner")
+            return link(*args, **kwargs)
+
+        with patch.object(r2.cli_sidecar.os, "link", side_effect=race):
+            with self.assertRaises(FileExistsError):
+                self.verify()
+        self.assertEqual(self.destination.read_bytes(), b"race winner")
+        self.assertEqual(list(self.root.glob(".buzz-cli-*")), [])
+
+    def test_callback_failure_or_cancellation_before_commit_has_no_output(self):
+        for failure in (RuntimeError("extraction failed"), KeyboardInterrupt()):
+            with self.subTest(failure=type(failure)):
+                self.before = failure
+                with self.assertRaises(type(failure)):
+                    self.verify()
+                self.assert_no_output()
+                self.assertFalse(self.scratch.exists())
+
+    def test_callback_cancellation_after_commit_preserves_verified_copy(self):
+        self.after = KeyboardInterrupt()
+        with self.assertRaises(KeyboardInterrupt):
+            self.verify()
+        self.assertEqual(self.destination.read_bytes(), self.data)
+        self.assertEqual(stat.S_IMODE(self.destination.stat().st_mode), 0o755)
+        self.assertFalse(self.scratch.exists())
+        self.assertEqual(list(self.root.glob(".buzz-cli-*")), [])
+
+    def test_changed_source_between_inspection_and_copy_refuses(self):
+        retain = r2.cli_sidecar._retain_cli
+
+        def change(executable, destination, expected):
+            executable.write_bytes(b"x" * len(self.data))
+            return retain(executable, destination, expected)
+
+        with patch.object(r2.cli_sidecar, "_retain_cli", side_effect=change):
+            with self.assertRaises(ValueError):
+                self.verify()
+        self.assert_no_output()
+
+    def test_retention_cancellation_before_commit_cleans_staging(self):
+        with patch.object(r2.cli_sidecar.os, "fsync", side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                self.verify()
+        self.assert_no_output()
+        self.assertFalse(self.scratch.exists())
+
+    def test_nonprivate_or_symlink_destination_parent_refuses(self):
+        parent = self.root / "public"
+        parent.mkdir(mode=0o755)
+        self.destination = parent / "buzz"
+        with self.assertRaisesRegex(ValueError, "private 0700"):
+            self.verify()
+        self.assert_no_output()
+        parent.rmdir()
+        parent.symlink_to(self.root, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "private 0700"):
+            self.verify()
+        self.assert_no_output()
+
+    def test_callback_can_run_exact_argv_in_fresh_scratch(self):
+        self.image.write_text(
+            '#!/bin/sh\n'
+            '[ "$#" = 1 ] && [ "$1" = --appimage-extract ] || exit 41\n'
+            '[ "$PWD" = "$HOME" ] && [ "$PWD" = "$TMPDIR" ] || exit 42\n'
+            '[ -z "${APPIMAGE_EXTRACT_AND_RUN+x}" ] || exit 43\n'
+            'mkdir -p squashfs-root/opt/actual\n'
+            'printf "actual-discovered-cli\\n" > squashfs-root/opt/actual/buzz\n'
+            'chmod 755 squashfs-root/opt/actual/buzz\n')
+
+        self.image.chmod(0o700)
+
+        @contextmanager
+        def run(argv, *, env):
+            with tempfile.TemporaryDirectory(dir=self.root) as temporary:
+                scratch = Path(temporary).resolve()
+                scratch.chmod(0o700)
+                subprocess.run(argv, cwd=scratch,
+                               env={**env, "HOME": str(scratch), "TMPDIR": str(scratch)},
+                               check=True, timeout=5, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL)
+                yield scratch
+
+        with patch.dict(os.environ, {"APPIMAGE_EXTRACT_AND_RUN": "1"}):
+            r2.verify_cli_sidecar_executable(
+                self.receipt, self.image, destination=self.destination, run_extractor=run)
+        self.assertEqual(self.destination.read_bytes(), self.data)
+
+    def test_destination_inside_ephemeral_scratch_refuses(self):
+        @contextmanager
+        def extract(argv, *, env):
+            executable = self.root / "squashfs-root/opt/actual/buzz"
+            executable.parent.mkdir(parents=True)
+            executable.write_bytes(self.data)
+            executable.chmod(0o755)
+            yield self.root
+
+        with self.assertRaisesRegex(ValueError, "outside ephemeral"):
+            r2.verify_cli_sidecar_executable(
+                self.receipt, self.image, destination=self.destination,
+                run_extractor=extract)
+        self.assert_no_output()
+
+    def test_directory_fsync_failure_preserves_committed_verified_copy(self):
+        fsync = os.fsync
+
+        def fail_directory(fd):
+            if stat.S_ISDIR(os.fstat(fd).st_mode):
+                raise OSError("directory fsync failed")
+            return fsync(fd)
+
+        with patch.object(r2.cli_sidecar.os, "fsync", side_effect=fail_directory):
+            with self.assertRaisesRegex(OSError, "directory fsync failed"):
+                self.verify()
+        self.assertEqual(self.destination.read_bytes(), self.data)
+        self.assertEqual(stat.S_IMODE(self.destination.stat().st_mode), 0o755)
+        self.assertFalse(self.scratch.exists())
+        self.assertEqual(list(self.root.glob(".buzz-cli-*")), [])
+
+    def test_callback_does_not_chmod_the_presealed_image(self):
+        self.image.chmod(0o555)
+        chmod = os.chmod
+
+        def guard(path, *args, **kwargs):
+            self.assertNotEqual(Path(path).resolve(), self.image.resolve())
+            return chmod(path, *args, **kwargs)
+
+        with patch.object(r2.cli_sidecar.os, "chmod", side_effect=guard):
+            self.verify()
+        self.assertEqual(stat.S_IMODE(self.image.stat().st_mode), 0o555)
+
+    def test_retention_without_callback_refuses_before_any_extraction_or_chmod(self):
+        self.image.chmod(0o555)
+        with patch.object(r2.cli_sidecar, "_default_extractor") as default, \
+             patch.object(r2.cli_sidecar, "_extracted_cli_file") as extraction, \
+             patch.object(r2.cli_sidecar.os, "chmod") as chmod:
+            with self.assertRaisesRegex(ValueError, "destination requires run_extractor"):
+                r2.verify_cli_sidecar_executable(
+                    self.receipt, self.image, destination=self.destination)
+            default.assert_not_called()
+            extraction.assert_not_called()
+            chmod.assert_not_called()
+        self.assertEqual(stat.S_IMODE(self.image.stat().st_mode), 0o555)
+        self.assert_no_output()
+
+    def test_exclusive_staging_collision_preserves_unowned_file(self):
+        collision = self.root / ".buzz-cli-fixed"
+        collision.write_bytes(b"preexisting unowned staging bytes")
+        before = collision.stat()
+        opened_fds = []
+        open_file = os.open
+
+        def record_open(*args, **kwargs):
+            fd = open_file(*args, **kwargs)
+            opened_fds.append(fd)
+            return fd
+
+        with patch.object(r2.cli_sidecar.secrets, "token_hex", return_value="fixed"), \
+             patch.object(r2.cli_sidecar.os, "open", side_effect=record_open):
+            with self.assertRaises(FileExistsError):
+                self.verify()
+        for fd in opened_fds:
+            with self.assertRaises(OSError):
+                os.fstat(fd)
+        self.assertEqual(collision.read_bytes(), b"preexisting unowned staging bytes")
+        after = collision.stat()
+        self.assertEqual((before.st_ino, before.st_mode, before.st_size, before.st_mtime_ns),
+                         (after.st_ino, after.st_mode, after.st_size, after.st_mtime_ns))
+        self.assertFalse(os.path.lexists(self.destination))
+        self.assertEqual(list(self.root.glob(".buzz-cli-*")), [collision])
+        self.assertFalse(self.scratch.exists())
+
+    def test_callback_only_verification_keeps_none_return(self):
+        self.assertIsNone(r2.verify_cli_sidecar_executable(
+            self.receipt, self.image, run_extractor=self.extract))
+        self.assert_no_output()
 
 
 if __name__ == '__main__':

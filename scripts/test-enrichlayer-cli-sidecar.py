@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import importlib.util
 from pathlib import Path
 import stat
@@ -173,6 +174,22 @@ class CliSidecarTest(unittest.TestCase):
                     build_prefix=self.prefix, artifact_path=self.artifact,
                     signature_path=self.signature, output_path=self.output)
         self.assertEqual(self.output.read_text(), "existing")
+
+
+    def test_callback_must_yield_ordinary_private_scratch(self):
+        ordinary = self.root / "scratch"
+        ordinary.mkdir(mode=0o755)
+        link = self.root / "scratch-link"
+        link.symlink_to(ordinary, target_is_directory=True)
+        for root in (ordinary, link):
+            with self.subTest(root=root):
+                @contextmanager
+                def run(argv, *, env):
+                    yield root
+
+                with self.assertRaisesRegex(ValueError, "ordinary private 0700"):
+                    with sidecar._extracted_cli_file(self.artifact, run_extractor=run):
+                        self.fail("invalid scratch was accepted")
 
 
 if __name__ == "__main__":

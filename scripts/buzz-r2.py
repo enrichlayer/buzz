@@ -132,17 +132,40 @@ def validate_cli_sidecar_directory(directory, version, source_sha, expected_pref
     return receipt
 
 
-def verify_cli_sidecar_executable(receipt, image_path):
-    """Bind the receipt's CLI identity to extraction of the signed AppImage."""
-    path, executable_digest, mode = cli_sidecar._extracted_cli(image_path.resolve())
-    expected = receipt["executable"]
-    actual = {
-        "path": path,
-        **executable_digest,
-        "mode": f"{mode:04o}",
-    }
-    if actual != expected:
-        raise ValueError("CLI sidecar executable differs from the signed AppImage")
+def verify_cli_sidecar_executable(receipt, image_path, *, destination=None,
+                                  run_extractor=None):
+    """Compare actual CLI bytes to a receipt, optionally retaining a checked copy.
+
+    This is not signature or receipt authentication: callers must first verify
+    the AppImage's pinned updater signature and validate receipt provenance.
+    The optional extraction context owns all consumer containment and cleanup;
+    see cli_sidecar._extracted_cli_file for its callback contract. Destination
+    is an absent filename inside the caller's existing private staging folder,
+    outside ephemeral extraction scratch. Retention requires run_extractor so
+    consumer containment can never fall back to the release CI extractor.
+    Returns None, including when a copy is retained. Before the atomic no-replace
+    link, failure leaves no destination. After that commit point, cleanup errors
+    (including callback cancellation) propagate and preserve the verified copy;
+    callers must reconcile the existing destination before any retry.
+    """
+    if destination is not None and run_extractor is None:
+        raise ValueError("CLI destination requires run_extractor for consumer containment")
+
+    def compare(identity):
+        path, executable_digest, mode = identity
+        actual = {"path": path, **executable_digest, "mode": f"{mode:04o}"}
+        if actual != receipt["executable"]:
+            raise ValueError("CLI sidecar executable differs from the signed AppImage")
+
+    if destination is None and run_extractor is None:
+        compare(cli_sidecar._extracted_cli(image_path.resolve()))
+        return
+    with cli_sidecar._extracted_cli_file(
+            image_path.resolve(), run_extractor=run_extractor,
+            destination=destination) as (executable, identity):
+        compare(identity)
+        if destination is not None:
+            cli_sidecar._retain_cli(executable, destination, receipt["executable"])
 
 
 def download_verified_artifact(store, key, expected, destination):

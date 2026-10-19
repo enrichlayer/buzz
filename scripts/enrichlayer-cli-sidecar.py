@@ -1,11 +1,13 @@
 """Extract and attest the Linux Buzz CLI bundled in the signed AppImage."""
 import argparse
+from contextlib import contextmanager
 import hashlib
 import importlib.util
 import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import secrets
 import stat
 import subprocess
 import tempfile
@@ -44,11 +46,9 @@ def digest_file(path):
     return {"sha256": digest.hexdigest(), "size": size}
 
 
-def _extracted_cli(appimage):
-    """Extract, but never launch, the verified AppImage and find one CLI binary."""
-    # R2 stores bytes without POSIX mode. Callers have verified the ordinary
-    # file's updater signature; restore owner-only execution for its extractor.
-    appimage.chmod(0o700)
+@contextmanager
+def _default_extractor(argv, *, env):
+    """Keep the release CI extractor's existing timeout and log behavior."""
     with tempfile.TemporaryDirectory(prefix="buzz-cli-sidecar-") as temporary:
         root = Path(temporary)
         root.chmod(0o700)
@@ -56,16 +56,10 @@ def _extracted_cli(appimage):
         # APPIMAGE_EXTRACT_AND_RUN is set for other steps in this job. Omit it
         # here so the runtime handles the explicit extraction command and never
         # starts the bundled application.
-        environment = {
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-            "HOME": str(root),
-            "TMPDIR": str(root),
-            "LANG": "C.UTF-8",
-            "LC_ALL": "C.UTF-8",
-        }
+        environment = {**env, "HOME": str(root), "TMPDIR": str(root)}
         with log_path.open("wb") as log:
             result = subprocess.run(
-                [str(appimage), "--appimage-extract"], cwd=root,
+                argv, cwd=root,
                 env=environment, stdin=subprocess.DEVNULL,
                 stdout=log, stderr=subprocess.STDOUT,
                 check=False, timeout=900,
@@ -76,6 +70,36 @@ def _extracted_cli(appimage):
                 detail = log.read(4096).decode("utf-8", "replace")
             raise ValueError(f"AppImage extraction failed ({result.returncode}): {detail}")
 
+        yield root
+
+
+@contextmanager
+def _extracted_cli_file(appimage, *, run_extractor=None, destination=None):
+    """Inspect actual extracted bytes while the caller's extraction stays alive.
+
+    The caller must verify the AppImage signature first. An optional context
+    manager callback runs the exact argv with the supplied minimal environment,
+    runs with cwd set to its fresh private scratch directory, overrides HOME
+    and TMPDIR to that same directory after allocation, and yields that same
+    directory only after successful extraction. It owns process containment,
+    cancellation, resource limits and scratch cleanup for its entire context.
+    With a callback, the verified image is never chmodded: the caller must
+    stage it executable before sealing or mounting it read-only.
+    """
+    if run_extractor is None:
+        # R2 downloads have no POSIX mode; preserve release CI restoration.
+        appimage.chmod(0o700)
+    environment = {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+    }
+    runner = run_extractor if run_extractor is not None else _default_extractor
+    with runner([str(appimage), "--appimage-extract"], env=environment) as temporary:
+        root = Path(temporary)
+        info = root.lstat()
+        if not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o700:
+            raise ValueError("Extractor must yield an ordinary private 0700 directory")
         extracted = root / "squashfs-root"
         if not extracted.is_dir() or extracted.is_symlink():
             raise ValueError("AppImage did not produce a fresh squashfs-root directory")
@@ -103,7 +127,88 @@ def _extracted_cli(appimage):
         relative_path = PurePosixPath(relative)
         if relative_path.is_absolute() or ".." in relative_path.parts:
             raise ValueError("Bundled CLI path escapes the AppImage root")
-        return relative, digest_file(executable), mode
+        if (destination is not None
+                and Path(destination).resolve().is_relative_to(root.resolve())):
+            raise ValueError("CLI destination must be outside ephemeral extraction scratch")
+        yield executable, (relative, digest_file(executable), mode)
+
+
+
+def _extracted_cli(appimage):
+    """Extract the signature-verified AppImage and return its actual CLI tuple."""
+    with _extracted_cli_file(appimage) as (_, identity):
+        return identity
+
+
+def _retain_cli(executable, destination, expected):
+    """Copy checked bytes into private caller staging, publishing without replace."""
+    destination = Path(destination)
+    parent = destination.parent
+    parent_info = parent.lstat()
+    if (not stat.S_ISDIR(parent_info.st_mode)
+            or stat.S_IMODE(parent_info.st_mode) != 0o700):
+        raise ValueError("CLI destination parent must be an ordinary private 0700 directory")
+    parent_fd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    temporary = None
+
+    def same_file(left, right):
+        return all(getattr(left, field) == getattr(right, field) for field in (
+            "st_dev", "st_ino", "st_mode", "st_size", "st_mtime_ns", "st_ctime_ns"))
+
+    try:
+        if not same_file(os.fstat(parent_fd), parent_info):
+            raise ValueError("CLI destination parent changed")
+        source_info = executable.lstat()
+        source_fd = os.open(executable, os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(source_fd, "rb") as source:
+            opened = os.fstat(source.fileno())
+            if (not stat.S_ISREG(opened.st_mode) or not same_file(opened, source_info)
+                    or stat.S_IMODE(opened.st_mode) != 0o755
+                    or opened.st_size != expected["size"]):
+                raise ValueError("Bundled CLI source changed before retention")
+            candidate = ".buzz-cli-" + secrets.token_hex(16)
+            output_fd = os.open(candidate, os.O_RDWR | os.O_CREAT | os.O_EXCL,
+                                0o600, dir_fd=parent_fd)
+            # Cleanup owns this name only after exclusive creation succeeded.
+            temporary = candidate
+            with os.fdopen(output_fd, "w+b") as output:
+                digest = hashlib.sha256()
+                size = 0
+                while chunk := source.read(1024 * 1024):
+                    size += len(chunk)
+                    if size > expected["size"] or size > MAX_ARTIFACT:
+                        raise ValueError("Bundled CLI exceeds expected size")
+                    digest.update(chunk)
+                    output.write(chunk)
+                if (size != expected["size"] or digest.hexdigest() != expected["sha256"]
+                        or not same_file(os.fstat(source.fileno()), opened)):
+                    raise ValueError("Bundled CLI changed during retention")
+                output.flush()
+                os.fchmod(output.fileno(), 0o755)
+                output.seek(0)
+                readback = hashlib.sha256()
+                while chunk := output.read(1024 * 1024):
+                    readback.update(chunk)
+                retained = os.fstat(output.fileno())
+                if (readback.hexdigest() != expected["sha256"]
+                        or retained.st_size != expected["size"]
+                        or stat.S_IMODE(retained.st_mode) != 0o755):
+                    raise ValueError("Retained CLI readback differs")
+                os.fsync(output.fileno())
+            os.link(temporary, destination.name, src_dir_fd=parent_fd,
+                    dst_dir_fd=parent_fd, follow_symlinks=False)
+            # Atomic no-replace link is the commit point. After it succeeds,
+            # cleanup/cancellation errors propagate with the verified destination
+            # preserved; callers must reconcile that existing committed file.
+        os.unlink(temporary, dir_fd=parent_fd)
+        temporary = None
+        os.fsync(parent_fd)
+    finally:
+        try:
+            if temporary is not None:
+                os.unlink(temporary, dir_fd=parent_fd)
+        finally:
+            os.close(parent_fd)
 
 
 def create_receipt(*, version, source_sha, run_id, run_attempt,
