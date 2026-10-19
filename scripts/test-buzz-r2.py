@@ -58,6 +58,50 @@ class R2Test(unittest.TestCase):
         self.key = patch.object(r2.minisign, 'pinned_public_key', return_value=fixture.PUBLIC_KEY).start()
         patch.object(r2.updater, 'gh', return_value='a'*40).start()
         self.public = patch.object(r2, 'public_verify').start()
+        self.write_sidecar(
+            f"desktop/{'a'*40}/12345/2/linux-x86_64")
+
+    def write_sidecar(self, prefix):
+        image_name = r2.updater.asset_name('1.2.3', 'linux-x86_64')
+        image_path = self.directory / image_name
+        signature_path = self.directory / (image_name + '.sig')
+        image = image_path.read_bytes()
+        signature = signature_path.read_bytes()
+        receipt = {
+            'schema_version': 1,
+            'kind': 'enrichlayer-buzz-cli-sidecar',
+            'repository': 'enrichlayer/buzz',
+            'version': '1.2.3',
+            'source_sha': 'a' * 40,
+            'platform': 'linux-x86_64',
+            'build': {
+                'workflow_ref': ('enrichlayer/buzz/.github/workflows/'
+                                 'enrichlayer-auto-release.yml@refs/heads/main'),
+                'workflow_sha': 'a' * 40,
+                'run_id': prefix.split('/')[2],
+                'run_attempt': prefix.split('/')[3],
+                'r2_prefix': prefix,
+            },
+            'installer': {
+                'filename': image_name,
+                'sha256': hashlib.sha256(image).hexdigest(),
+                'size': len(image),
+            },
+            'signature': {
+                'filename': image_name + '.sig',
+                'sha256': hashlib.sha256(signature).hexdigest(),
+                'size': len(signature),
+                'updater_public_key_sha256': hashlib.sha256(
+                    fixture.PUBLIC_KEY.encode()).hexdigest(),
+            },
+            'executable': {
+                'path': 'usr/bin/buzz',
+                'sha256': hashlib.sha256(b'fixture-cli').hexdigest(),
+                'size': len(b'fixture-cli'),
+                'mode': '0755',
+            },
+        }
+        (self.directory / r2.cli_sidecar_name('1.2.3')).write_bytes(r2.encode(receipt))
 
     def publish(self):
         r2.publish(self.store, '1.2.3', self.directory, 'a'*40)
@@ -95,17 +139,19 @@ class R2Test(unittest.TestCase):
             with self.subTest(platform=platform):
                 archive = self.directory / r2.updater.asset_name('1.2.3', platform)
                 archive.write_bytes(b'unsigned build')
-                with self.assertRaisesRegex(ValueError, 'verification failed'):
-                    self.publish()
-                self.assertEqual(self.store.objects, {})
-                archive.write_bytes(fixture.DATA)
+                try:
+                    with self.assertRaisesRegex(ValueError, 'sidecar|verification failed'):
+                        self.publish()
+                    self.assertEqual(self.store.objects, {})
+                finally:
+                    archive.write_bytes(fixture.DATA)
 
     def test_promote_reverifies_archives_against_pinned_key(self):
         self.publish()
         other = fixture.wrap(['untrusted comment: other key', base64.b64encode(
             b'Ed' + bytes(range(1, 9)) + bytes.fromhex(fixture.RFC[0][0])).decode()])
         self.key.return_value = other
-        with self.assertRaisesRegex(ValueError, 'verification failed'):
+        with self.assertRaisesRegex(ValueError, 'different updater key|verification failed'):
             r2.promote(self.store, '1.2.3')
         self.assertIsNone(self.store.get('latest.json'))
 
@@ -201,6 +247,17 @@ class R2Test(unittest.TestCase):
                 for path in self.directory.glob(f"*{platform}*"):
                     (directory / path.name).write_bytes(path.read_bytes())
                 prefix = f"desktop/{'a'*40}/10/1/{platform}"
+                if platform == 'linux-x86_64':
+                    # The immutable receipt must identify the exact Linux build
+                    # whose catalog is uploaded beside it.
+                    image_name = r2.updater.asset_name('1.2.3', platform)
+                    image = (directory / image_name).read_bytes()
+                    signature = (directory / (image_name + '.sig')).read_bytes()
+                    receipt = json.loads((directory / r2.cli_sidecar_name('1.2.3')).read_bytes())
+                    receipt['build'].update(run_id='10', run_attempt='1', r2_prefix=prefix)
+                    receipt['installer'].update(sha256=hashlib.sha256(image).hexdigest(), size=len(image))
+                    receipt['signature'].update(sha256=hashlib.sha256(signature).hexdigest(), size=len(signature))
+                    (directory / r2.cli_sidecar_name('1.2.3')).write_bytes(r2.encode(receipt))
                 r2.upload(self.store, prefix, directory)
                 prefixes.append(prefix)
         with tempfile.TemporaryDirectory() as tmp:
@@ -220,6 +277,21 @@ class R2Test(unittest.TestCase):
     def test_missing_installer_prevents_public_write(self):
         (self.directory / 'Buzz_1.2.3_darwin-aarch64.dmg').unlink()
         with self.assertRaisesRegex(ValueError, 'team installer'):
+            self.publish()
+        self.assertEqual(self.store.objects, {})
+
+    def test_missing_or_mismatched_cli_sidecar_prevents_public_write(self):
+        sidecar = self.directory / r2.cli_sidecar_name('1.2.3')
+        sidecar.unlink()
+        with self.assertRaisesRegex(ValueError, 'team installer'):
+            self.publish()
+        self.assertEqual(self.store.objects, {})
+
+        self.write_sidecar(f"desktop/{'a'*40}/12345/2/linux-x86_64")
+        receipt = json.loads(sidecar.read_bytes())
+        receipt['installer']['sha256'] = '0' * 64
+        sidecar.write_bytes(r2.encode(receipt))
+        with self.assertRaisesRegex(ValueError, 'does not match release artifact'):
             self.publish()
         self.assertEqual(self.store.objects, {})
 

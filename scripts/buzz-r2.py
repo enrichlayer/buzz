@@ -9,6 +9,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import posixpath
 import re
 import urllib.request
 
@@ -24,6 +25,109 @@ spec.loader.exec_module(updater)
 spec = importlib.util.spec_from_file_location("minisign", Path(__file__).with_name("enrichlayer-minisign.py"))
 minisign = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(minisign)
+spec = importlib.util.spec_from_file_location("cli_sidecar", Path(__file__).with_name("enrichlayer-cli-sidecar.py"))
+cli_sidecar = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cli_sidecar)
+
+SIDECAR_SUFFIX = ".cli-sidecar.json"
+
+
+def cli_sidecar_name(version):
+    return f"Buzz_{version}_linux-x86_64.AppImage{SIDECAR_SUFFIX}"
+
+
+def validate_cli_sidecar(receipt, version, source_sha, artifacts, expected_prefix=None):
+    """Validate the receipt against immutable release-catalog artifact hashes."""
+    if set(receipt) != {
+        "schema_version", "kind", "repository", "version", "source_sha",
+        "platform", "build", "installer", "signature", "executable",
+    }:
+        raise ValueError("CLI sidecar has unexpected fields")
+    if (receipt["schema_version"] != 1
+            or receipt["kind"] != "enrichlayer-buzz-cli-sidecar"
+            or receipt["repository"] != "enrichlayer/buzz"
+            or receipt["platform"] != "linux-x86_64"
+            or receipt["version"] != version
+            or receipt["source_sha"] != source_sha
+            or not re.fullmatch(r"[a-f0-9]{40}", source_sha)):
+        raise ValueError("CLI sidecar release identity mismatch")
+
+    build = receipt["build"]
+    if set(build) != {"workflow_ref", "workflow_sha", "run_id", "run_attempt", "r2_prefix"}:
+        raise ValueError("CLI sidecar build identity has unexpected fields")
+    if (not isinstance(build["workflow_ref"], str)
+            or build["workflow_ref"] != (
+            "enrichlayer/buzz/.github/workflows/enrichlayer-auto-release.yml@refs/heads/main")
+            or not isinstance(build["workflow_sha"], str)
+            or not re.fullmatch(r"[a-f0-9]{40}", build["workflow_sha"])
+            or build["workflow_sha"] != source_sha
+            or not isinstance(build["run_id"], str)
+            or not re.fullmatch(r"[1-9][0-9]*", build["run_id"])
+            or not isinstance(build["run_attempt"], str)
+            or not re.fullmatch(r"[1-9][0-9]*", build["run_attempt"])):
+        raise ValueError("CLI sidecar was not produced by the release workflow")
+    prefix = f"desktop/{source_sha}/{build['run_id']}/{build['run_attempt']}/linux-x86_64"
+    if build["r2_prefix"] != prefix or (expected_prefix is not None and prefix != expected_prefix):
+        raise ValueError("CLI sidecar build prefix mismatch")
+
+    installer_name = updater.asset_name(version, "linux-x86_64")
+    signature_name = installer_name + ".sig"
+    installer = receipt["installer"]
+    signature = receipt["signature"]
+    if set(installer) != {"filename", "sha256", "size"} or set(signature) != {
+            "filename", "sha256", "size", "updater_public_key_sha256"}:
+        raise ValueError("CLI sidecar artifact records have unexpected fields")
+    if installer["filename"] != installer_name or signature["filename"] != signature_name:
+        raise ValueError("CLI sidecar artifact filename mismatch")
+    for name, record in ((installer_name, installer), (signature_name, signature)):
+        expected = artifacts.get(name)
+        if (not expected or set(expected) != {"sha256", "size"}
+                or record["sha256"] != expected["sha256"]
+                or record["size"] != expected["size"]):
+            raise ValueError(f"CLI sidecar does not match release artifact: {name}")
+    key_digest = hashlib.sha256(minisign.pinned_public_key().encode()).hexdigest()
+    if signature["updater_public_key_sha256"] != key_digest:
+        raise ValueError("CLI sidecar uses a different updater key")
+
+    executable = receipt["executable"]
+    if set(executable) != {"path", "sha256", "size", "mode"}:
+        raise ValueError("CLI sidecar executable record has unexpected fields")
+    path = executable["path"]
+    if (not isinstance(path, str) or path != posixpath.normpath(path)
+            or path.startswith("/") or path in ("", ".") or ".." in path.split("/")
+            or executable["mode"] != "0755"
+            or not re.fullmatch(r"[a-f0-9]{64}", executable["sha256"])
+            or not isinstance(executable["size"], int) or executable["size"] <= 0):
+        raise ValueError("CLI sidecar executable identity is invalid")
+    return receipt
+
+
+def validate_cli_sidecar_directory(directory, version, source_sha, expected_prefix=None):
+    name = cli_sidecar_name(version)
+    sidecar_path = directory / name
+    if sidecar_path.is_symlink() or not sidecar_path.is_file():
+        raise ValueError("Release lacks the Linux CLI sidecar")
+    if sidecar_path.stat().st_size > MAX_JSON:
+        raise ValueError("CLI sidecar exceeds size limit")
+    data = sidecar_path.read_bytes()
+    receipt = json.loads(data)
+    artifacts = {}
+    for artifact_name in (updater.asset_name(version, "linux-x86_64"),
+                          updater.asset_name(version, "linux-x86_64") + ".sig"):
+        artifact_path = directory / artifact_name
+        if artifact_path.is_symlink() or not artifact_path.is_file():
+            raise ValueError(f"Release lacks ordinary Linux artifact: {artifact_name}")
+        with artifact_path.open("rb") as stream:
+            artifacts[artifact_name] = digest(stream)
+    validate_cli_sidecar(receipt, version, source_sha, artifacts, expected_prefix)
+    image_name = updater.asset_name(version, "linux-x86_64")
+    signature_path = directory / (image_name + ".sig")
+    if signature_path.stat().st_size > cli_sidecar.MAX_SIGNATURE:
+        raise ValueError("Updater signature exceeds size limit")
+    with (directory / image_name).open("rb") as stream:
+        minisign.verify_stream(minisign.pinned_public_key(),
+                               signature_path.read_text().strip(), stream)
+    return receipt
 
 
 def encode(value):
@@ -184,22 +288,27 @@ def stage_release(store, version, directory, sha, prefixes):
     if receipt["sha"] != sha or len(receipt["prefixes"]) != len(updater.PLATFORMS):
         raise ValueError("Release build receipt has wrong source or platform count")
     platforms = set()
+    linux_prefix = None
     for prefix in receipt["prefixes"]:
         match = re.fullmatch(r"desktop/([a-f0-9]{40})/[0-9]+/[0-9]+/([a-z0-9_-]+)", prefix)
         if not match or match[1] != sha or match[2] in platforms:
             raise ValueError("Release build prefix has wrong identity")
         platforms.add(match[2])
+        if match[2] == "linux-x86_64":
+            linux_prefix = prefix
         fetch(store, prefix, directory)
     if platforms != set(updater.PLATFORMS):
         raise ValueError("Release build receipt lacks a platform")
     updater.manifest(version, directory)
     require_installers(version, {path.name for path in directory.iterdir()})
+    validate_cli_sidecar_directory(directory, version, sha, linux_prefix)
     store.immutable_document(key, encode(receipt))
 
 
 def require_installers(version, names):
     installers = {f"Buzz_{version}_darwin-{arch}.dmg" for arch in ("aarch64", "x86_64")}
     installers.update(updater.asset_name(version, p) for p in ("windows-x86_64", "linux-x86_64"))
+    installers.add(cli_sidecar_name(version))
     if not installers <= names:
         raise ValueError("Release lacks a team installer")
 
@@ -212,6 +321,7 @@ def publish(store, version, directory, sha):
     # Stable manifest bytes make retries after any partial upload idempotent.
     candidate = updater.manifest(version, directory)
     require_installers(version, {path.name for path in directory.iterdir()})
+    validate_cli_sidecar_directory(directory, version, sha)
     candidate.pop("pub_date", None)
     # Never publish an archive the pinned updater key did not sign.
     key = minisign.pinned_public_key()
@@ -241,6 +351,13 @@ def promote(store, version):
     candidate = json.loads(data)
     updater.validate(candidate, version, set(release["artifacts"]))
     require_installers(version, set(release["artifacts"]))
+    sidecar_name = cli_sidecar_name(version)
+    sidecar_data, _ = store.document(f"{prefix}/{sidecar_name}")
+    if sidecar_data is None:
+        raise ValueError("Release is missing its Linux CLI sidecar")
+    if hashlib.sha256(sidecar_data).hexdigest() != release["artifacts"][sidecar_name]["sha256"]:
+        raise ValueError("Linux CLI sidecar differs from the immutable release catalog")
+    validate_cli_sidecar(json.loads(sidecar_data), version, release["sha"], release["artifacts"])
     for platform in updater.PLATFORMS:
         name = updater.asset_name(version, platform)
         sig, _ = store.document(f"{prefix}/{name}.sig")
