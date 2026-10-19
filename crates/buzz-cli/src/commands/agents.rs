@@ -11,6 +11,11 @@ use crate::{AgentsCmd, RespondToArg};
 
 pub async fn dispatch(command: AgentsCmd, client: &BuzzClient) -> Result<(), CliError> {
     match command {
+        AgentsCmd::Config(command) => {
+            let receipt = super::agent_config::execute(command, client).await?;
+            println!("{receipt}");
+            Ok(())
+        }
         AgentsCmd::Enroll {
             state_dir,
             channel,

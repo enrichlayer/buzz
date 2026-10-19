@@ -96,6 +96,28 @@ export BUZZ_PRIVATE_KEY="nsec1..."   # from the mint output
 
 ## 5. Unit Tests
 
+For declarative configuration changes, run the production-path suite:
+
+```bash
+cargo test -p buzz-cli --lib agent_config
+```
+
+It drives the real CLI dispatch and HTTP client against an isolated signed-event
+relay fixture: local validation, strict fields/spec hashes, stale plans,
+partial publication/replay, exact-key adoption, immutable bindings, revocation,
+delegated-owner denial, exclusive apply and signed-handoff tampering. It does
+not qualify native OpenRig runtime request authorization.
+
+For the real workflow, use [AGENT_CONFIG.md](AGENT_CONFIG.md) with an isolated
+relay/community, an owner key, an existing shared channel and a private state
+directory. Run validate → plan → apply → status; verify identical agent public
+keys on a fresh plan/apply and inspect the signed handoff and exact relay event
+IDs. Use the protected runtime operator for the next stage. An authorized
+non-owner teammate must get a same-thread reply while an excluded author is
+denied; the human must confirm that in Buzz before review readiness. Keep the
+runtime-policy, presence and messaging fields pending until independent proof.
+Never apply test configuration to an unqualified live channel.
+
 ```bash
 cargo test -p buzz-cli
 # Expected: see cargo test -p buzz-cli for current count
