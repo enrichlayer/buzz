@@ -282,7 +282,7 @@ All four readbacks passed signature and canonical-ID verification using the desk
 
 The captured transport is [transport.jsonl](transport.jsonl); it includes command exits, response durations, subscriptions, EVENT frames and cleanup. The startup log is [relay-startup-1.log](relay-startup-1.log). File hashes are in [SHA256SUMS.txt](SHA256SUMS.txt).
 
-DEV-13682 redacts only the two relay-to-harness NIP-42 `AUTH` challenge payloads at lines 188 and 234 (`mentions-default` and `mention-filter-disabled`) as `[REDACTED NIP-42 AUTH challenge]`. Case, direction, timestamps and frame kind are unchanged. `SHA256SUMS.txt` now hashes the redacted transport; the other evidence files and signed-event verification are unchanged. This is a later redaction of the October 13 capture, not a new runtime run.
+DEV-13784 redacts only the two relay-to-harness NIP-42 `AUTH` challenge payloads at lines 188 and 234 (`mentions-default` and `mention-filter-disabled`) as `[REDACTED NIP-42 AUTH challenge]`. Case, direction, timestamps and frame kind are unchanged. `SHA256SUMS.txt` now hashes the redacted transport; the other evidence files and signed-event verification are unchanged. This is a later redaction of the October 13 capture, not a new runtime run.
 
 `docs/security/source-scan-fixtures.json` records the two removed findings under `redactedFixtures` as historical documentation only (path, line, rule, match digest, classification, reason and the commit where they were observed). That metadata is not part of the active `findings` baseline, is not a scanner exemption, and does not allow any secret.
 
