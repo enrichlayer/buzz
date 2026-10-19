@@ -57,8 +57,7 @@ def validate_cli_sidecar(receipt, version, source_sha, artifacts, expected_prefi
     if set(build) != {"workflow_ref", "workflow_sha", "run_id", "run_attempt", "r2_prefix"}:
         raise ValueError("CLI sidecar build identity has unexpected fields")
     if (not isinstance(build["workflow_ref"], str)
-            or build["workflow_ref"] != (
-            "enrichlayer/buzz/.github/workflows/enrichlayer-auto-release.yml@refs/heads/main")
+            or build["workflow_ref"] not in cli_sidecar.WORKFLOW_REFS
             or not isinstance(build["workflow_sha"], str)
             or not re.fullmatch(r"[a-f0-9]{40}", build["workflow_sha"])
             or build["workflow_sha"] != source_sha

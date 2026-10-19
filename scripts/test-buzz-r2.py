@@ -117,6 +117,33 @@ class R2Test(unittest.TestCase):
     def publish(self):
         r2.publish(self.store, '1.2.3', self.directory, 'a'*40)
 
+    def test_private_candidate_receipt_uses_the_existing_producer_allowlist(self):
+        sidecar = self.directory / r2.cli_sidecar_name('1.2.3')
+        receipt = json.loads(sidecar.read_bytes())
+        for workflow_ref in r2.cli_sidecar.WORKFLOW_REFS:
+            with self.subTest(workflow_ref=workflow_ref):
+                receipt['build']['workflow_ref'] = workflow_ref
+                sidecar.write_bytes(r2.encode(receipt))
+                r2.validate_cli_sidecar_directory(
+                    self.directory, '1.2.3', 'a' * 40,
+                    f"desktop/{'a'*40}/12345/2/linux-x86_64")
+
+    def test_private_candidate_receipt_rejects_unrecognized_caller_before_extraction(self):
+        sidecar = self.directory / r2.cli_sidecar_name('1.2.3')
+        receipt = json.loads(sidecar.read_bytes())
+        for workflow_ref in (
+                'enrichlayer/buzz/.github/workflows/macos-intel-canary.yml@refs/heads/unreviewed',
+                'other/buzz/.github/workflows/macos-intel-canary.yml@refs/heads/main',
+                'enrichlayer/buzz/.github/workflows/unrecognized.yml@refs/heads/main'):
+            with self.subTest(workflow_ref=workflow_ref):
+                receipt['build']['workflow_ref'] = workflow_ref
+                sidecar.write_bytes(r2.encode(receipt))
+                self.extracted.reset_mock()
+                with self.assertRaisesRegex(ValueError, 'release workflow'):
+                    r2.validate_cli_sidecar_directory(
+                        self.directory, '1.2.3', 'a' * 40)
+                self.extracted.assert_not_called()
+
     def test_fetch_factory_content_addressed_artifacts(self):
         prefix = 'linux/' + 'a' * 40 + '/' + 'b' * 64 + '/attempt-2'
         data = b'remote build'
