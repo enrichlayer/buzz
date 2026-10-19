@@ -46,6 +46,9 @@ def digest_file(path):
 
 def _extracted_cli(appimage):
     """Extract, but never launch, the verified AppImage and find one CLI binary."""
+    # R2 stores bytes without POSIX mode. Callers have verified the ordinary
+    # file's updater signature; restore owner-only execution for its extractor.
+    appimage.chmod(0o700)
     with tempfile.TemporaryDirectory(prefix="buzz-cli-sidecar-") as temporary:
         root = Path(temporary)
         root.chmod(0o700)

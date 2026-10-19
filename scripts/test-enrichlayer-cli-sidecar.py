@@ -93,6 +93,24 @@ class CliSidecarTest(unittest.TestCase):
                     signature_path=self.signature, output_path=self.output)
             extract.assert_not_called()
 
+    def test_download_without_execute_bit_runs_only_the_extractor(self):
+        self.artifact.write_text(
+            '#!/bin/sh\n'
+            '[ "$#" = 1 ] && [ "$1" = --appimage-extract ] || exit 41\n'
+            '[ -z "${APPIMAGE_EXTRACT_AND_RUN+x}" ] || exit 42\n'
+            'mkdir -p squashfs-root/usr/bin\n'
+            'printf "extracted-cli\\n" > squashfs-root/usr/bin/buzz\n'
+            'chmod 755 squashfs-root/usr/bin/buzz\n')
+        self.artifact.chmod(0o644)
+        with patch.dict(sidecar.os.environ, {"APPIMAGE_EXTRACT_AND_RUN": "1"}):
+            path, observed, mode = sidecar._extracted_cli(self.artifact)
+        self.assertEqual(path, "usr/bin/buzz")
+        self.assertEqual(observed, {
+            "sha256": sidecar.hashlib.sha256(b"extracted-cli\n").hexdigest(),
+            "size": len(b"extracted-cli\n"),
+        })
+        self.assertEqual(mode, 0o755)
+
     def test_source_and_build_prefix_mismatch_are_refused(self):
         with self.assertRaisesRegex(ValueError, "Build prefix differs"):
             sidecar.create_receipt(
