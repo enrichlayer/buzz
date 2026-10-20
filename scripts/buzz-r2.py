@@ -167,18 +167,22 @@ def verify_cli_sidecar_executable(receipt, image_path, *, destination=None,
             cli_sidecar._retain_cli(executable, destination, receipt["executable"])
 
 
-def download_verified_artifact(store, key, expected, destination):
+def download_verified_artifact(store, key, expected, destination, *,
+                               max_size=MAX_ASSET, kind="Artifact"):
     """Download one bounded immutable object and verify its catalog digest."""
+    if (not isinstance(expected, dict) or type(expected.get("size")) is not int
+            or not 0 < expected["size"] <= max_size):
+        raise ValueError(f"{kind} size outside release limit")
     response = store.get(key)
     if response is None:
         raise ValueError(f"Missing release artifact: {key}")
     size = 0
     hasher = hashlib.sha256()
     with response["Body"] as source, destination.open("xb") as output:
-        while chunk := source.read(1024 * 1024):
+        while chunk := source.read(min(1024 * 1024, max_size - size + 1)):
             size += len(chunk)
-            if size > MAX_ASSET:
-                raise ValueError("Artifact exceeds 4 GiB limit")
+            if size > max_size:
+                raise ValueError(f"{kind} exceeds release limit")
             hasher.update(chunk)
             output.write(chunk)
     if {"sha256": hasher.hexdigest(), "size": size} != expected:
@@ -421,7 +425,7 @@ def promote(store, version):
             store, f"{prefix}/{linux_name}", release["artifacts"][linux_name], image_path)
         download_verified_artifact(
             store, f"{prefix}/{linux_name}.sig", release["artifacts"][linux_name + ".sig"],
-            signature_path)
+            signature_path, max_size=cli_sidecar.MAX_SIGNATURE, kind="Signature")
         with image_path.open("rb") as stream:
             minisign.verify_stream(minisign.pinned_public_key(),
                                    signature_path.read_text().strip(), stream)

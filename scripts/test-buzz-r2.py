@@ -193,6 +193,70 @@ class R2Test(unittest.TestCase):
             r2.promote(self.store, '1.2.3')
         self.assertIsNone(self.store.get('latest.json'))
 
+    def test_promote_rejects_oversized_signature_metadata_before_download(self):
+        self.publish()
+        prefix = 'releases/1.2.3/'
+        image_name = r2.updater.asset_name('1.2.3', 'linux-x86_64')
+        signature_name = image_name + '.sig'
+        sidecar_name = r2.cli_sidecar_name('1.2.3')
+        release_key = prefix + 'release.json'
+        sidecar_key = prefix + sidecar_name
+        release = json.loads(self.store.objects[release_key][0])
+        sidecar = json.loads(self.store.objects[sidecar_key][0])
+        oversized = r2.cli_sidecar.MAX_SIGNATURE + 1
+        release['artifacts'][signature_name]['size'] = oversized
+        sidecar['signature']['size'] = oversized
+        sidecar_bytes = r2.encode(sidecar)
+        self.store.objects[sidecar_key] = (sidecar_bytes, self.store.objects[sidecar_key][1])
+        release['artifacts'][sidecar_name] = {
+            'sha256': hashlib.sha256(sidecar_bytes).hexdigest(), 'size': len(sidecar_bytes)}
+        self.store.objects[release_key] = (r2.encode(release), self.store.objects[release_key][1])
+        self.store.put('latest.json', b'{"version":"1.2.2"}')
+        original_get = self.store.get
+
+        def get(key):
+            if key == prefix + signature_name:
+                self.fail('oversized signature metadata reached object download')
+            return original_get(key)
+
+        with patch.object(self.store, 'get', side_effect=get), \
+             self.assertRaisesRegex(ValueError, 'Signature size outside release limit'):
+            r2.promote(self.store, '1.2.3')
+        self.assertEqual(self.store.document('latest.json')[0], b'{"version":"1.2.2"}')
+
+    def test_promote_bounds_signature_body_before_verification(self):
+        self.publish()
+        prefix = 'releases/1.2.3/'
+        signature_key = prefix + r2.updater.asset_name('1.2.3', 'linux-x86_64') + '.sig'
+        self.store.put('latest.json', b'{"version":"1.2.2"}')
+        original_get = self.store.get
+
+        class ObservedBody(io.BytesIO):
+            def __init__(self, data):
+                super().__init__(data)
+                self.bytes_read = 0
+                self.largest_request = 0
+
+            def read(self, size=-1):
+                self.largest_request = max(self.largest_request, size)
+                chunk = super().read(size)
+                self.bytes_read += len(chunk)
+                return chunk
+
+        body = ObservedBody(b'x' * (r2.cli_sidecar.MAX_SIGNATURE + 1))
+
+        def get(key):
+            if key == signature_key:
+                return {'Body': body, 'ETag': 'tampered'}
+            return original_get(key)
+
+        with patch.object(self.store, 'get', side_effect=get), \
+             self.assertRaisesRegex(ValueError, 'Signature exceeds release limit'):
+            r2.promote(self.store, '1.2.3')
+        self.assertLessEqual(body.bytes_read, r2.cli_sidecar.MAX_SIGNATURE + 1)
+        self.assertLessEqual(body.largest_request, r2.cli_sidecar.MAX_SIGNATURE + 1)
+        self.assertEqual(self.store.document('latest.json')[0], b'{"version":"1.2.2"}')
+
     def test_failed_public_read_never_marks_release_ready(self):
         self.public.side_effect = RuntimeError('public unavailable')
         with self.assertRaises(RuntimeError):

@@ -48,27 +48,22 @@ def digest_file(path):
 
 @contextmanager
 def _default_extractor(argv, *, env):
-    """Keep the release CI extractor's existing timeout and log behavior."""
+    """Run the release CI extractor without retaining unbounded child output."""
     with tempfile.TemporaryDirectory(prefix="buzz-cli-sidecar-") as temporary:
         root = Path(temporary)
         root.chmod(0o700)
-        log_path = root / "extract.log"
         # APPIMAGE_EXTRACT_AND_RUN is set for other steps in this job. Omit it
         # here so the runtime handles the explicit extraction command and never
         # starts the bundled application.
         environment = {**env, "HOME": str(root), "TMPDIR": str(root)}
-        with log_path.open("wb") as log:
-            result = subprocess.run(
-                argv, cwd=root,
-                env=environment, stdin=subprocess.DEVNULL,
-                stdout=log, stderr=subprocess.STDOUT,
-                check=False, timeout=900,
-            )
+        result = subprocess.run(
+            argv, cwd=root,
+            env=environment, stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            check=False, timeout=900,
+        )
         if result.returncode != 0:
-            with log_path.open("rb") as log:
-                log.seek(max(0, log_path.stat().st_size - 4096))
-                detail = log.read(4096).decode("utf-8", "replace")
-            raise ValueError(f"AppImage extraction failed ({result.returncode}): {detail}")
+            raise ValueError(f"AppImage extraction failed ({result.returncode})")
 
         yield root
 

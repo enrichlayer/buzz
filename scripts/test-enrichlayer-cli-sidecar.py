@@ -2,6 +2,7 @@ from contextlib import contextmanager
 import importlib.util
 from pathlib import Path
 import stat
+import sys
 import tempfile
 import types
 import unittest
@@ -111,6 +112,24 @@ class CliSidecarTest(unittest.TestCase):
             "size": len(b"extracted-cli\n"),
         })
         self.assertEqual(mode, 0o755)
+
+    def test_default_extractor_does_not_spool_noisy_child_output(self):
+        script = (
+            'import os\n'
+            'os.mkdir("squashfs-root")\n'
+            'for _ in range(16): os.write(1, b"x" * 1048576)\n'
+        )
+        with sidecar._default_extractor(
+                [sys.executable, '-c', script], env={'PATH': '/usr/bin:/bin'}) as root:
+            self.assertTrue((root / 'squashfs-root').is_dir())
+            self.assertFalse((root / 'extract.log').exists())
+
+    def test_default_extractor_preserves_child_failure(self):
+        with self.assertRaisesRegex(ValueError, r'AppImage extraction failed \(37\)'):
+            with sidecar._default_extractor(
+                    [sys.executable, '-c', 'import sys; sys.exit(37)'],
+                    env={'PATH': '/usr/bin:/bin'}):
+                self.fail('failed extractor yielded a directory')
 
     def test_source_and_build_prefix_mismatch_are_refused(self):
         with self.assertRaisesRegex(ValueError, "Build prefix differs"):
