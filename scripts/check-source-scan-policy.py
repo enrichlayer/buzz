@@ -108,8 +108,15 @@ def main():
             (f["File"], f["RuleID"], digest(f["Match"])) for f in baseline
         )
         if observed != expected:
-            raise RuntimeError("Fixture baseline changed: %s unexpected, %s missing; classify before updating policy" % (
-                sum((observed - expected).values()), sum((expected - observed).values())))
+            # Name path, rule and match digest only; the match stays out of CI logs.
+            def describe(counter):
+                return "".join("\n  %s (%s) matchSha256=%s x%d" % (path, rule, match, count)
+                               for (path, rule, match), count in sorted(counter.items()))
+            unexpected, missing = observed - expected, expected - observed
+            raise RuntimeError("Fixture baseline changed: %s unexpected, %s missing; classify before updating policy%s%s" % (
+                sum(unexpected.values()), sum(missing.values()),
+                "\nUnexpected:" + describe(unexpected) if unexpected else "",
+                "\nMissing:" + describe(missing) if missing else ""))
         if scan(scanner, source, policy, private / "candidate.json"):
             raise RuntimeError("Candidate source scan still has findings")
         unique = {(f["File"], f["RuleID"], f["Match"]): f for f in baseline}
