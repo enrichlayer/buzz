@@ -315,9 +315,12 @@ The contract reuses the labelled kind:1 convention above; no new event kind.
   pull requests, so the GitLab-facing path stays unchanged. A verdict is current
   only while it pins every member of the bundle, pins nothing outside it, and
   every pinned member still sits at its pinned head; a later push to any member
-  needs a new verdict. The root's `p` tags are recipients, not a trust list:
-  who may approve a member is decided per member as for pull-request verdicts
-  (a requested reviewer or the repo owner).
+  needs a new verdict. `buzz pr bundle review` reads the root from the relay
+  and refuses a verdict that leaves a member unpinned or pins a pull request
+  outside the bundle, so no note the reader would ignore is published. The
+  root's `p` tags are recipients, not a trust list: who may approve a member is
+  decided per member as for pull-request verdicts (a requested reviewer or the
+  repo owner).
 - **Mirrored roots**: a pull request opened for a GitLab merge request carries
   `["r", <merge-request-url>, "mirror-of"]` (`buzz pr open --mirror-of`). Such a
   root may also carry its Linear issue `r` tag without a session thread, because

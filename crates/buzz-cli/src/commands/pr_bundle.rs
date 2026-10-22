@@ -214,6 +214,65 @@ pub(crate) async fn cmd_bundle_open(
     Ok(())
 }
 
+/// A verdict counts only while it pins every member of the bundle and nothing
+/// outside it (`reviewBundles.ts`); the CLI refuses the note instead of
+/// publishing one the reader would ignore.
+pub(crate) fn check_head_coverage(
+    members: &[String],
+    heads: &[(String, String)],
+) -> Result<(), CliError> {
+    for member in members {
+        if !heads.iter().any(|(pr, _)| pr == member) {
+            return Err(CliError::Usage(format!(
+                "bundle member {member} has no --member-head; a bundle verdict pins every member"
+            )));
+        }
+    }
+    for (pr, _) in heads {
+        if !members.contains(pr) {
+            return Err(CliError::Usage(format!(
+                "{pr} is not a member of this bundle"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Member pull requests of a bundle root, in stack order, read from the relay.
+async fn bundle_members(client: &BuzzClient, bundle: &str) -> Result<Vec<String>, CliError> {
+    let response = client
+        .query(&serde_json::json!({"ids": [bundle], "limit": 1}))
+        .await?;
+    let events: Vec<nostr::Event> = serde_json::from_str(&response)
+        .map_err(|error| CliError::Other(format!("invalid bundle response: {error}")))?;
+    let root = events
+        .iter()
+        .find(|event| event.id.to_hex() == bundle)
+        .ok_or_else(|| {
+            CliError::Usage(
+                "--bundle root was not found on the relay; no verdict was published".into(),
+            )
+        })?;
+    let tags: Vec<&[String]> = root.tags.iter().map(|tag| tag.as_slice()).collect();
+    let labelled = tags.iter().any(|parts| {
+        parts.first().map(String::as_str) == Some("t")
+            && parts.get(1).map(String::as_str) == Some(BUNDLE_LABEL)
+    });
+    if !labelled {
+        return Err(CliError::Usage(
+            "--bundle is not a review bundle root".into(),
+        ));
+    }
+    Ok(tags
+        .iter()
+        .filter(|parts| {
+            parts.first().map(String::as_str) == Some("e")
+                && parts.get(3).map(String::as_str) == Some(MEMBER_MARKER)
+        })
+        .filter_map(|parts| parts.get(1).map(|pr| pr.to_ascii_lowercase()))
+        .collect())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn cmd_bundle_review(
     client: &BuzzClient,
@@ -231,6 +290,9 @@ pub(crate) async fn cmd_bundle_review(
         .iter()
         .map(|spec| parse_member_head(spec))
         .collect::<Result<Vec<_>, _>>()?;
+    validate_hex64(bundle)?;
+    let members = bundle_members(client, &bundle.to_ascii_lowercase()).await?;
+    check_head_coverage(&members, &heads)?;
     let tags = bundle_verdict_tags(&repo, bundle, to, decision, &heads, member_verdicts)?;
     let content = if content.trim().is_empty() {
         decision.default_content()
@@ -402,6 +464,25 @@ mod tests {
         .is_err());
     }
 
+    #[test]
+    fn a_verdict_covers_every_member_and_nothing_else() {
+        let members = ["d".repeat(64), "e".repeat(64)];
+        let head = |fill: char, commit: &str| (fill.to_string().repeat(64), commit.to_string());
+        check_head_coverage(&members, &[head('d', HEAD_A), head('e', HEAD_B)]).unwrap();
+        check_head_coverage(&members, &[head('e', HEAD_B), head('d', HEAD_A)]).unwrap();
+        let missing = check_head_coverage(&members, &[head('d', HEAD_A)]).unwrap_err();
+        assert!(
+            missing.to_string().contains("has no --member-head"),
+            "{missing}"
+        );
+        let stranger = check_head_coverage(
+            &members,
+            &[head('d', HEAD_A), head('e', HEAD_B), head('f', HEAD_A)],
+        )
+        .unwrap_err();
+        assert!(stranger.to_string().contains("not a member"), "{stranger}");
+    }
+
     #[tokio::test]
     async fn bundle_open_and_verdict_publish_signed_notes_the_relay_accepts() {
         use axum::{body::Bytes, extract::State, routing::post, Router};
@@ -409,6 +490,12 @@ mod tests {
         type Published = Arc<Mutex<Vec<nostr::Event>>>;
         let published: Published = Arc::new(Mutex::new(vec![]));
         let app = Router::new()
+            .route(
+                "/query",
+                post(|State(state): State<Published>| async move {
+                    serde_json::to_string(&*state.lock().unwrap()).unwrap()
+                }),
+            )
             .route(
                 "/events",
                 post(|State(state): State<Published>, body: Bytes| async move {
@@ -452,6 +539,37 @@ mod tests {
         .await
         .is_err());
         let root_id = published.lock().unwrap()[0].id.to_hex();
+        // A verdict that leaves a member unpinned, pins a stranger, or names a
+        // root the relay does not hold is refused before anything is signed.
+        for (bundle, heads) in [
+            (
+                root_id.clone(),
+                vec![format!("{}:{HEAD_A}", "d".repeat(64))],
+            ),
+            (
+                root_id.clone(),
+                vec![
+                    format!("{}:{HEAD_A}", "d".repeat(64)),
+                    format!("{}:{HEAD_B}", "e".repeat(64)),
+                    format!("{}:{HEAD_A}", "f".repeat(64)),
+                ],
+            ),
+            ("f".repeat(64), vec![format!("{}:{HEAD_A}", "d".repeat(64))]),
+        ] {
+            assert!(cmd_bundle_review(
+                &client,
+                OWNER,
+                "demo",
+                &bundle,
+                ReviewDecision::Approve,
+                &heads,
+                &[],
+                "",
+                &[]
+            )
+            .await
+            .is_err());
+        }
         cmd_bundle_review(
             &client,
             OWNER,
@@ -472,7 +590,7 @@ mod tests {
         assert_eq!(
             events.len(),
             2,
-            "the invalid bundle must never reach /events"
+            "the invalid bundle and the refused verdicts must never reach /events"
         );
         for event in events.iter() {
             assert!(event.verify().is_ok());
