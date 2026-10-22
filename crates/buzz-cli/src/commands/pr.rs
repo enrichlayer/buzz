@@ -6,7 +6,10 @@ use crate::validate::{
 };
 use buzz_sdk::{GitPrUpdateMeta, GitPullRequestMeta, GitRepoCoord, GitStatusMeta};
 
-fn read_optional_body(body: Option<&str>, body_file: Option<&str>) -> Result<String, CliError> {
+pub(crate) fn read_optional_body(
+    body: Option<&str>,
+    body_file: Option<&str>,
+) -> Result<String, CliError> {
     match (body, body_file) {
         (Some(_), Some(_)) => Err(CliError::Usage(
             "--body and --body-file are mutually exclusive".into(),
@@ -36,19 +39,31 @@ pub async fn cmd_open_pr(
     revision_of: Option<&str>,
     thread: Option<&str>,
     linear_issue: Option<&str>,
+    mirror_of: Option<&str>,
 ) -> Result<(), CliError> {
     validate_hex64(repo_owner)?;
     validate_repo_id(repo_id)?;
     let content = read_optional_body(body, body_file)?;
     let inherited_thread = std::env::var(super::pr_session::THREAD_ENV).ok();
     let inherited_channel = std::env::var(super::GIT_ORIGIN_CHANNEL_ENV).ok();
+    // A mirrored review has no coding thread of its own; its Linear link is
+    // then a plain provenance claim rather than a session association.
+    let detached_issue = mirror_of.is_some() && thread.is_none() && inherited_thread.is_none();
     let mut session_tags = super::pr_session::context_tags(
         thread,
         inherited_thread.as_deref(),
         channel,
         inherited_channel.as_deref(),
-        linear_issue,
+        if detached_issue { None } else { linear_issue },
     )?;
+    if let Some(source) = mirror_of {
+        session_tags.push(super::pr_session::mirror_tag(source)?);
+        if detached_issue {
+            if let Some(issue) = linear_issue {
+                session_tags.push(super::pr_session::linear_issue_tag(issue)?);
+            }
+        }
+    }
     if !session_tags.is_empty() {
         super::pr_session::verify_thread(
             client,
@@ -274,6 +289,7 @@ pub async fn dispatch(cmd: crate::PrCmd, client: &BuzzClient) -> Result<(), CliE
             revision_of,
             thread,
             linear_issue,
+            mirror_of,
         } => {
             cmd_open_pr(
                 client,
@@ -293,6 +309,7 @@ pub async fn dispatch(cmd: crate::PrCmd, client: &BuzzClient) -> Result<(), CliE
                 revision_of.as_deref(),
                 thread.as_deref(),
                 linear_issue.as_deref(),
+                mirror_of.as_deref(),
             )
             .await
         }
@@ -370,6 +387,142 @@ pub async fn dispatch(cmd: crate::PrCmd, client: &BuzzClient) -> Result<(), CliE
             )
             .await
         }
+        PrCmd::Comment {
+            repo_owner,
+            repo_id,
+            pr,
+            body,
+            body_file,
+            reply_to,
+            commit,
+            file,
+            side,
+            line,
+            to,
+        } => {
+            let content = read_optional_body(body.as_deref(), body_file.as_deref())?;
+            let anchor = super::pr_review::CommentAnchor::from_options(
+                file.as_deref(),
+                side.as_deref(),
+                line,
+            )?;
+            super::pr_review::cmd_pr_comment(
+                client,
+                &repo_owner,
+                &repo_id,
+                &pr,
+                &content,
+                reply_to.as_deref(),
+                &to,
+                commit.as_deref(),
+                anchor.as_ref(),
+            )
+            .await
+        }
+        PrCmd::Review {
+            repo_owner,
+            repo_id,
+            pr,
+            commit,
+            approve,
+            request_changes,
+            body,
+            body_file,
+            to,
+        } => {
+            let decision = super::pr_review::ReviewDecision::from_flags(approve, request_changes)?;
+            let content = read_optional_body(body.as_deref(), body_file.as_deref())?;
+            super::pr_review::cmd_pr_review(
+                client,
+                &repo_owner,
+                &repo_id,
+                &pr,
+                decision,
+                &commit,
+                &content,
+                &to,
+            )
+            .await
+        }
+        PrCmd::RequestReview {
+            repo_owner,
+            repo_id,
+            pr,
+            reviewer,
+            body,
+            body_file,
+        } => {
+            let content = read_optional_body(body.as_deref(), body_file.as_deref())?;
+            super::pr_review::cmd_pr_request_review(
+                client,
+                &repo_owner,
+                &repo_id,
+                &pr,
+                &reviewer,
+                &content,
+            )
+            .await
+        }
+        PrCmd::Bundle(sub) => dispatch_bundle(sub, client).await,
+    }
+}
+
+async fn dispatch_bundle(cmd: crate::PrBundleCmd, client: &BuzzClient) -> Result<(), CliError> {
+    use crate::PrBundleCmd;
+    match cmd {
+        PrBundleCmd::Open {
+            repo_owner,
+            repo_id,
+            subject,
+            body,
+            body_file,
+            member,
+            reviewer,
+            workspace,
+            linear_issue,
+        } => {
+            let content = read_optional_body(body.as_deref(), body_file.as_deref())?;
+            super::pr_bundle::cmd_bundle_open(
+                client,
+                &repo_owner,
+                &repo_id,
+                &subject,
+                &content,
+                &member,
+                &reviewer,
+                workspace.as_deref(),
+                linear_issue.as_deref(),
+            )
+            .await
+        }
+        PrBundleCmd::Review {
+            repo_owner,
+            repo_id,
+            bundle,
+            member_head,
+            member_verdict,
+            approve,
+            request_changes,
+            body,
+            body_file,
+            to,
+        } => {
+            let decision = super::pr_review::ReviewDecision::from_flags(approve, request_changes)?;
+            let content = read_optional_body(body.as_deref(), body_file.as_deref())?;
+            super::pr_bundle::cmd_bundle_review(
+                client,
+                &repo_owner,
+                &repo_id,
+                &bundle,
+                decision,
+                &member_head,
+                &member_verdict,
+                &content,
+                &to,
+            )
+            .await
+        }
+        PrBundleCmd::Get { event } => super::pr_bundle::cmd_bundle_get(client, &event).await,
     }
 }
 

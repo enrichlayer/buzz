@@ -49,44 +49,66 @@ pub(crate) fn context_tags(
             .map_err(|error| CliError::Usage(error.to_string()))?,
     ];
     if let Some(issue) = linear_issue {
-        let mut url = url::Url::parse(issue)
-            .map_err(|_| CliError::Usage("invalid Linear issue URL".into()))?;
-        let parts: Vec<_> = url
-            .path()
-            .strip_suffix('/')
-            .unwrap_or(url.path())
-            .split('/')
-            .collect();
-        let valid_id = parts.get(3).is_some_and(|id| {
-            id.split_once('-').is_some_and(|(team, number)| {
-                team.as_bytes().first().is_some_and(u8::is_ascii_alphabetic)
-                    && team.bytes().all(|byte| byte.is_ascii_alphanumeric())
-                    && !number.is_empty()
-                    && number.bytes().all(|byte| byte.is_ascii_digit())
-            })
-        });
-        if url.scheme() != "https"
-            || url.host_str() != Some("linear.app")
-            || !url.username().is_empty()
-            || url.password().is_some()
-            || url.port().is_some()
-            || !(parts.len() == 4 || parts.len() == 5)
-            || parts[1].is_empty()
-            || parts[2] != "issue"
-            || !valid_id
-        {
-            return Err(CliError::Usage(
-                "expected an HTTPS linear.app workspace issue URL".into(),
-            ));
-        }
-        url.set_query(None);
-        url.set_fragment(None);
-        tags.push(
-            Tag::parse(["r", url.as_str(), "linear-issue"])
-                .map_err(|error| CliError::Usage(error.to_string()))?,
-        );
+        tags.push(linear_issue_tag(issue)?);
     }
     Ok(tags)
+}
+
+/// The canonical `r … linear-issue` tag for an HTTPS linear.app issue URL.
+/// Query and fragment are dropped; anything that is not a workspace issue
+/// URL is refused, so a review never links a login page or a filtered view.
+pub(crate) fn linear_issue_tag(issue: &str) -> Result<Tag, CliError> {
+    let mut url =
+        url::Url::parse(issue).map_err(|_| CliError::Usage("invalid Linear issue URL".into()))?;
+    let parts: Vec<_> = url
+        .path()
+        .strip_suffix('/')
+        .unwrap_or(url.path())
+        .split('/')
+        .collect();
+    let valid_id = parts.get(3).is_some_and(|id| {
+        id.split_once('-').is_some_and(|(team, number)| {
+            team.as_bytes().first().is_some_and(u8::is_ascii_alphabetic)
+                && team.bytes().all(|byte| byte.is_ascii_alphanumeric())
+                && !number.is_empty()
+                && number.bytes().all(|byte| byte.is_ascii_digit())
+        })
+    });
+    if url.scheme() != "https"
+        || url.host_str() != Some("linear.app")
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port().is_some()
+        || !(parts.len() == 4 || parts.len() == 5)
+        || parts[1].is_empty()
+        || parts[2] != "issue"
+        || !valid_id
+    {
+        return Err(CliError::Usage(
+            "expected an HTTPS linear.app workspace issue URL".into(),
+        ));
+    }
+    url.set_query(None);
+    url.set_fragment(None);
+    Tag::parse(["r", url.as_str(), "linear-issue"])
+        .map_err(|error| CliError::Usage(error.to_string()))
+}
+
+/// The `r … mirror-of` tag of a review mirrored from another forge (a GitLab
+/// merge request today) so Buzz can show its diff and review it in place.
+pub(crate) fn mirror_tag(source: &str) -> Result<Tag, CliError> {
+    let url =
+        url::Url::parse(source).map_err(|_| CliError::Usage("invalid --mirror-of URL".into()))?;
+    if url.scheme() != "https"
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return Err(CliError::Usage(
+            "--mirror-of must be an HTTPS URL without credentials".into(),
+        ));
+    }
+    Tag::parse(["r", url.as_str(), "mirror-of"]).map_err(|error| CliError::Usage(error.to_string()))
 }
 
 /// Require an existing canonical thread in the selected channel before publication.
@@ -433,6 +455,119 @@ mod tests {
         }
     }
 
+    #[test]
+    fn mirror_tag_accepts_only_credential_free_https_sources() {
+        assert_eq!(
+            mirror_tag("https://gitlab.com/vertical-int/tools/-/merge_requests/8732")
+                .unwrap()
+                .as_slice(),
+            [
+                "r",
+                "https://gitlab.com/vertical-int/tools/-/merge_requests/8732",
+                "mirror-of"
+            ]
+        );
+        for url in [
+            "http://gitlab.com/vertical-int/tools/-/merge_requests/8732",
+            "https://user:secret@gitlab.com/vertical-int/tools/-/merge_requests/8732",
+            "gitlab.com/vertical-int/tools",
+            "",
+        ] {
+            assert!(mirror_tag(url).is_err(), "{url}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_mirrored_root_carries_its_issue_without_a_session_thread() {
+        use axum::{body::Bytes, extract::State, routing::post, Router};
+        use nostr::Keys;
+        use std::sync::{Arc, Mutex};
+        // (published events, relay queries seen)
+        type TestState = Arc<Mutex<(Vec<nostr::Event>, usize)>>;
+        let state: TestState = Arc::new(Mutex::new((vec![], 0)));
+        let app = Router::new()
+            .route(
+                "/query",
+                post(|State(state): State<TestState>| async move {
+                    state.lock().unwrap().1 += 1;
+                    "[]".to_string()
+                }),
+            )
+            .route(
+                "/events",
+                post(|State(state): State<TestState>, body: Bytes| async move {
+                    let event: nostr::Event = serde_json::from_slice(&body).unwrap();
+                    state.lock().unwrap().0.push(event);
+                    serde_json::json!({"accepted": true, "message": ""}).to_string()
+                }),
+            )
+            .with_state(state.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let keys = Keys::generate();
+        let client = BuzzClient::new(url, keys.clone(), None, None).unwrap();
+        let owner = keys.public_key().to_hex();
+        let commit = "a".repeat(40);
+        let clone_urls = vec![String::from("https://example.com/repo.git")];
+        let open = |mirror_of: Option<&'static str>| {
+            super::super::pr::cmd_open_pr(
+                &client,
+                &owner,
+                "demo",
+                "Review",
+                None,
+                None,
+                &commit,
+                &clone_urls,
+                Some("fix"),
+                None,
+                None,
+                &[],
+                &[],
+                None,
+                None,
+                None,
+                Some("https://linear.app/acme/issue/DEV-1"),
+                mirror_of,
+            )
+        };
+        // Without --mirror-of a detached issue is still refused.
+        assert!(open(None).await.is_err());
+        open(Some(
+            "https://gitlab.com/vertical-int/tools/-/merge_requests/8732",
+        ))
+        .await
+        .unwrap();
+        let state = state.lock().unwrap();
+        let published = &state.0;
+        assert_eq!(published.len(), 1);
+        assert_eq!(
+            state.1, 0,
+            "a mirrored root without a thread must not query the relay"
+        );
+        assert!(published[0].verify().is_ok());
+        let tags: Vec<&[String]> = published[0].tags.iter().map(|tag| tag.as_slice()).collect();
+        assert!(tags.contains(
+            &&[
+                "r".to_string(),
+                "https://gitlab.com/vertical-int/tools/-/merge_requests/8732".to_string(),
+                "mirror-of".to_string()
+            ][..]
+        ));
+        assert!(tags.contains(
+            &&[
+                "r".to_string(),
+                "https://linear.app/acme/issue/DEV-1".to_string(),
+                "linear-issue".to_string()
+            ][..]
+        ));
+        assert!(!tags
+            .iter()
+            .any(|tag| tag.get(3).map(String::as_str) == Some("buzz-session")));
+        server.abort();
+    }
+
     #[tokio::test]
     async fn opening_a_review_verifies_the_thread_before_one_signed_publish() {
         use axum::{body::Bytes, extract::State, routing::post, Router};
@@ -495,6 +630,7 @@ mod tests {
                 None,
                 Some(&root.id.to_hex()),
                 Some("https://linear.app/acme/issue/DEV-1"),
+                None,
             )
             .await;
             assert_eq!(

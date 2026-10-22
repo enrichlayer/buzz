@@ -288,3 +288,67 @@ session-specific copy of those controls.
   provenance repairs. Their changed-head validation is tracked separately;
   the receipts above apply only to the named revision. Human acceptance is
   still pending. These are private unsigned validation packages, not a release.
+
+## Review bundles (stacked pull requests)
+
+A Factory jj workspace can author several related Linear issues as one stack:
+one pull request per issue, each targeting the one below it, all pushed from the
+same workspace. GitLab sees independent merge requests; Buzz needs an identity
+for the stack so reviewers, the Orchestrator and the desktop can treat it as one
+unit of review. That identity is the review bundle.
+
+The contract reuses the labelled kind:1 convention above; no new event kind.
+
+- **Bundle root**: a kind:1 note with exactly one role label `t=review-bundle`,
+  the repository `a` address, a `subject`, and one `["e", <pr-id>, "", "bundle-member"]`
+  per member pull request in stack order (base first). At least two members.
+  Optional per member `["bookmark", <pr-id>, <jj-bookmark>]`; optional
+  `["workspace", <factory-workspace-id>]`; the Linear issue `r` tag; `p` tags
+  for the repo owner and the requested reviewers. A member listed twice, or a
+  bookmark for a pull request outside the bundle, makes the note malformed.
+- **Bundle verdict**: a kind:1 note with `["e", <bundle-id>, "", "root"]`, the
+  repository `a` address, exactly one of `t=bundle-approval` or
+  `t=bundle-changes-requested`, and one `["member-head", <pr-id>, <commit>]`
+  per reviewed member pinning the head it covers. Optional
+  `["e", <note-id>, "", "member-verdict"]` tags point at the per-member
+  `approval` / `changes-requested` notes the reviewer posted on the member
+  pull requests, so the GitLab-facing path stays unchanged. A verdict is current
+  only while every pinned member still sits at its pinned head; a later push to
+  any member needs a new verdict. Trusted signers are the same as for
+  pull-request verdicts: a requested reviewer or the repo owner.
+- **Mirrored roots**: a pull request opened for a GitLab merge request carries
+  `["r", <merge-request-url>, "mirror-of"]` (`buzz pr open --mirror-of`). Such a
+  root may also carry its Linear issue `r` tag without a session thread, because
+  the issue is the stack's administrative identity rather than a conversation.
+
+Readers: `desktop/src/features/projects/reviewBundles.ts` parses roots and
+verdicts and checks head coverage; `crates/buzz-cli/src/commands/pr_bundle.rs`
+emits them.
+
+### External reviewer posting (CLI)
+
+A reviewer that is not a Buzz client (the Tools reviewer worker, an agent in a
+Factory workspace) posts review content through `buzz-cli` with its own keys:
+
+```
+buzz pr request-review --repo-owner <hex> --repo-id <d> --pr <id> --reviewer <hex>...
+buzz pr comment  --repo-owner <hex> --repo-id <d> --pr <id> --commit <head> \
+                 [--file <path> --side old|new --line <n>] [--reply-to <starter>] --body …
+buzz pr review   --repo-owner <hex> --repo-id <d> --pr <id> --commit <head> \
+                 --approve | --request-changes [--body …]
+buzz pr bundle open   --repo-owner <hex> --repo-id <d> --subject … \
+                      --member <pr-id>[:<bookmark>] --member … [--reviewer <hex>] \
+                      [--workspace <id>] [--linear-issue <url>]
+buzz pr bundle review --repo-owner <hex> --repo-id <d> --bundle <id> \
+                      --member-head <pr-id>:<commit> … --approve | --request-changes \
+                      [--member-verdict <note-id>] [--body …]
+buzz pr bundle get    --repo-owner <hex> --repo-id <d> --bundle <id>
+```
+
+Every command emits the tags the desktop validates (`e … root`, `a`, `c`,
+`file`/`side`/`line`, `p`), so a note the CLI posts projects exactly like one
+the app posts. Inline comments require `--commit`; verdicts require the head
+they cover. Who may post is still decided by the reader: a verdict from a key
+that is neither a requested reviewer nor the repo owner is readable but does
+not change review state.
+

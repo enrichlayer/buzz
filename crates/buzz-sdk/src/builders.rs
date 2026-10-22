@@ -1179,7 +1179,12 @@ pub struct GitRepoCoord {
 }
 
 impl GitRepoCoord {
-    fn to_a_tag_value(&self) -> Result<String, SdkError> {
+    /// The `a`-tag value addressing this repo: `30617:<owner>:<id>`.
+    ///
+    /// Validates the owner pubkey and repo id the same way the NIP-34
+    /// builders do, so callers composing their own labelled notes address
+    /// the repo identically.
+    pub fn to_a_tag_value(&self) -> Result<String, SdkError> {
         let owner = check_pubkey_hex(&self.owner, "repo owner")?;
         check_repo_id(&self.id)?;
         Ok(format!("30617:{owner}:{}", self.id))

@@ -1787,6 +1787,11 @@ pub enum PrCmd {
         /// Root patch event id this PR revises
         #[arg(long)]
         revision_of: Option<String>,
+        /// HTTPS URL of the merge request this review mirrors from another
+        /// forge (`r … mirror-of`); lets `--linear-issue` stand without a
+        /// coding thread
+        #[arg(long)]
+        mirror_of: Option<String>,
     },
     /// Update a git pull request tip (NIP-34 kind:1619)
     Update {
@@ -1882,6 +1887,174 @@ pub enum PrCmd {
         /// Merge commit id (status=merged only)
         #[arg(long)]
         merge_commit: Option<String>,
+    },
+    /// Comment on a PR, optionally anchored to a diff line (labelled kind:1)
+    #[command(
+        after_help = "Examples:\n  buzz pr comment --repo-owner <hex> --repo-id myrepo --pr <id> --commit <head> --file src/a.ts --side new --line 3 --body 'blocker: …'\n  buzz pr comment --repo-owner <hex> --repo-id myrepo --pr <id> --reply-to <starter> --commit <head> --body 'Fixed.'"
+    )]
+    Comment {
+        /// Repo owner pubkey (64-char hex)
+        #[arg(long)]
+        repo_owner: String,
+        /// Repo identifier (d-tag)
+        #[arg(long)]
+        repo_id: String,
+        /// Pull request event id
+        #[arg(long)]
+        pr: String,
+        /// Comment markdown. Use '-' to read from stdin.
+        #[arg(long, conflicts_with = "body_file")]
+        body: Option<String>,
+        /// Path to comment markdown, or '-' to read from stdin.
+        #[arg(long, conflicts_with = "body")]
+        body_file: Option<String>,
+        /// Discussion starter this comment replies to; repeat its commit and anchor
+        #[arg(long)]
+        reply_to: Option<String>,
+        /// Head commit the comment refers to (required with --file)
+        #[arg(long)]
+        commit: Option<String>,
+        /// Diff file path of an inline comment
+        #[arg(long, requires = "side", requires = "line")]
+        file: Option<String>,
+        /// Diff side of an inline comment: old or new
+        #[arg(long, value_parser = ["old", "new"], requires = "file")]
+        side: Option<String>,
+        /// 1-based diff line of an inline comment
+        #[arg(long, requires = "file")]
+        line: Option<u64>,
+        /// Additional recipient pubkey(s) besides the repo owner
+        #[arg(long = "to")]
+        to: Vec<String>,
+    },
+    /// Approve or request changes on a PR head (labelled kind:1 with `c`)
+    Review {
+        /// Repo owner pubkey (64-char hex)
+        #[arg(long)]
+        repo_owner: String,
+        /// Repo identifier (d-tag)
+        #[arg(long)]
+        repo_id: String,
+        /// Pull request event id
+        #[arg(long)]
+        pr: String,
+        /// Head commit the verdict covers
+        #[arg(long)]
+        commit: String,
+        /// Approve the head
+        #[arg(long, conflicts_with = "request_changes")]
+        approve: bool,
+        /// Request changes on the head
+        #[arg(long, conflicts_with = "approve")]
+        request_changes: bool,
+        /// Verdict markdown. Use '-' to read from stdin.
+        #[arg(long, conflicts_with = "body_file")]
+        body: Option<String>,
+        /// Path to verdict markdown, or '-' to read from stdin.
+        #[arg(long, conflicts_with = "body")]
+        body_file: Option<String>,
+        /// Additional recipient pubkey(s) besides the repo owner
+        #[arg(long = "to")]
+        to: Vec<String>,
+    },
+    /// Request reviewers on a PR (trusted when signed by the author or owner)
+    RequestReview {
+        /// Repo owner pubkey (64-char hex)
+        #[arg(long)]
+        repo_owner: String,
+        /// Repo identifier (d-tag)
+        #[arg(long)]
+        repo_id: String,
+        /// Pull request event id
+        #[arg(long)]
+        pr: String,
+        /// Reviewer pubkey — can be specified multiple times
+        #[arg(long = "reviewer", required = true)]
+        reviewer: Vec<String>,
+        /// Request markdown. Use '-' to read from stdin.
+        #[arg(long, conflicts_with = "body_file")]
+        body: Option<String>,
+        /// Path to request markdown, or '-' to read from stdin.
+        #[arg(long, conflicts_with = "body")]
+        body_file: Option<String>,
+    },
+    /// Review several stacked PRs as one bundle
+    #[command(subcommand)]
+    Bundle(PrBundleCmd),
+}
+#[derive(Subcommand)]
+pub enum PrBundleCmd {
+    /// Open a review bundle over stacked PRs, parent first (labelled kind:1)
+    #[command(
+        after_help = "Examples:\n  buzz pr bundle open --repo-owner <hex> --repo-id myrepo --subject 'DEV-1 stack' --member <pr-a>:feature/DEV-1-a --member <pr-b>:feature/DEV-2-b --workspace <factory-id> --linear-issue https://linear.app/acme/issue/DEV-1 --reviewer <hex>"
+    )]
+    Open {
+        /// Repo owner pubkey (64-char hex)
+        #[arg(long)]
+        repo_owner: String,
+        /// Repo identifier (d-tag)
+        #[arg(long)]
+        repo_id: String,
+        /// Bundle subject
+        #[arg(long, alias = "title")]
+        subject: String,
+        /// Bundle markdown. Use '-' to read from stdin.
+        #[arg(long, conflicts_with = "body_file")]
+        body: Option<String>,
+        /// Path to bundle markdown, or '-' to read from stdin.
+        #[arg(long, conflicts_with = "body")]
+        body_file: Option<String>,
+        /// Member PR `<event id>[:<bookmark>]`, in stack order — at least two
+        #[arg(long = "member", required = true)]
+        member: Vec<String>,
+        /// Requested reviewer pubkey — can be specified multiple times
+        #[arg(long = "reviewer")]
+        reviewer: Vec<String>,
+        /// Authoring workspace identifier (for example a Factory jj workspace)
+        #[arg(long)]
+        workspace: Option<String>,
+        /// Linked umbrella Linear issue URL
+        #[arg(long)]
+        linear_issue: Option<String>,
+    },
+    /// Approve or request changes on a bundle at the given member heads
+    Review {
+        /// Repo owner pubkey (64-char hex)
+        #[arg(long)]
+        repo_owner: String,
+        /// Repo identifier (d-tag)
+        #[arg(long)]
+        repo_id: String,
+        /// Bundle root event id
+        #[arg(long)]
+        bundle: String,
+        /// Reviewed head per member: `<pr event id>:<commit>` — one per member
+        #[arg(long = "member-head", required = true)]
+        member_head: Vec<String>,
+        /// Per-member verdict note id this bundle verdict covers
+        #[arg(long = "member-verdict")]
+        member_verdict: Vec<String>,
+        /// Approve the bundle
+        #[arg(long, conflicts_with = "request_changes")]
+        approve: bool,
+        /// Request changes on the bundle
+        #[arg(long, conflicts_with = "approve")]
+        request_changes: bool,
+        /// Verdict markdown. Use '-' to read from stdin.
+        #[arg(long, conflicts_with = "body_file")]
+        body: Option<String>,
+        /// Path to verdict markdown, or '-' to read from stdin.
+        #[arg(long, conflicts_with = "body")]
+        body_file: Option<String>,
+        /// Additional recipient pubkey(s) besides the repo owner
+        #[arg(long = "to")]
+        to: Vec<String>,
+    },
+    /// Get a bundle root and every note rooted at it
+    Get {
+        /// Bundle root event id (64-char hex)
+        #[arg(long)]
+        event: String,
     },
 }
 
@@ -2659,7 +2832,17 @@ mod tests {
         assert_eq!(protect_names, vec!["list", "remove", "set"]);
         assert_eq!(
             names(&cmd, "pr"),
-            vec!["get", "list", "open", "status", "update"]
+            vec![
+                "bundle",
+                "comment",
+                "get",
+                "list",
+                "open",
+                "request-review",
+                "review",
+                "status",
+                "update"
+            ]
         );
         assert_eq!(
             names(&cmd, "patches"),
@@ -2714,7 +2897,7 @@ mod tests {
             ("messages", 11),
             ("pack", 2),
             ("patches", 4),
-            ("pr", 5),
+            ("pr", 9),
             ("projects", 8),
             ("prompts", 1),
             ("reactions", 3),

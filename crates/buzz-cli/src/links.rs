@@ -136,6 +136,11 @@ pub fn pull_request_link(event_id: &str, owner: &str, repo_id: &str) -> String {
     format!("buzz://pr?id={event_id}&owner={owner}&d={repo_id}")
 }
 
+/// Build a `buzz://bundle` link for a review bundle root (labelled kind 1).
+pub fn bundle_link(event_id: &str, owner: &str, repo_id: &str) -> String {
+    format!("buzz://bundle?id={event_id}&owner={owner}&d={repo_id}")
+}
+
 /// Build a `buzz://issue` link for an issue event (kind 1621).
 pub fn issue_link(event_id: &str, owner: &str, repo_id: &str) -> String {
     format!("buzz://issue?id={event_id}&owner={owner}&d={repo_id}")
@@ -176,6 +181,25 @@ mod tests {
         assert_eq!(
             project_link(owner, dtag),
             golden["links"]["project"].as_str().unwrap()
+        );
+    }
+
+    // `buzz://bundle` stays out of the shared golden fixture until the desktop
+    // parses and routes it (the deep-link validators treat every golden link
+    // as routable); the format mirrors `buzz://pr` so that slice is additive.
+    #[test]
+    fn bundle_link_mirrors_the_pull_request_shape() {
+        let golden = golden();
+        let owner = golden["owner"].as_str().unwrap();
+        let event_id = golden["eventId"].as_str().unwrap();
+        let dtag = golden["dtag"].as_str().unwrap();
+        assert_eq!(
+            bundle_link(event_id, owner, dtag),
+            golden["links"]["pullRequest"].as_str().unwrap().replacen(
+                "buzz://pr?",
+                "buzz://bundle?",
+                1
+            )
         );
     }
 

@@ -82,6 +82,7 @@ buzz://repo?owner=<pubkey-hex>&d=<repo-dtag>[&tab=<tab>]
 buzz://project?owner=<pubkey-hex>&d=<project-dtag>[&tab=<tab>]
 buzz://pr?id=<event-id-hex>&owner=<pubkey-hex>&d=<repo-dtag>
 buzz://issue?id=<event-id-hex>&owner=<pubkey-hex>&d=<repo-dtag>
+buzz://bundle?id=<event-id-hex>&owner=<pubkey-hex>&d=<repo-dtag>
 ```
 
 - `owner` is the 64-char lowercase hex pubkey of the repository/project
@@ -210,6 +211,16 @@ verbatim. `useEntityDeepLinks` — sibling to `useMessageDeepLinks.ts`, mounted
 in `AppShell` for the main window only — re-parses it with `parseEntityLink`
 and reuses `useOpenEntityLink`, so a link opened from the OS lands on the
 same view as one clicked in a message.
+
+## Review bundles (`buzz://bundle`)
+
+A review bundle is one jj stack reviewed as a unit: a kind:1 note labelled
+`t=review-bundle` that lists its member pull requests in stack order (see
+[review-workspace.md](plans/review-workspace.md#review-bundles-stacked-pull-requests)).
+`buzz pr bundle open` prints its `link` in the same shape as `buzz://pr`, with
+`id` the bundle note's event id. The Rust builder and the golden fixture carry
+the format today; desktop parsing, rendering and the bundle view land with the
+desktop bundle slice, so until then the link is informational.
 
 ## CLI (`buzz-cli`)
 
