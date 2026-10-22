@@ -611,6 +611,9 @@ class RetainedCliTest(unittest.TestCase):
     def test_nonprivate_or_symlink_destination_parent_refuses(self):
         parent = self.root / "public"
         parent.mkdir(mode=0o755)
+        # mkdir is masked by umask; establish the non-private fixture explicitly.
+        parent.chmod(0o755)
+        self.assertEqual(stat.S_IMODE(parent.stat().st_mode), 0o755)
         self.destination = parent / "buzz"
         with self.assertRaisesRegex(ValueError, "private 0700"):
             self.verify()
