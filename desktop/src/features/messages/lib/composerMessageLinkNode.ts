@@ -10,6 +10,7 @@ import {
   buildProjectLink,
   buildPullRequestLink,
   buildRepoLink,
+  buildReviewBundleLink,
   parseEntityLink,
 } from "@/shared/lib/entityLink";
 import {
@@ -36,9 +37,9 @@ export type ComposerMessageLinkAttributes = {
 };
 
 const BARE_BUZZ_LINK_AT_START =
-  /^buzz:\/\/(?:message\?|channel\/|(?:pr|issue|repo|project)\?)[^\s<>"')\]}*]+/i;
+  /^buzz:\/\/(?:message\?|channel\/|(?:pr|issue|bundle|repo|project)\?)[^\s<>"')\]}*]+/i;
 const BUZZ_LINK_SUFFIX_AT_START =
-  /^:\/\/(?:message\?|channel\/|(?:pr|issue|repo|project)\?)[^\s<>"')\]}*]+/i;
+  /^:\/\/(?:message\?|channel\/|(?:pr|issue|bundle|repo|project)\?)[^\s<>"')\]}*]+/i;
 const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
 
 function trimBareBuzzLink(value: string): string {
@@ -106,6 +107,11 @@ export function resolveComposerMessageLinkAttributes(
       return {
         channelName: "",
         href: buildIssueLink(entity.value),
+      };
+    case "bundle":
+      return {
+        channelName: "",
+        href: buildReviewBundleLink(entity.value),
       };
   }
 }
@@ -419,7 +425,7 @@ function composerLinkPresentation(
         ? `Open repository ${entity.value.dtag}`
         : entity.value.type === "project"
           ? `Open project ${entity.value.dtag}`
-          : `Open ${entity.value.type === "pr" ? "pull request" : "issue"} ${shortId} in repository ${entity.value.dtag}`,
+          : `Open ${entity.value.type === "pr" ? "pull request" : entity.value.type === "bundle" ? "review stack" : "issue"} ${shortId} in repository ${entity.value.dtag}`,
     channelName: "",
     dataAttributes: { "data-buzz-link-kind": entity.value.type },
     icon: entity.value.type,

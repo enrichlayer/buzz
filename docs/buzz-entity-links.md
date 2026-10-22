@@ -217,11 +217,31 @@ same view as one clicked in a message.
 A review bundle is one jj stack reviewed as a unit: a kind:1 note labelled
 `t=review-bundle` that lists its member pull requests in stack order (see
 [review-workspace.md](plans/review-workspace.md#review-bundles-stacked-pull-requests)).
-`buzz pr bundle open` prints its `link` in the same shape as `buzz://pr`, with
-`id` the bundle note's event id. The Rust builder carries the format today,
-asserted against the `buzz://pr` golden shape; the shared fixture gains a
-`bundle` entry when the desktop parses and routes it (the deep-link validators
-treat every fixture link as routable), so until then the link is informational.
+
+```
+buzz://bundle?id=<event-id-hex>&owner=<pubkey-hex>&d=<repo-dtag>
+```
+
+`id` is the bundle root's event id; `owner` and `d` name the repository the
+root's `a` tag addresses. `buzz pr bundle open` prints the link in this shape,
+and the shared fixture carries it under `links.bundle`, so the CLI builder, the
+TypeScript parser and the Rust deep-link validator are asserted against one
+golden string.
+
+Rendering follows `buzz://pr`: the chat chip and the compact preview use the
+**Stack** type label, and the preview resolves the root (`kinds:[1]`, `ids`)
+to show its `subject` and `Stack of N`. Opening the link navigates to the
+repository's PRs tab with `bundleId` in the search params, where
+`ProjectReviewBundlePanel` fetches the root (`fetchReviewBundle`), verifies it
+belongs to the current repository and is signed by a trusted key, and renders
+the members in stack order. A member's "Review changes" selects that pull
+request in place when it belongs to the same repository; otherwise it falls
+back to the ordinary `buzz://pr` open. A coding thread whose reviews belong to
+a bundle renders the same members as a `ReviewBundleCard` above the flat
+review list, and the bundled members leave that list.
+
+The OS deep-link validator (`deep_link.rs`) accepts the `bundle` host with the
+event params only; `tab` is rejected on it, like on `pr` and `issue`.
 
 ## CLI (`buzz-cli`)
 

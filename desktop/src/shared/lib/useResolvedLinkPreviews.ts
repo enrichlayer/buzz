@@ -10,6 +10,7 @@ import {
 } from "@/features/projects/projectModels";
 import { eventToProjectIssue } from "@/features/projects/projectIssues.mjs";
 import { eventToProjectPullRequest } from "@/features/projects/projectPullRequests.mjs";
+import { eventToReviewBundle } from "@/features/projects/reviewBundles";
 import {
   KIND_GIT_ISSUE,
   KIND_GIT_PULL_REQUEST,
@@ -527,6 +528,20 @@ export async function fetchBuzzEntityMetadata(
   }
 
   const { id, type } = parsed.value;
+  if (type === "bundle") {
+    const bundleEvents = await fetchEvents({ kinds: [1], ids: [id], limit: 1 });
+    const bundle = bundleEvents
+      .filter((event) => event.id === id)
+      .map(eventToReviewBundle)
+      .find((candidate) => candidate?.repository === repoAddress);
+    return bundle
+      ? {
+          ...base,
+          title: bundle.subject,
+          description: `Stack of ${bundle.members.length}`,
+        }
+      : null;
+  }
   const rootEvents = await fetchEvents({
     kinds: [type === "pr" ? KIND_GIT_PULL_REQUEST : KIND_GIT_ISSUE],
     ids: [id],
@@ -643,6 +658,7 @@ export function isBuzzEntityPreview(preview: SupportedLinkPreview): boolean {
   return (
     preview.kind === "buzz-pull-request" ||
     preview.kind === "buzz-issue" ||
+    preview.kind === "buzz-review-bundle" ||
     preview.kind === "buzz-repository" ||
     preview.kind === "buzz-project"
   );

@@ -175,31 +175,16 @@ mod tests {
             golden["links"]["issue"].as_str().unwrap()
         );
         assert_eq!(
+            bundle_link(event_id, owner, dtag),
+            golden["links"]["bundle"].as_str().unwrap()
+        );
+        assert_eq!(
             repo_link(owner, dtag),
             golden["links"]["repository"].as_str().unwrap()
         );
         assert_eq!(
             project_link(owner, dtag),
             golden["links"]["project"].as_str().unwrap()
-        );
-    }
-
-    // `buzz://bundle` stays out of the shared golden fixture until the desktop
-    // parses and routes it (the deep-link validators treat every golden link
-    // as routable); the format mirrors `buzz://pr` so that slice is additive.
-    #[test]
-    fn bundle_link_mirrors_the_pull_request_shape() {
-        let golden = golden();
-        let owner = golden["owner"].as_str().unwrap();
-        let event_id = golden["eventId"].as_str().unwrap();
-        let dtag = golden["dtag"].as_str().unwrap();
-        assert_eq!(
-            bundle_link(event_id, owner, dtag),
-            golden["links"]["pullRequest"].as_str().unwrap().replacen(
-                "buzz://pr?",
-                "buzz://bundle?",
-                1
-            )
         );
     }
 

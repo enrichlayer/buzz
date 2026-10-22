@@ -74,6 +74,10 @@ export function normalizeProjectPullRequestCommentAnchor(
 
 export type ProjectPullRequest = {
   sessionContext?: SessionReviewContext | null;
+  /** `r … linear-issue` on the root itself; mirrored roots have no session thread. */
+  linearIssue: { url: string; id: string } | null;
+  /** `r … mirror-of`: the HTTPS merge request this root mirrors, or null. */
+  mirrorOf: string | null;
   id: string;
   title: string;
   content: string;

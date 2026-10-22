@@ -330,6 +330,39 @@ Readers: `desktop/src/features/projects/reviewBundles.ts` parses roots and
 verdicts and checks head coverage; `crates/buzz-cli/src/commands/pr_bundle.rs`
 emits them.
 
+### Desktop rendering
+
+The desktop shows a bundle in two places, both built from the same
+`reviewBundleState` (`desktop/src/features/projects/reviewBundleState.ts`):
+
+- **In the coding thread.** `ThreadReviews` fetches the thread's reviews and
+  the bundles they belong to (`reviewBundleFetch.ts`). Each bundle renders as a
+  `ReviewBundleCard`: the subject, "Stack of N", the current bundle decision
+  (approved, changes requested, outdated by a newer push, or awaiting a
+  verdict), the umbrella Linear issue, the signer, and one row per member in
+  stack order with its bookmark, short head, status, member decision, open
+  findings, Linear issue, mirrored merge request and a "Review changes" link.
+  Members of a bundle leave the flat per-PR list so a stack is not shown twice.
+- **From a `buzz://bundle` link.** The project's PRs tab reads `bundleId` from
+  the route and renders `ProjectReviewBundlePanel` for the root, after checking
+  the root addresses the current repository and is signed by a trusted key
+  (the repo owner or a requested reviewer). Selecting a member opens it in
+  place when it belongs to the same repository.
+
+A bundle is trusted when its root is signed by the repository owner or by a
+key named in the root's `p` tags (`isTrustedReviewBundle`). Anyone the
+repository trusts as a reviewer may post a bundle verdict (`canReviewBundle`);
+the author of the bundle root may request a stack review
+(`canRequestBundleReview`), which publishes one `review-request` per member
+(`reviewBundleRequests.ts`), excluding a member's own author from its
+recipients. A member's `linearIssue` and `mirrorOf` come from the member
+root's own `r` tags, since a mirrored root has no session thread to derive
+them from.
+
+Known limits (v1): a member mirrored from a private GitLab clone shows its
+merge-request link rather than a rendered diff, and the review-request fan-out
+is signed by the active user, not by a managed owner key.
+
 ### External reviewer posting (CLI)
 
 A reviewer that is not a Buzz client (the Tools reviewer worker, an agent in a

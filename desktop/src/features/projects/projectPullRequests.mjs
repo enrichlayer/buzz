@@ -4,7 +4,28 @@ import {
   getImetaTags,
   getTag,
 } from "./projectIssues.mjs";
-import { sessionReviewContext } from "./sessionReviewContext.ts";
+import {
+  parseSessionLinearIssue,
+  sessionReviewContext,
+} from "./sessionReviewContext.ts";
+
+// A mirrored root (`buzz pr open --mirror-of … --linear-issue …`) carries its
+// references as marked `r` tags and has no session thread, so they are read
+// from the root directly rather than through `sessionContext`.
+function referenceTag(event, marker) {
+  const tag = event.tags.find((item) => item[0] === "r" && item[2] === marker);
+  return typeof tag?.[1] === "string" ? tag[1] : null;
+}
+
+function httpsReference(value) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
 
 // Updates and status changes rewrite the PR's tip commit, clone URLs, and
 // lifecycle state, so they are only honored when signed by the PR author or
@@ -407,6 +428,10 @@ export function eventToProjectPullRequest(
     repoAddress: getTag(pullRequest, "a") ?? null,
     channelId: getTag(pullRequest, "h") ?? null,
     sessionContext: sessionReviewContext(pullRequest),
+    linearIssue: parseSessionLinearIssue(
+      referenceTag(pullRequest, "linear-issue") ?? "",
+    ),
+    mirrorOf: httpsReference(referenceTag(pullRequest, "mirror-of")),
     originAgentName: getTag(pullRequest, "buzz-origin-agent") ?? null,
     labels: getAllTags(pullRequest, "t"),
     recipients: getAllTags(pullRequest, "p"),

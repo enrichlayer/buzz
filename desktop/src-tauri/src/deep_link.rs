@@ -366,11 +366,12 @@ fn parse_join_deep_link(url: &Url) -> Option<serde_json::Value> {
 
 /// Hosts of the `buzz://` git-entity links built by
 /// `desktop/src/shared/lib/entityLink.ts` and `crates/buzz-cli/src/links.rs`.
-const ENTITY_LINK_HOSTS: [&str; 6] = [
+const ENTITY_LINK_HOSTS: [&str; 7] = [
     "repo",
     "project",
     "pr",
     "issue",
+    "bundle",
     "linear-task",
     "linear-project",
 ];
@@ -437,7 +438,7 @@ fn parse_entity_deep_link(url: &Url) -> Option<()> {
         return None;
     }
 
-    let needs_event_id = host == "pr" || host == "issue";
+    let needs_event_id = matches!(host, "pr" | "issue" | "bundle");
     let allows_tab = host == "repo" || host == "project";
     let (mut owner, mut dtag, mut id, mut tab, mut commit) = (None, None, None, None, None);
     for (key, value) in url.query_pairs() {
@@ -712,7 +713,7 @@ pub(crate) fn handle_deep_link_url(app: &tauri::AppHandle, url_str: &str) {
             queue_navigation_deep_link(app, "message", &payload);
             let _ = app.emit("deep-link-message", payload);
         }
-        Some("repo" | "project" | "pr" | "issue" | "linear-task" | "linear-project") => {
+        Some("repo" | "project" | "pr" | "issue" | "bundle" | "linear-task" | "linear-project") => {
             // OS routing uses this build's scheme; frontend navigation consumes
             // canonical buzz:// entity links rather than transport identity.
             let Some(href) = canonical_entity_deep_link(

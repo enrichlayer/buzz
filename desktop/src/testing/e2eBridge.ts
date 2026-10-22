@@ -11111,7 +11111,8 @@ function sendToMockSocket(args: {
     // Git/project records and channel-scoped Linear task associations.
     if (
       filter.kinds?.some((kind) => MOCK_PROJECT_KINDS.has(kind)) ||
-      (filter.kinds?.includes(1) && (filter["#a"] || filter["#e"])) ||
+      (filter.kinds?.includes(1) &&
+        (filter["#a"] || filter["#e"] || filter.ids)) ||
       filter["#a"]?.some((address) => address.startsWith("30624:"))
     ) {
       window.__BUZZ_E2E_PROJECT_QUERY_FILTERS__ ??= [];
