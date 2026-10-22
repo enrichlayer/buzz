@@ -27,6 +27,7 @@ jobs:
       - run: python3 scripts/test-enrichlayer-release-gate.py
       - run: python3 scripts/test-enrichlayer-publish.py
       - run: python3 scripts/test-buzz-r2.py
+      - run: python3 scripts/test-enrichlayer-cli-sidecar.py
       - run: python3 scripts/test-enrichlayer-minisign.py
       - run: python3 scripts/test-publish-sprig-rolling.py
       - uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1

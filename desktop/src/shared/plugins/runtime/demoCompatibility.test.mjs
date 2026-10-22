@@ -103,3 +103,28 @@ test("theme plugins do not participate in content renderer compatibility", () =>
     "Disabled",
   );
 });
+
+test("installed theme plugins never satisfy or shadow a demo fence", () => {
+  const theme = {
+    enabled: true,
+    manifest: {
+      schemaVersion: 2,
+      kind: "theme",
+      id: "example.review-card",
+      name: "Theme",
+      version: "1.0.0",
+      themes: [],
+    },
+  };
+  assert.equal(demoPluginStatus("buzz-review-card", [theme]), "Missing");
+  const content = {
+    enabled: true,
+    manifest: {
+      schemaVersion: 1,
+      id: "example.review-card",
+      version: "1.0.0",
+      fenceLanguage: "buzz-review-card",
+    },
+  };
+  assert.equal(demoPluginStatus("buzz-review-card", [theme, content]), "Ready");
+});
