@@ -105,6 +105,39 @@ test("accepts updates signed by the PR author", () => {
   assert.equal(pullRequest.updateCount, 1);
 });
 
+test("a review bundle root is not a comment on its member pull requests", () => {
+  const root = pullRequestEvent();
+  const comment = {
+    id: "comment-plain",
+    kind: 1,
+    pubkey: ATTACKER,
+    created_at: 250,
+    content: "Looks fine",
+    tags: [["e", root.id, "", "root"]],
+  };
+  const bundle = {
+    id: "d".repeat(64),
+    kind: 1,
+    pubkey: AUTHOR,
+    created_at: 260,
+    content: "Stack: feature A then B",
+    tags: [
+      ["a", REPO_ADDRESS],
+      ["subject", "Stack"],
+      ["t", "review-bundle"],
+      ["e", root.id, "", "bundle-member"],
+      ["e", "e".repeat(64), "", "bundle-member"],
+    ],
+  };
+
+  const pullRequest = eventToProjectPullRequest(root, [], [comment, bundle]);
+
+  assert.deepEqual(
+    pullRequest.comments.map((item) => item.id),
+    ["comment-plain"],
+  );
+});
+
 test("preserves root, update, and comment tags for rich content rendering", () => {
   const root = pullRequestEvent({
     tags: [

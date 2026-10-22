@@ -1890,7 +1890,7 @@ pub enum PrCmd {
     },
     /// Comment on a PR, optionally anchored to a diff line (labelled kind:1)
     #[command(
-        after_help = "Examples:\n  buzz pr comment --repo-owner <hex> --repo-id myrepo --pr <id> --commit <head> --file src/a.ts --side new --line 3 --body 'blocker: …'\n  buzz pr comment --repo-owner <hex> --repo-id myrepo --pr <id> --reply-to <starter> --commit <head> --body 'Fixed.'"
+        after_help = "Examples:\n  buzz pr comment --repo-owner <hex> --repo-id myrepo --pr <id> --commit <head> --file src/a.ts --side new --line 3 --body 'blocker: …'\n  buzz pr comment --repo-owner <hex> --repo-id myrepo --pr <id> --reply-to <starter> --body 'Fixed.'  (inherits the starter's head and anchor)"
     )]
     Comment {
         /// Repo owner pubkey (64-char hex)

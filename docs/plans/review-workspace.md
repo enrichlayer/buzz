@@ -313,9 +313,11 @@ The contract reuses the labelled kind:1 convention above; no new event kind.
   `["e", <note-id>, "", "member-verdict"]` tags point at the per-member
   `approval` / `changes-requested` notes the reviewer posted on the member
   pull requests, so the GitLab-facing path stays unchanged. A verdict is current
-  only while every pinned member still sits at its pinned head; a later push to
-  any member needs a new verdict. Trusted signers are the same as for
-  pull-request verdicts: a requested reviewer or the repo owner.
+  only while it pins every member of the bundle, pins nothing outside it, and
+  every pinned member still sits at its pinned head; a later push to any member
+  needs a new verdict. The root's `p` tags are recipients, not a trust list:
+  who may approve a member is decided per member as for pull-request verdicts
+  (a requested reviewer or the repo owner).
 - **Mirrored roots**: a pull request opened for a GitLab merge request carries
   `["r", <merge-request-url>, "mirror-of"]` (`buzz pr open --mirror-of`). Such a
   root may also carry its Linear issue `r` tag without a session thread, because
@@ -342,13 +344,17 @@ buzz pr bundle open   --repo-owner <hex> --repo-id <d> --subject … \
 buzz pr bundle review --repo-owner <hex> --repo-id <d> --bundle <id> \
                       --member-head <pr-id>:<commit> … --approve | --request-changes \
                       [--member-verdict <note-id>] [--body …]
-buzz pr bundle get    --repo-owner <hex> --repo-id <d> --bundle <id>
+buzz pr bundle get    --event <bundle-id>
 ```
 
 Every command emits the tags the desktop validates (`e … root`, `a`, `c`,
 `file`/`side`/`line`, `p`), so a note the CLI posts projects exactly like one
 the app posts. Inline comments require `--commit`; verdicts require the head
-they cover. Who may post is still decided by the reader: a verdict from a key
+they cover. A reply (`--reply-to`) reads the starter from the relay and
+inherits its head and anchor, because the desktop keeps a reply on its thread
+only when all three match; `--commit` on a reply may only restate that head.
+Commit ids are carried exactly as given (40 or 64 hex characters), since the
+desktop compares a verdict's commit with the pull request's exactly. Who may post is still decided by the reader: a verdict from a key
 that is neither a requested reviewer nor the repo owner is readable but does
 not change review state.
 

@@ -97,7 +97,7 @@ pub(crate) fn linear_issue_tag(issue: &str) -> Result<Tag, CliError> {
 /// The `r … mirror-of` tag of a review mirrored from another forge (a GitLab
 /// merge request today) so Buzz can show its diff and review it in place.
 pub(crate) fn mirror_tag(source: &str) -> Result<Tag, CliError> {
-    let url =
+    let mut url =
         url::Url::parse(source).map_err(|_| CliError::Usage("invalid --mirror-of URL".into()))?;
     if url.scheme() != "https"
         || url.host_str().is_none()
@@ -108,6 +108,9 @@ pub(crate) fn mirror_tag(source: &str) -> Result<Tag, CliError> {
             "--mirror-of must be an HTTPS URL without credentials".into(),
         ));
     }
+    // A forge URL may carry a token in its query; the tag names the review, not a session.
+    url.set_query(None);
+    url.set_fragment(None);
     Tag::parse(["r", url.as_str(), "mirror-of"]).map_err(|error| CliError::Usage(error.to_string()))
 }
 
@@ -470,9 +473,16 @@ mod tests {
         for url in [
             "http://gitlab.com/vertical-int/tools/-/merge_requests/8732",
             "https://user:secret@gitlab.com/vertical-int/tools/-/merge_requests/8732",
-            "gitlab.com/vertical-int/tools",
-            "",
         ] {
+            assert!(mirror_tag(url).is_err(), "{url}");
+        }
+        assert_eq!(
+            mirror_tag("https://gitlab.com/vertical-int/tools/-/merge_requests/8732?private_token=x#note_1")
+                .unwrap()
+                .as_slice()[1],
+            "https://gitlab.com/vertical-int/tools/-/merge_requests/8732"
+        );
+        for url in ["gitlab.com/vertical-int/tools", ""] {
             assert!(mirror_tag(url).is_err(), "{url}");
         }
     }

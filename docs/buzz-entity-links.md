@@ -218,9 +218,10 @@ A review bundle is one jj stack reviewed as a unit: a kind:1 note labelled
 `t=review-bundle` that lists its member pull requests in stack order (see
 [review-workspace.md](plans/review-workspace.md#review-bundles-stacked-pull-requests)).
 `buzz pr bundle open` prints its `link` in the same shape as `buzz://pr`, with
-`id` the bundle note's event id. The Rust builder and the golden fixture carry
-the format today; desktop parsing, rendering and the bundle view land with the
-desktop bundle slice, so until then the link is informational.
+`id` the bundle note's event id. The Rust builder carries the format today,
+asserted against the `buzz://pr` golden shape; the shared fixture gains a
+`bundle` entry when the desktop parses and routes it (the deep-link validators
+treat every fixture link as routable), so until then the link is informational.
 
 ## CLI (`buzz-cli`)
 

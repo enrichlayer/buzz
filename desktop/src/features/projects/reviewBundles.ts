@@ -1,5 +1,10 @@
 import type { RelayEvent } from "@/shared/api/types";
 import { getAllTags, getTag } from "./projectIssues.mjs";
+import {
+  PR_APPROVAL_LABEL,
+  PR_CHANGES_REQUESTED_LABEL,
+  PR_REVIEW_REQUEST_LABEL,
+} from "./projectPullRequests.mjs";
 
 // A review bundle is the Buzz identity of one jj stack: several related pull
 // requests authored together in one workspace and reviewed as a unit. The
@@ -14,7 +19,22 @@ export const BUNDLE_MEMBER_MARKER = "bundle-member";
 export const BUNDLE_MEMBER_VERDICT_MARKER = "member-verdict";
 
 const HEX64 = /^[0-9a-f]{64}$/;
-const HEX40 = /^[0-9a-f]{40}$/;
+// Full git object ids, SHA-1 or SHA-256, kept exactly as the pull request
+// carries them: the desktop compares a verdict's commit with the PR's exactly.
+const COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
+
+// One signed note has one authoritative semantic role, the same rule
+// `eventToPullRequestComment` applies; unknown labels stay harmless.
+const ROLE_LABELS = [
+  REVIEW_BUNDLE_LABEL,
+  BUNDLE_APPROVAL_LABEL,
+  BUNDLE_CHANGES_REQUESTED_LABEL,
+  PR_REVIEW_REQUEST_LABEL,
+  PR_APPROVAL_LABEL,
+  PR_CHANGES_REQUESTED_LABEL,
+  "review-thread-resolve",
+  "review-thread-reopen",
+];
 
 export type ReviewBundleMember = {
   /** Kind 1618 pull request event id, in stack order (base first). */
@@ -31,10 +51,16 @@ export type ReviewBundle = {
   /** Repository `a` address (`30617:<owner>:<d>`). */
   repository: string;
   members: ReviewBundleMember[];
-  reviewers: string[];
+  /**
+   * Pubkeys the root notifies (`p` tags: the repo owner and the reviewers the
+   * author asked for). Who may approve a member is decided per member by
+   * `projectPullRequests` (the repo owner or that member's requested
+   * reviewers), never by this list.
+   */
+  recipients: string[];
   /** Factory workspace that holds the stack, when recorded. */
   workspace: string | null;
-  /** Linear issue URL from the `r` tag, when recorded. */
+  /** Linear issue URL from the `r … linear-issue` tag, when recorded. */
   linearIssue: string | null;
 };
 
@@ -57,16 +83,34 @@ function lowerHex(value: string | undefined, pattern: RegExp): string | null {
   return pattern.test(lower) ? lower : null;
 }
 
-function labels(event: RelayEvent): string[] {
-  return getAllTags(event, "t").map((label) => label.toLowerCase());
+function roleLabel(event: RelayEvent): string | null {
+  const roles = getAllTags(event, "t")
+    .map((label) => label.toLowerCase())
+    .filter((label) => ROLE_LABELS.includes(label));
+  return roles.length === 1 ? roles[0] : null;
+}
+
+/** `undefined` when absent, `null` when present but malformed (the note is rejected). */
+function linearIssueUrl(event: RelayEvent): string | null | undefined {
+  const tag = event.tags.find(
+    (item) => item[0] === "r" && item[2] === "linear-issue",
+  );
+  if (!tag) return undefined;
+  if (typeof tag[1] !== "string") return null;
+  try {
+    const url = new URL(tag[1]);
+    return url.protocol === "https:" && url.host === "linear.app"
+      ? url.href
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Parse a bundle root note; null when the event is not a well-formed bundle. */
 export function eventToReviewBundle(event: RelayEvent): ReviewBundle | null {
   if (event.kind !== 1) return null;
-  // One signed note has one semantic role, as for PR review labels.
-  const roles = labels(event);
-  if (roles.length !== 1 || roles[0] !== REVIEW_BUNDLE_LABEL) return null;
+  if (roleLabel(event) !== REVIEW_BUNDLE_LABEL) return null;
   const repository = getTag(event, "a");
   const subject = getTag(event, "subject")?.trim();
   if (!repository || !subject) return null;
@@ -87,13 +131,18 @@ export function eventToReviewBundle(event: RelayEvent): ReviewBundle | null {
     if (!member || typeof tag[2] !== "string" || !tag[2]) return null;
     member.bookmark = tag[2];
   }
-  const reviewers = [
-    ...new Set(
-      getAllTags(event, "p")
-        .map((pubkey) => lowerHex(pubkey, HEX64))
-        .filter((pubkey): pubkey is string => pubkey !== null),
-    ),
-  ];
+  // Malformed tags reject the note rather than being skipped, the policy the
+  // member and member-head tags follow above.
+  const recipients: string[] = [];
+  for (const pubkey of getAllTags(event, "p")) {
+    const lower = lowerHex(pubkey, HEX64);
+    if (!lower) return null;
+    if (!recipients.includes(lower)) recipients.push(lower);
+  }
+  const workspace = getTag(event, "workspace") ?? null;
+  if (workspace !== null && (!workspace || /\s/.test(workspace))) return null;
+  const linearIssue = linearIssueUrl(event);
+  if (linearIssue === null) return null;
   return {
     id: event.id,
     author: event.pubkey,
@@ -101,9 +150,9 @@ export function eventToReviewBundle(event: RelayEvent): ReviewBundle | null {
     subject,
     repository,
     members,
-    reviewers,
-    workspace: getTag(event, "workspace") ?? null,
-    linearIssue: getTag(event, "r") ?? null,
+    recipients,
+    workspace,
+    linearIssue: linearIssue ?? null,
   };
 }
 
@@ -112,12 +161,11 @@ export function eventToReviewBundleVerdict(
   event: RelayEvent,
 ): ReviewBundleVerdict | null {
   if (event.kind !== 1) return null;
-  const roles = labels(event);
-  if (roles.length !== 1) return null;
+  const role = roleLabel(event);
   const decision =
-    roles[0] === BUNDLE_APPROVAL_LABEL
+    role === BUNDLE_APPROVAL_LABEL
       ? "approval"
-      : roles[0] === BUNDLE_CHANGES_REQUESTED_LABEL
+      : role === BUNDLE_CHANGES_REQUESTED_LABEL
         ? "changes-requested"
         : null;
   if (!decision) return null;
@@ -130,7 +178,8 @@ export function eventToReviewBundleVerdict(
   for (const tag of event.tags) {
     if (tag[0] !== "member-head") continue;
     const pullRequest = lowerHex(tag[1], HEX64);
-    const commit = lowerHex(tag[2], HEX40);
+    const commit =
+      typeof tag[2] === "string" && COMMIT.test(tag[2]) ? tag[2] : null;
     if (!pullRequest || !commit || seen.has(pullRequest)) return null;
     seen.add(pullRequest);
     memberHeads.push({ pullRequest, commit });
@@ -156,14 +205,23 @@ export function eventToReviewBundleVerdict(
 }
 
 /**
- * A verdict is current only while every member it pinned still sits at the
- * head it reviewed. A bundle member pushed after the verdict needs a new one.
+ * A verdict covers a bundle only while it pins every member of that bundle,
+ * pins nothing outside it, and every pinned member still sits at the head it
+ * reviewed. A member pushed after the verdict, or a verdict over a partial
+ * stack, needs a new verdict.
  */
 export function verdictCoversHeads(
+  bundle: ReviewBundle,
   verdict: ReviewBundleVerdict,
   heads: ReadonlyMap<string, string>,
 ): boolean {
-  return verdict.memberHeads.every(
-    (member) => heads.get(member.pullRequest)?.toLowerCase() === member.commit,
+  if (verdict.bundle !== bundle.id) return false;
+  const pinned = new Map(
+    verdict.memberHeads.map((member) => [member.pullRequest, member.commit]),
   );
+  if (pinned.size !== bundle.members.length) return false;
+  return bundle.members.every((member) => {
+    const commit = pinned.get(member.pullRequest);
+    return commit !== undefined && heads.get(member.pullRequest) === commit;
+  });
 }

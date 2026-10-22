@@ -67,7 +67,7 @@ pub(crate) fn parse_member_head(spec: &str) -> Result<(String, String), CliError
     };
     validate_hex64(pr)?;
     validate_commit(commit)?;
-    Ok((pr.to_ascii_lowercase(), commit.to_ascii_lowercase()))
+    Ok((pr.to_ascii_lowercase(), commit.to_string()))
 }
 
 fn bundle_decision_label(decision: ReviewDecision) -> &'static str {

@@ -32,13 +32,17 @@ pub(crate) fn tag(parts: &[&str]) -> Result<Tag, CliError> {
     Tag::parse(parts.iter().copied()).map_err(|error| CliError::Usage(error.to_string()))
 }
 
-/// A git commit id as NIP-34 carries it: 40 hex characters.
+/// A full git object id as the SDK's NIP-34 builders accept it: 40 (SHA-1) or
+/// 64 (SHA-256) hex characters. The value is carried as given, because the
+/// desktop compares a verdict's `c` with the pull request's exactly.
 pub(crate) fn validate_commit(commit: &str) -> Result<(), CliError> {
-    if commit.len() == 40 && commit.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+    if (commit.len() == 40 || commit.len() == 64)
+        && commit.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
         Ok(())
     } else {
         Err(CliError::Usage(
-            "expected a 40-character hex commit id".into(),
+            "expected a full 40- or 64-character hex commit id".into(),
         ))
     }
 }
@@ -180,7 +184,7 @@ pub(crate) fn comment_tags(
     tags.extend(recipient_tags(&repo.owner, to)?);
     if let Some(commit) = commit {
         validate_commit(commit)?;
-        tags.push(tag(&["c", &commit.to_ascii_lowercase()])?);
+        tags.push(tag(&["c", commit])?);
     }
     if let Some(anchor) = anchor {
         if commit.is_none() {
@@ -208,7 +212,7 @@ pub(crate) fn review_tags(
     let mut tags = root_tags(repo, pr)?;
     tags.extend(recipient_tags(&repo.owner, to)?);
     tags.push(tag(&["t", decision.label()])?);
-    tags.push(tag(&["c", &commit.to_ascii_lowercase()])?);
+    tags.push(tag(&["c", commit])?);
     Ok(tags)
 }
 
@@ -253,6 +257,69 @@ async fn publish_note(
     Ok(())
 }
 
+/// The head and anchor of a discussion starter. The desktop keeps a reply on
+/// its thread only when the reply's `c`, anchor and repo equal the starter's
+/// (`reviewThreads.ts`), so a reply inherits both instead of guessing.
+async fn starter_context(
+    client: &BuzzClient,
+    starter: &str,
+    pr: &str,
+) -> Result<StarterContext, CliError> {
+    let response = client
+        .query(&serde_json::json!({"kinds": [1], "ids": [starter], "limit": 1}))
+        .await?;
+    let events: Vec<nostr::Event> = serde_json::from_str(&response)
+        .map_err(|error| CliError::Other(format!("invalid starter response: {error}")))?;
+    let event = events
+        .iter()
+        .find(|event| event.id.to_hex() == starter)
+        .ok_or_else(|| {
+            CliError::Usage(
+                "--reply-to starter was not found on the relay; no comment was published".into(),
+            )
+        })?;
+    let value = |name: &str| {
+        event.tags.iter().find_map(|tag| {
+            let parts = tag.as_slice();
+            (parts.first().map(String::as_str) == Some(name))
+                .then(|| parts.get(1).cloned())
+                .flatten()
+        })
+    };
+    let on_pr = event.tags.iter().any(|tag| {
+        let parts = tag.as_slice();
+        parts.first().map(String::as_str) == Some("e")
+            && parts.get(1).map(String::as_str) == Some(pr)
+            && parts.get(3).map(String::as_str) == Some("root")
+    });
+    if !on_pr {
+        return Err(CliError::Usage(
+            "--reply-to starter is not a comment on this pull request".into(),
+        ));
+    }
+    let anchor = match (value("file"), value("side"), value("line")) {
+        (Some(path), Some(side), Some(line)) => {
+            let line = line
+                .parse()
+                .map_err(|_| CliError::Usage("starter carries a malformed line anchor".into()))?;
+            Some(CommentAnchor::new(&path, &side, line)?)
+        }
+        _ => None,
+    };
+    Ok(StarterContext {
+        author: event.pubkey.to_hex(),
+        commit: value("c"),
+        anchor,
+    })
+}
+
+/// What a reply inherits from its discussion starter.
+struct StarterContext {
+    author: String,
+    commit: Option<String>,
+    anchor: Option<CommentAnchor>,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn cmd_pr_comment(
     client: &BuzzClient,
@@ -269,7 +336,35 @@ pub(crate) async fn cmd_pr_comment(
         return Err(CliError::Usage("a comment needs a body".into()));
     }
     let repo = repo_coord(repo_owner, repo_id)?;
-    let tags = comment_tags(&repo, pr, reply_to, to, commit, anchor)?;
+    let mut to = to.to_vec();
+    let (commit, anchor) = match reply_to {
+        Some(starter) => {
+            if anchor.is_some() {
+                return Err(CliError::Usage(
+                    "a reply inherits the starter's anchor; drop --file, --side and --line".into(),
+                ));
+            }
+            validate_hex64(starter)?;
+            let starter = starter_context(
+                client,
+                &starter.to_ascii_lowercase(),
+                &pr.to_ascii_lowercase(),
+            )
+            .await?;
+            // The app notifies the starter's author on every reply.
+            to.push(starter.author);
+            if let (Some(given), Some(inherited)) = (commit, starter.commit.as_deref()) {
+                if given != inherited {
+                    return Err(CliError::Usage(format!(
+                        "--commit {given} differs from the starter's head {inherited}; a reply stays on its thread's head"
+                    )));
+                }
+            }
+            (starter.commit, starter.anchor)
+        }
+        None => (commit.map(str::to_string), anchor.cloned()),
+    };
+    let tags = comment_tags(&repo, pr, reply_to, &to, commit.as_deref(), anchor.as_ref())?;
     let link = crate::links::pull_request_link(pr, &repo.owner, &repo.id);
     publish_note(client, content, tags, &link).await
 }
@@ -388,6 +483,137 @@ mod tests {
         assert_eq!(tags[0], vec!["e", PR, "", "root"]);
         assert_eq!(tags[2], vec!["e", &starter, "", "reply"]);
         assert!(!tags.iter().any(|tag| tag[0] == "t"));
+    }
+
+    #[tokio::test]
+    async fn a_reply_inherits_the_starter_head_and_anchor() {
+        use axum::{body::Bytes, extract::State, routing::post, Router};
+        use nostr::{EventBuilder, Keys, Kind};
+        use std::sync::{Arc, Mutex};
+        // (starter the relay returns, published events)
+        type TestState = Arc<Mutex<(Vec<nostr::Event>, Vec<nostr::Event>)>>;
+        let keys = Keys::generate();
+        // The starter is another reviewer's note; a signer's own `p` tag is
+        // dropped at signing, so the test must not reply to itself.
+        let author = Keys::generate();
+        let starter = EventBuilder::new(Kind::TextNote, "blocker: null check")
+            .tags(
+                comment_tags(
+                    &repo(),
+                    PR,
+                    None,
+                    &[],
+                    Some(HEAD),
+                    Some(&CommentAnchor::new("src/a.ts", "new", 3).unwrap()),
+                )
+                .unwrap(),
+            )
+            .sign_with_keys(&author)
+            .unwrap();
+        let state: TestState = Arc::new(Mutex::new((vec![starter.clone()], vec![])));
+        let app = Router::new()
+            .route(
+                "/query",
+                post(|State(state): State<TestState>| async move {
+                    serde_json::to_string(&state.lock().unwrap().0).unwrap()
+                }),
+            )
+            .route(
+                "/events",
+                post(|State(state): State<TestState>, body: Bytes| async move {
+                    let event: nostr::Event = serde_json::from_slice(&body).unwrap();
+                    state.lock().unwrap().1.push(event);
+                    serde_json::json!({"accepted": true, "message": ""}).to_string()
+                }),
+            )
+            .with_state(state.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let client = BuzzClient::new(url, keys.clone(), None, None).unwrap();
+        let starter_id = starter.id.to_hex();
+        let anchor = CommentAnchor::new("src/a.ts", "new", 3).unwrap();
+        // An explicit anchor or a different head on a reply is refused.
+        assert!(cmd_pr_comment(
+            &client,
+            OWNER,
+            "demo",
+            PR,
+            "Fixed.",
+            Some(&starter_id),
+            &[],
+            None,
+            Some(&anchor)
+        )
+        .await
+        .is_err());
+        assert!(cmd_pr_comment(
+            &client,
+            OWNER,
+            "demo",
+            PR,
+            "Fixed.",
+            Some(&starter_id),
+            &[],
+            Some(&"2".repeat(40)),
+            None
+        )
+        .await
+        .is_err());
+        // A starter that is not on this pull request is refused.
+        assert!(cmd_pr_comment(
+            &client,
+            OWNER,
+            "demo",
+            &"e".repeat(64),
+            "Fixed.",
+            Some(&starter_id),
+            &[],
+            None,
+            None
+        )
+        .await
+        .is_err());
+        cmd_pr_comment(
+            &client,
+            OWNER,
+            "demo",
+            PR,
+            "Fixed.",
+            Some(&starter_id),
+            &[],
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        let published = &state.lock().unwrap().1;
+        assert_eq!(
+            published.len(),
+            1,
+            "refused replies must never reach /events"
+        );
+        let tags: Vec<Vec<String>> = published[0]
+            .tags
+            .iter()
+            .map(|tag| tag.as_slice().to_vec())
+            .collect();
+        assert!(tags.contains(&vec!["e".to_string(), PR.into(), "".into(), "root".into()]));
+        assert!(tags.contains(&vec![
+            "e".to_string(),
+            starter_id,
+            "".into(),
+            "reply".into()
+        ]));
+        assert!(tags.contains(&vec!["c".to_string(), HEAD.into()]));
+        assert!(tags.contains(&vec!["file".to_string(), "src/a.ts".into()]));
+        assert!(tags.contains(&vec!["side".to_string(), "new".into()]));
+        assert!(tags.contains(&vec!["line".to_string(), "3".into()]));
+        // Labelled like an app reply on an inline thread, and the starter's
+        // author is notified as the app does.
+        assert!(tags.contains(&vec!["t".to_string(), INLINE_COMMENT_LABEL.into()]));
+        assert!(tags.contains(&vec!["p".to_string(), author.public_key().to_hex()]));
+        server.abort();
     }
 
     #[test]
