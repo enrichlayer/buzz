@@ -25,6 +25,7 @@ export function parseProjectDetailSearch(search: Record<string, unknown>) {
     filePath: optionalSearchString(search.filePath),
     pullRequestId: optionalSearchString(search.pullRequestId),
     issueId: optionalSearchString(search.issueId),
+    bundleId: optionalSearchString(search.bundleId),
     repositoryId: optionalSearchString(search.repositoryId),
     tab: isEntityLinkTab(search.tab) ? search.tab : undefined,
     agentSession: nonEmptyString(search.agentSession),
@@ -46,6 +47,7 @@ export function parseProjectDetailSearch(search: Record<string, unknown>) {
  * kind:30617 project id (the project *is* that repository).
  */
 export function wantsProjectRepositorySurface(input: {
+  bundleId?: string;
   commitHash?: string;
   filePath?: string;
   issueId?: string;
@@ -59,6 +61,7 @@ export function wantsProjectRepositorySurface(input: {
     input.tab ||
     input.issueId ||
     input.pullRequestId ||
+    input.bundleId ||
     input.commitHash ||
     input.filePath
   ) {

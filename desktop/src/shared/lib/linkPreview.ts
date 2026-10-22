@@ -4,6 +4,7 @@ import {
   buildProjectLink,
   buildPullRequestLink,
   buildRepoLink,
+  buildReviewBundleLink,
   isEntityLink,
   parseEntityLink,
   type ParsedEntityLink,
@@ -12,6 +13,7 @@ import {
 export type SupportedLinkPreviewKind =
   | "buzz-pull-request"
   | "buzz-issue"
+  | "buzz-review-bundle"
   | "buzz-repository"
   | "buzz-project"
   | "github-pull-request"
@@ -37,6 +39,7 @@ export type SupportedLinkPreview = {
     | "PR"
     | "issue"
     | "Review"
+    | "Stack"
     | "Task"
     | "repo"
     | "project"
@@ -52,9 +55,9 @@ export type SupportedLinkPreview = {
 // their distinctive path shape (`/git/<64-hex-pubkey>/<repo>`) rather than by
 // hostname, and require an explicit scheme. Generic previews remain HTTPS-only.
 const SUPPORTED_URL_RE =
-  /(^|[\s([{<>"'])(https:\/\/[^\s<>"'\]]+|https?:\/\/[^\s<>"'\]]+\/git\/[a-f0-9]{64}\/[^\s<>"'\]]+|buzz:\/\/(?:pr|issue|repo|project)\?[^\s<>"'\]]+|(?:(?:www\.)?github\.com|(?:www\.)?linear\.app|drive\.google\.com|docs\.google\.com)\/[^\s<>"'\]]+)/gi;
+  /(^|[\s([{<>"'])(https:\/\/[^\s<>"'\]]+|https?:\/\/[^\s<>"'\]]+\/git\/[a-f0-9]{64}\/[^\s<>"'\]]+|buzz:\/\/(?:pr|issue|bundle|repo|project)\?[^\s<>"'\]]+|(?:(?:www\.)?github\.com|(?:www\.)?linear\.app|drive\.google\.com|docs\.google\.com)\/[^\s<>"'\]]+)/gi;
 const MARKDOWN_SUPPORTED_LINK_RE =
-  /!?\[([^\]\n]+)\]\((https:\/\/[^)\s<>"']+|https?:\/\/[^)\s<>"']+\/git\/[a-f0-9]{64}\/[^)\s<>"']+|buzz:\/\/(?:pr|issue|repo|project)\?[^)\s<>"']+|(?:(?:www\.)?github\.com|(?:www\.)?linear\.app|drive\.google\.com|docs\.google\.com)\/[^)\s<>"']+)\)/gi;
+  /!?\[([^\]\n]+)\]\((https:\/\/[^)\s<>"']+|https?:\/\/[^)\s<>"']+\/git\/[a-f0-9]{64}\/[^)\s<>"']+|buzz:\/\/(?:pr|issue|bundle|repo|project)\?[^)\s<>"']+|(?:(?:www\.)?github\.com|(?:www\.)?linear\.app|drive\.google\.com|docs\.google\.com)\/[^)\s<>"']+)\)/gi;
 const MAX_PREVIEWS = 8;
 
 type HiddenRange = {
@@ -308,7 +311,7 @@ export function buzzEntityFallbackTitle(link: ParsedEntityLink): string {
 }
 
 /**
- * Map a `buzz://pr|issue|repo|project` deep link onto a preview card. The
+ * Map a `buzz://pr|issue|bundle|repo|project` deep link onto a preview card. The
  * href is rebuilt through the canonical builders so equivalent links (case
  * or query order variants) dedupe to a single card.
  */
@@ -343,6 +346,15 @@ function parseBuzzEntityPreview(href: string): SupportedLinkPreview | null {
       provider: "Buzz",
       title,
       typeLabel: "Task",
+    };
+  }
+  if (link.type === "bundle") {
+    return {
+      kind: "buzz-review-bundle",
+      href: buildReviewBundleLink(link),
+      provider: "Buzz",
+      title,
+      typeLabel: "Stack",
     };
   }
   if (link.type === "project") {

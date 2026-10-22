@@ -3,8 +3,9 @@ import { relayClient } from "@/shared/api/relayClient";
 import { useRelayOrigin } from "@/shared/lib/useRelayOrigin";
 import { useOpenEntityLink } from "@/shared/ui/markdown/entityLinks";
 import { Button } from "@/shared/ui/button";
-import { fetchThreadReviews } from "../threadReviews";
+import { fetchThreadReviewSurface } from "../threadReviews";
 import { useRefreshingReviewQuery } from "../useRefreshingReviewQuery";
+import { ReviewBundleCard } from "./ReviewBundleCard";
 import { ThreadReviewList } from "./ThreadReviewList";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
@@ -30,7 +31,7 @@ export function ThreadReviews({
     ],
     enabled: Boolean(origin && identity.data?.pubkey),
     queryFn: ({ signal }) =>
-      fetchThreadReviews(
+      fetchThreadReviewSurface(
         async (filter) => {
           signal.throwIfAborted();
           const events = await relayClient.fetchEvents(filter);
@@ -42,7 +43,17 @@ export function ThreadReviews({
       ),
     retry: 1,
   });
-  if (!query.data?.length && !query.isError) return null;
+  const bundles = query.data?.bundles ?? [];
+  // A review that belongs to a stack is shown inside its card, in stack order.
+  const bundled = new Set(
+    bundles.flatMap((state) => state.members.map((row) => row.pullRequest.id)),
+  );
+  const reviews = (query.data?.reviews ?? []).filter(
+    (review) => !bundled.has(review.id),
+  );
+  const openIssue = (url: string) =>
+    void openUrl(url).catch(() => toast.error("Could not open the link."));
+  if (!query.data?.reviews.length && !query.isError) return null;
   return (
     <section
       aria-label="Coding session reviews"
@@ -67,14 +78,19 @@ export function ThreadReviews({
           </Button>
         </div>
       ) : null}
+      {bundles.map((state) => (
+        <ReviewBundleCard
+          key={state.bundle.id}
+          state={state}
+          viewerPubkey={identity.data?.pubkey}
+          onOpenReview={openReview}
+          onOpenUrl={openIssue}
+        />
+      ))}
       <ThreadReviewList
-        reviews={query.data ?? []}
+        reviews={reviews}
         onOpenReview={openReview}
-        onOpenIssue={(url) =>
-          void openUrl(url).catch(() =>
-            toast.error("Could not open the Linear issue."),
-          )
-        }
+        onOpenIssue={openIssue}
       />
     </section>
   );

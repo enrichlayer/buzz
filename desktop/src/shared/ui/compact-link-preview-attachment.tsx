@@ -79,6 +79,7 @@ export function CompactLinkPreviewAttachment({
   const showBuzzMark =
     preview.kind === "buzz-pull-request" ||
     preview.kind === "buzz-issue" ||
+    preview.kind === "buzz-review-bundle" ||
     preview.kind === "buzz-repository";
 
   return (

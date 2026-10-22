@@ -9,6 +9,7 @@ export const PROJECT_REPOSITORY_SEARCH_KEYS = [
   "repositoryId",
   "issueId",
   "pullRequestId",
+  "bundleId",
   "commitHash",
   "filePath",
 ] as const;
@@ -23,6 +24,8 @@ export const PROJECT_TAB_CRUMB_LABELS: Record<string, string> = {
 };
 
 export type ProjectDetailScreenProps = {
+  /** Review-bundle root to show on the Reviews tab (`buzz://bundle`). */
+  bundleId?: string;
   commitHash?: string;
   entityNavigationId?: string;
   filePath?: string;

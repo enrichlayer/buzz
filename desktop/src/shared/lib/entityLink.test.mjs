@@ -8,6 +8,7 @@ import {
   buildProjectLink,
   buildPullRequestLink,
   buildRepoLink,
+  buildReviewBundleLink,
   entityLinkProjectRouteId,
   ENTITY_LINK_TABS,
   isEntityLink,
@@ -33,6 +34,10 @@ test("builders emit the canonical cross-language link format", () => {
   assert.equal(
     buildIssueLink({ id: EVENT_ID, owner: OWNER, dtag: GOLDEN.dtag }),
     GOLDEN.links.issue,
+  );
+  assert.equal(
+    buildReviewBundleLink({ id: EVENT_ID, owner: OWNER, dtag: GOLDEN.dtag }),
+    GOLDEN.links.bundle,
   );
   assert.equal(
     buildRepoLink({ owner: OWNER, dtag: GOLDEN.dtag }),
@@ -257,5 +262,27 @@ test("parseEntityLink rejects noncanonical extras", () => {
   assert.deepEqual(
     parseEntityLink(`buzz://repo?owner=${OWNER}&d=buzz-world&owner=${OWNER}`),
     { ok: false, reason: "duplicate-param" },
+  );
+});
+
+test("a review-bundle link parses like a pull request link and routes to the repository", () => {
+  const parsed = parseEntityLink(GOLDEN.links.bundle);
+  assert.deepEqual(parsed, {
+    ok: true,
+    value: { type: "bundle", id: EVENT_ID, owner: OWNER, dtag: GOLDEN.dtag },
+  });
+  assert.equal(isEntityLink(GOLDEN.links.bundle), true);
+  assert.equal(
+    entityLinkProjectRouteId(parsed.value),
+    `30617:${OWNER}:${GOLDEN.dtag}`,
+  );
+  assert.equal(
+    parseEntityLink(`${GOLDEN.links.bundle}&tab=prs`).ok,
+    false,
+    "event links take no tab",
+  );
+  assert.equal(
+    parseEntityLink(`buzz://bundle?owner=${OWNER}&d=${GOLDEN.dtag}`).ok,
+    false,
   );
 });

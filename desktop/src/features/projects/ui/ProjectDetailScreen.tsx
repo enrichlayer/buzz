@@ -95,6 +95,7 @@ import {
 
 export function ProjectDetailScreen(props: ProjectDetailScreenProps) {
   const {
+    bundleId,
     commitHash,
     entityNavigationId,
     filePath,
@@ -679,6 +680,7 @@ export function ProjectDetailScreen(props: ProjectDetailScreenProps) {
   const showChannelHome =
     hasAuthoritativeHomeBinding(project) &&
     !wantsProjectRepositorySurface({
+      bundleId,
       commitHash,
       filePath,
       issueId,
@@ -784,6 +786,7 @@ export function ProjectDetailScreen(props: ProjectDetailScreenProps) {
       repositoryId: nextRepositoryId,
       issueId: null,
       pullRequestId: null,
+      bundleId: null,
       commitHash: null,
     });
     setSelectedPullRequestId(null);
@@ -943,6 +946,7 @@ export function ProjectDetailScreen(props: ProjectDetailScreenProps) {
                     repoDiff={displayedRepoDiff}
                     repoDiffError={displayedRepoDiffError}
                     repoDiffLoading={displayedRepoDiffLoading}
+                    bundleId={bundleId ?? null}
                     pullRequests={pullRequestsQuery.data ?? []}
                     pullRequestsError={pullRequestsQuery.error}
                     pullRequestsLoading={pullRequestsQuery.isLoading}

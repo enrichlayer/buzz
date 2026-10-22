@@ -157,6 +157,13 @@ function entityLinkPresentation(link: ParsedEntityLink) {
         label: `${link.dtag} · ${link.id.slice(0, 8)}`,
         tooltipFooter: `Issue · ${link.dtag}`,
       };
+    case "bundle":
+      return {
+        ariaLabel: `Open review stack ${link.id.slice(0, 8)} in repository ${link.dtag}`,
+        icon: "bundle" as const,
+        label: `${link.dtag} · stack ${link.id.slice(0, 8)}`,
+        tooltipFooter: `Review stack · ${link.dtag}`,
+      };
     case "project":
       return {
         ariaLabel: `Open project ${link.dtag}`,
@@ -189,6 +196,7 @@ export function useOpenEntityLink(): (link: ParsedEntityLink) => void {
           : {}),
         ...(link.type === "pr" ? { pullRequestId: link.id } : {}),
         ...(link.type === "issue" ? { issueId: link.id } : {}),
+        ...(link.type === "bundle" ? { bundleId: link.id, tab: "prs" } : {}),
         ...(link.type === "repo" && link.commitHash
           ? { commitHash: link.commitHash }
           : {}),

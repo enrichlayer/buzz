@@ -7,10 +7,12 @@
  *   buzz://project?owner=<owner-pubkey>&d=<project-dtag>[&tab=<tab>]
  *   buzz://pr?id=<event-id>&owner=<owner-pubkey>&d=<repo-dtag>
  *   buzz://issue?id=<event-id>&owner=<owner-pubkey>&d=<repo-dtag>
+ *   buzz://bundle?id=<event-id>&owner=<owner-pubkey>&d=<repo-dtag>
  *
  * `owner` + `d` identify the NIP-34 repository coordinate
  * (`30617:<owner>:<d>`) or the NIP-MP project coordinate
- * (`30621:<owner>:<d>`); `id` is the kind 1618 / 1621 event id. The
+ * (`30621:<owner>:<d>`); `id` is the kind 1618 / 1621 event id, or the
+ * kind 1 `review-bundle` root for `bundle` (a jj stack of 1618s). The
  * optional `tab` on the coordinate links selects a workspace tab (the
  * pull-request list, issue list, …) instead of the default readme
  * overview. The CLI builder in `crates/buzz-cli/src/links.rs` emits the
@@ -48,6 +50,7 @@ export type ParsedEntityLink =
   | LinearWorkLink
   | { type: "pr"; id: string; owner: string; dtag: string }
   | { type: "issue"; id: string; owner: string; dtag: string }
+  | { type: "bundle"; id: string; owner: string; dtag: string }
   | {
       type: "repo";
       owner: string;
@@ -157,6 +160,17 @@ export function buildIssueLink(input: {
   return `buzz://issue?id=${input.id.toLowerCase()}&owner=${input.owner.toLowerCase()}&d=${input.dtag}`;
 }
 
+/** Build a `buzz://bundle` link for a review-bundle root (kind 1, `review-bundle`). */
+export function buildReviewBundleLink(input: {
+  id: string;
+  owner: string;
+  dtag: string;
+}): string {
+  checkEventId(input.id);
+  checkCoordinate(input.owner, input.dtag);
+  return `buzz://bundle?id=${input.id.toLowerCase()}&owner=${input.owner.toLowerCase()}&d=${input.dtag}`;
+}
+
 /**
  * Cheap pre-check used by the markdown renderer and preview extraction
  * before parsing. `buzz://message` is intentionally excluded — it has its
@@ -167,6 +181,7 @@ export function isEntityLink(href: string | undefined | null): boolean {
   return (
     href.startsWith("buzz://pr?") ||
     href.startsWith("buzz://issue?") ||
+    href.startsWith("buzz://bundle?") ||
     href.startsWith("buzz://linear-task?") ||
     href.startsWith("buzz://linear-project?") ||
     href.startsWith("buzz://repo?") ||
@@ -175,7 +190,7 @@ export function isEntityLink(href: string | undefined | null): boolean {
 }
 
 /**
- * Parse a `buzz://pr|issue|repo?…` URL. Returns a discriminated result so
+ * Parse a `buzz://pr|issue|bundle|repo|project?…` URL. Returns a discriminated result so
  * callers can fall back to plain-link rendering without throwing. All
  * identifiers are validated; hex values are lowercase-normalized.
  *
@@ -207,6 +222,7 @@ export function parseEntityLink(url: string): EntityLinkParseResult {
   if (
     host !== "pr" &&
     host !== "issue" &&
+    host !== "bundle" &&
     host !== "repo" &&
     host !== "project"
   ) {

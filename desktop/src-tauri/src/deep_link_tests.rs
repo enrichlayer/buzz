@@ -102,6 +102,8 @@ fn parse_entity_deep_link_rejects_malformed_and_non_canonical_links() {
         format!("buzz://repo?owner={owner}&d=buzz-world&tab=files&commit={event_id}"),
         format!("buzz://repo?owner={owner}&d=buzz-world&tab=commits&commit=short"),
         format!("buzz://pr?id={event_id}&owner={owner}&d=buzz-world&tab=prs"),
+        format!("buzz://bundle?id={event_id}&owner={owner}&d=buzz-world&tab=prs"),
+        format!("buzz://bundle?owner={owner}&d=buzz-world"),
         format!("buzz://repo/extra?owner={owner}&d=buzz-world"),
         format!("buzz://repo?owner={owner}&d=buzz-world#top"),
         // Not an entity host.

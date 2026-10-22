@@ -47,6 +47,7 @@ import {
   ProjectOverviewPanel,
 } from "./ProjectOverviewPanel";
 import { PullRequestsPanel } from "./ProjectPullRequestsPanel";
+import { ProjectReviewBundlePanel } from "./ProjectReviewBundlePanel";
 import { ProjectTabsList } from "./ProjectWorkspaceTabList";
 import { ProjectPullRequestFilesChangedPanel } from "./ProjectPullRequestFilesChangedPanel";
 import { ProjectRepositoryUnavailableState } from "./ProjectRepositoryUnavailableState";
@@ -111,6 +112,7 @@ export function WorkspaceTabs({
   selectedPullRequest,
   selectedPullRequestId,
   sharedHeaderBackdrop,
+  bundleId,
   pullRequests,
   pullRequestsError,
   pullRequestsLoading,
@@ -161,6 +163,8 @@ export function WorkspaceTabs({
   selectedPullRequest: ProjectPullRequest | null;
   selectedPullRequestId: string | null;
   sharedHeaderBackdrop?: boolean;
+  /** Review-bundle root a `buzz://bundle` link asked to show on the Reviews tab. */
+  bundleId?: string | null;
   pullRequests: ProjectPullRequest[];
   pullRequestsError: unknown;
   pullRequestsLoading: boolean;
@@ -510,6 +514,13 @@ export function WorkspaceTabs({
           data-project-detail-panel
           value="prs"
         >
+          {bundleId && !selectedPullRequestId ? (
+            <ProjectReviewBundlePanel
+              bundleId={bundleId}
+              onSelectPullRequest={onSelectedPullRequestIdChange}
+              repository={project}
+            />
+          ) : null}
           <PullRequestsPanel
             diffStats={
               repoDiff

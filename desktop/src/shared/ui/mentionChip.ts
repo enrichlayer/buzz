@@ -55,7 +55,8 @@ export type InlineChipIconKind =
   | "repo"
   | "project"
   | "pr"
-  | "issue";
+  | "issue"
+  | "bundle";
 
 const INLINE_CHIP_ICON_KIND_CLASSES: Record<InlineChipIconKind, string> = {
   agent: "inline-chip-icon-agent agent-mention-highlight",
@@ -66,6 +67,7 @@ const INLINE_CHIP_ICON_KIND_CLASSES: Record<InlineChipIconKind, string> = {
   project: "inline-chip-icon-project",
   pr: "inline-chip-icon-pr",
   issue: "inline-chip-icon-issue",
+  bundle: "inline-chip-icon-bundle",
 };
 
 /** Shared icon-box contract for React chips and ProseMirror decorations. */
