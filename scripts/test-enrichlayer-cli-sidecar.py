@@ -80,7 +80,8 @@ class CliSidecarTest(unittest.TestCase):
         self.assertEqual(receipt["executable"]["path"], "usr/bin/buzz")
         self.assertEqual(receipt["executable"]["mode"], "0755")
         self.assertEqual(receipt["executable"]["size"], len(b"fixture-cli-binary\n"))
-        self.assertEqual(self.output.stat().st_mode & 0o777, 0o644)
+        # JSON receipts are nonexecutable; read/write permissions honor umask.
+        self.assertEqual(stat.S_IMODE(self.output.stat().st_mode) & 0o111, 0)
 
     def test_bad_signature_fails_before_extraction(self):
         self.artifact.write_bytes(fixture.DATA + b"tampered")
@@ -198,6 +199,9 @@ class CliSidecarTest(unittest.TestCase):
     def test_callback_must_yield_ordinary_private_scratch(self):
         ordinary = self.root / "scratch"
         ordinary.mkdir(mode=0o755)
+        # mkdir is masked by umask; establish the non-private fixture explicitly.
+        ordinary.chmod(0o755)
+        self.assertEqual(stat.S_IMODE(ordinary.stat().st_mode), 0o755)
         link = self.root / "scratch-link"
         link.symlink_to(ordinary, target_is_directory=True)
         for root in (ordinary, link):
