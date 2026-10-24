@@ -206,8 +206,9 @@ async fn relay_post(
     axum::Json(json!({"event_id": event.id.to_hex(), "accepted": true}))
 }
 
-#[tokio::test]
-async fn production_enrollment_recovers_partial_publish_and_does_not_regrant_revoked_membership() {
+async fn production_enrollment_recovers_partial_publish_and_does_not_regrant_revoked_membership_for(
+    cohort: &str,
+) {
     use axum::{
         routing::{get, post},
         Router,
@@ -249,14 +250,23 @@ async fn production_enrollment_recovers_partial_publish_and_does_not_regrant_rev
     let temp = tempfile::tempdir().unwrap();
     let dir = temp.path().join("identities");
     let channel = uuid::Uuid::new_v4().to_string();
+    let cohort = cohort.to_string();
+    let (runtime_id, display_name) = if cohort == "openrig" {
+        (
+            "openrig:01M56WPVF21S1FKWKSV7CNG5F8:engineering.manager".to_string(),
+            "OpenRig Engineering Manager".to_string(),
+        )
+    } else {
+        ("real-runtime-id".to_string(), "Local".to_string())
+    };
     let run = || {
         enroll(
             &owner,
             dir.clone(),
             channel.clone(),
-            "real-runtime-id".into(),
-            "local".into(),
-            "Local".into(),
+            runtime_id.clone(),
+            cohort.clone(),
+            display_name.clone(),
         )
     };
     assert!(run().await.is_err());
@@ -268,6 +278,8 @@ async fn production_enrollment_recovers_partial_publish_and_does_not_regrant_rev
     assert_eq!(state.events.lock().unwrap().len(), 3);
     let credential: serde_json::Value =
         serde_json::from_slice(&fs::read(path.with_extension("credential.json")).unwrap()).unwrap();
+    assert_eq!(credential["cohort"], cohort);
+    assert_eq!(credential["runtime_id"], runtime_id);
     assert!(credential.get("membership").is_none());
     assert!(credential.get("directory").is_none());
     assert_ne!(
@@ -284,6 +296,22 @@ async fn production_enrollment_recovers_partial_publish_and_does_not_regrant_rev
     assert!(run().await.is_err());
     assert_eq!(state.posts.load(Ordering::SeqCst), posts);
     server.abort();
+}
+
+#[tokio::test]
+async fn production_local_enrollment_recovers_partial_publish_and_revocation() {
+    production_enrollment_recovers_partial_publish_and_does_not_regrant_revoked_membership_for(
+        "local",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn production_openrig_manager_enrollment_recovers_partial_publish_and_revocation() {
+    production_enrollment_recovers_partial_publish_and_does_not_regrant_revoked_membership_for(
+        "openrig",
+    )
+    .await;
 }
 
 #[test]
