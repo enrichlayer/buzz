@@ -286,8 +286,23 @@ impl MetricsInstallError {
 /// A later exporter exit remains detached from relay service; external scrape
 /// coverage is authoritative for exporter availability.
 pub fn try_install(port: u16, gauge_idle_timeout_secs: u64) -> Result<(), MetricsInstallError> {
-    let (recorder, exporter) = configured_prometheus_builder(gauge_idle_timeout_secs)
-        .with_http_listener(([0, 0, 0, 0], port))
+    try_install_on(([0, 0, 0, 0], port).into(), gauge_idle_timeout_secs)
+}
+
+fn listener_builder(
+    address: std::net::SocketAddr,
+    gauge_idle_timeout_secs: u64,
+) -> PrometheusBuilder {
+    configured_prometheus_builder(gauge_idle_timeout_secs).with_http_listener(address)
+}
+
+/// Install the exporter on an explicit IP and port, including IPv6.
+/// Must be called from within a Tokio runtime.
+pub fn try_install_on(
+    address: std::net::SocketAddr,
+    gauge_idle_timeout_secs: u64,
+) -> Result<(), MetricsInstallError> {
+    let (recorder, exporter) = listener_builder(address, gauge_idle_timeout_secs)
         .build()
         .map_err(MetricsInstallError::Build)?;
 
@@ -643,6 +658,51 @@ pub async fn track_metrics(req: Request, next: Next) -> Response {
 mod contract_tests {
     use std::collections::BTreeSet;
     use std::time::Duration;
+
+    #[tokio::test]
+    async fn metrics_listener_binds_explicit_ipv4_and_ipv6() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        for ip in ["127.0.0.1", "::1"] {
+            // The OS chooses an available port. The exporter owns the production
+            // listener after build; no global recorder is installed by this test.
+            let candidate = std::net::TcpListener::bind((ip, 0)).expect("available probe port");
+            let address = candidate.local_addr().unwrap();
+            drop(candidate);
+            let (_recorder, exporter) = super::listener_builder(address, 300)
+                .build()
+                .expect("metrics bind");
+            let task = tokio::spawn(exporter);
+            if address.is_ipv4() {
+                let other = std::net::SocketAddr::new("127.0.0.2".parse().unwrap(), address.port());
+                assert!(
+                    tokio::net::TcpStream::connect(other).await.is_err(),
+                    "loopback exporter must not bind wildcard interfaces"
+                );
+            }
+            let mut connection = tokio::net::TcpStream::connect(address)
+                .await
+                .expect("metrics connect");
+            connection
+                .write_all(b"GET /metrics HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+                .await
+                .unwrap();
+            let mut response = String::new();
+            // Bound a broken HTTP exporter rather than hanging the test process.
+            tokio::time::timeout(
+                Duration::from_secs(5),
+                connection.read_to_string(&mut response),
+            )
+            .await
+            .expect("metrics HTTP response deadline")
+            .unwrap();
+            task.abort();
+            assert!(
+                response.starts_with("HTTP/1.1 200"),
+                "{address}: {response}"
+            );
+        }
+    }
 
     const OUTCOMES: [&str; 4] = ["success", "timeout", "error", "cancelled"];
 
