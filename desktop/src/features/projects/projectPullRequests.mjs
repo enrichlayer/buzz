@@ -43,6 +43,15 @@ function eventsForPullRequest(pullRequestId, events) {
   return events
     .filter(
       (event) =>
+        // A review bundle lists its member pull requests with `bundle-member`
+        // e-tags so `#e` queries find it; it is the stack's note, not a
+        // comment on any one member (see reviewBundles.ts).
+        !event.tags.some(
+          (tag) =>
+            tag[0] === "e" &&
+            tag[1] === pullRequestId &&
+            tag[3] === "bundle-member",
+        ) &&
         (!event.tags.some((tag) => tag[0] === "e" && tag[3] === "reply") ||
           event.tags.some(
             (tag) =>
