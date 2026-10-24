@@ -1,7 +1,10 @@
 //! Relay configuration from environment variables.
 
 use std::time::Duration;
-use std::{collections::HashMap, net::SocketAddr};
+use std::{
+    collections::HashMap,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+};
 
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -202,8 +205,12 @@ pub struct Config {
     /// TCP port for the health-only router (`/_liveness`, `/_readiness`, `/_status`).
     /// Separate from the app router so K8s probes bypass Istio and auth middleware.
     pub health_port: u16,
+    /// IP for the health-only listener; independent of the app bind address.
+    pub health_bind_ip: IpAddr,
     /// TCP port for the Prometheus metrics exporter (`GET /metrics`).
     pub metrics_port: u16,
+    /// IP for the Prometheus listener; independent of the app bind address.
+    pub metrics_bind_ip: IpAddr,
     /// Interval between read-only partition catalog audits.
     pub partition_audit_interval: Duration,
     /// Whether the partition manager may issue any partition DDL. Off also
@@ -403,6 +410,20 @@ pub struct Config {
 fn parse_bind_addr(raw: &str) -> Result<SocketAddr, ConfigError> {
     raw.parse::<SocketAddr>()
         .map_err(|e| ConfigError::InvalidBindAddr(e.to_string()))
+}
+
+fn probe_bind_ip_from_env(name: &str) -> Result<IpAddr, ConfigError> {
+    match std::env::var(name) {
+        Ok(raw) => raw.parse().map_err(|_| {
+            ConfigError::InvalidValue(format!(
+                "{name} must be an IPv4 or IPv6 address without a port"
+            ))
+        }),
+        Err(std::env::VarError::NotPresent) => Ok(Ipv4Addr::UNSPECIFIED.into()),
+        Err(std::env::VarError::NotUnicode(_)) => Err(ConfigError::InvalidValue(format!(
+            "{name} must be valid Unicode"
+        ))),
+    }
 }
 
 fn positive_u64_from_env(name: &str, default: u64) -> Result<u64, ConfigError> {
@@ -624,6 +645,8 @@ impl Config {
         let bind_addr_raw =
             std::env::var("BUZZ_BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".to_string());
         let bind_addr = parse_bind_addr(&bind_addr_raw)?;
+        let health_bind_ip = probe_bind_ip_from_env("BUZZ_HEALTH_BIND_IP")?;
+        let metrics_bind_ip = probe_bind_ip_from_env("BUZZ_METRICS_BIND_IP")?;
 
         let database_url = std::env::var("DATABASE_URL")
             .unwrap_or_else(|_| "postgres://buzz:buzz_dev@localhost:5432/buzz".to_string()); // sadscan:disable np.postgres.1
@@ -1397,7 +1420,9 @@ impl Config {
             relay_private_key,
             uds_path,
             health_port,
+            health_bind_ip,
             metrics_port,
+            metrics_bind_ip,
             partition_audit_interval,
             partition_manager_create_enabled,
             partition_manager_advance_enabled,
@@ -1558,6 +1583,74 @@ mod tests {
         );
 
         assert!(found.is_empty(), "unrelated vars must not warn: {found:?}");
+    }
+
+    #[test]
+    fn probe_bind_ips_are_explicit_independent_and_fail_closed() {
+        let _guards = env_guards();
+        let names = [
+            "BUZZ_HEALTH_BIND_IP",
+            "BUZZ_METRICS_BIND_IP",
+            "BUZZ_BIND_ADDR",
+            "BUZZ_HEALTH_PORT",
+            "BUZZ_METRICS_PORT",
+        ];
+        let previous = names.map(std::env::var_os);
+        for name in names {
+            std::env::remove_var(name);
+        }
+        std::env::set_var("BUZZ_BIND_ADDR", "127.0.0.1:3030");
+        let default = Config::from_env().expect("default probe config");
+        assert_eq!(default.health_bind_ip, IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+        assert_eq!(default.metrics_bind_ip, IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+        assert_eq!(default.health_port, 8080);
+        assert_eq!(default.metrics_port, 9102);
+        std::env::set_var("BUZZ_HEALTH_PORT", "8088");
+        std::env::set_var("BUZZ_METRICS_PORT", "9202");
+        for (health, metrics) in [("127.0.0.1", "::1"), ("::1", "127.0.0.1")] {
+            std::env::set_var("BUZZ_HEALTH_BIND_IP", health);
+            std::env::set_var("BUZZ_METRICS_BIND_IP", metrics);
+            let config = Config::from_env().expect("explicit probe IPs");
+            assert_eq!(config.health_bind_ip, health.parse::<IpAddr>().unwrap());
+            assert_eq!(config.metrics_bind_ip, metrics.parse::<IpAddr>().unwrap());
+            assert_eq!((config.health_port, config.metrics_port), (8088, 9202));
+            assert_eq!(config.bind_addr, "127.0.0.1:3030".parse().unwrap());
+        }
+        for name in &names[..2] {
+            std::env::remove_var("BUZZ_HEALTH_BIND_IP");
+            std::env::remove_var("BUZZ_METRICS_BIND_IP");
+            for invalid in [
+                "",
+                " ",
+                "localhost",
+                "127.0.0.1:8080",
+                "[::1]",
+                "[::1]:8080",
+                "invalid",
+            ] {
+                std::env::set_var(name, invalid);
+                assert!(
+                    matches!(Config::from_env(), Err(ConfigError::InvalidValue(ref message))
+                    if message.contains(name)),
+                    "{name} accepted invalid IP {invalid:?}"
+                );
+            }
+            #[cfg(unix)]
+            {
+                use std::os::unix::ffi::OsStringExt;
+                std::env::set_var(name, std::ffi::OsString::from_vec(vec![0xff]));
+                assert!(
+                    matches!(Config::from_env(), Err(ConfigError::InvalidValue(ref message))
+                    if message.contains(name))
+                );
+            }
+        }
+        for (name, value) in names.into_iter().zip(previous) {
+            match value {
+                Some(value) => std::env::set_var(name, value),
+                None => std::env::remove_var(name),
+            }
+        }
     }
 
     #[test]

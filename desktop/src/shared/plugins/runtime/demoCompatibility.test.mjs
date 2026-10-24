@@ -64,6 +64,46 @@ test("an enabled duplicate for the same fence is reported over a disabled one", 
   );
 });
 
+test("theme plugins do not participate in content renderer compatibility", () => {
+  const theme = parseRuntimePluginManifest(
+    readFileSync(
+      new URL("../../../../public/plugins/el-buzz.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const content = parseRuntimePluginManifest(
+    readFileSync(
+      new URL(
+        "../../../../../docs/examples/runtime-plugins/review-card.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  assert.equal(theme.ok, true, theme.error);
+  assert.equal(theme.manifest.schemaVersion, 2);
+  assert.equal(content.ok, true, content.error);
+  const installedTheme = { manifest: theme.manifest, enabled: true };
+  assert.equal(
+    demoPluginStatus("buzz-review-card", [installedTheme]),
+    "Missing",
+  );
+  assert.equal(
+    demoPluginStatus("buzz-review-card", [
+      installedTheme,
+      { manifest: content.manifest, enabled: true },
+    ]),
+    "Ready",
+  );
+  assert.equal(
+    demoPluginStatus("buzz-review-card", [
+      installedTheme,
+      { manifest: content.manifest, enabled: false },
+    ]),
+    "Disabled",
+  );
+});
+
 test("installed theme plugins never satisfy or shadow a demo fence", () => {
   const theme = {
     enabled: true,

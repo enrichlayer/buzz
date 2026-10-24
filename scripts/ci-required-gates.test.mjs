@@ -114,7 +114,9 @@ function evaluate(expression, event, inputs) {
   const substituted = expression.replace(
     /github\.event_name|inputs\.([\w_]+)/g,
     (key, input) =>
-      input === undefined ? JSON.stringify(event) : String(inputs[input] === true),
+      input === undefined
+        ? JSON.stringify(event)
+        : String(inputs[input] === true),
   );
   return runInNewContext(substituted, {}, { timeout: 100 });
 }
@@ -145,4 +147,84 @@ test("desktop gate selects jobs per changed-path input", () => {
   );
   assert.deepEqual(selected("push", {}), Object.keys(desktopJobs).sort());
   assert.deepEqual(selected("pull_request", {}), []);
+});
+
+const securityWorkflow = readFileSync(
+  new URL("../.github/workflows/_ci-security.yml", import.meta.url),
+  "utf8",
+);
+const jobBody = (source, name) =>
+  source.match(
+    new RegExp(`^  ${name}:\\n([\\s\\S]*?)(?=^  [\\w-]+:|$(?![\\s\\S]))`, "m"),
+  )[1];
+test("security checks select both root-only and desktop-only Rust changes", () => {
+  const domain = jobBody(workflow, "security-domain");
+  const wrapper = jobBody(workflow, "security");
+  const worker = jobBody(securityWorkflow, "security");
+  const forwarded = domain.match(/^ {6}rust: \$\{\{ (.+) \}\}$/m)[1];
+  for (const event of ["pull_request", "push"]) {
+    for (const root of [false, true]) {
+      for (const desktop of [false, true]) {
+        const evalSelection = (expression) =>
+          runInNewContext(
+            expression
+              .replace(/always\(\)/g, "true")
+              .replace(/github\.event_name/g, JSON.stringify(event))
+              .replace(/needs\.changes\.result/g, '"success"')
+              .replace(
+                /needs\.changes\.outputs\.desktop-rust/g,
+                JSON.stringify(String(desktop)),
+              )
+              .replace(
+                /needs\.changes\.outputs\.rust/g,
+                JSON.stringify(String(root)),
+              ),
+            {},
+            { timeout: 100 },
+          );
+        const expected = event === "push" || root || desktop;
+        for (const body of [domain, wrapper]) {
+          assert.equal(
+            evalSelection(body.match(/^ {4}if: (.+)$/m)[1]),
+            expected,
+          );
+        }
+        assert.equal(
+          evaluate(worker.match(/^ {4}if: (.+)$/m)[1], event, {
+            rust: evalSelection(forwarded),
+          }),
+          expected,
+        );
+      }
+    }
+  }
+});
+test("security matrix checks both manifests with the shared dependency policy", () => {
+  const manifests = securityWorkflow
+    .match(/manifest: \[([^\]]+)\]/)?.[1]
+    .split(",")
+    .map((value) => value.trim());
+  assert.deepEqual(manifests, ["Cargo.toml", "desktop/src-tauri/Cargo.toml"]);
+  const command = securityWorkflow.match(/run: (cargo-deny .+)$/m)[1];
+  for (const manifest of manifests) {
+    const expanded = command
+      .replaceAll("${{ matrix.manifest }}", manifest)
+      .replaceAll("${{ github.workspace }}", "/fixture");
+    const result = spawnSync(
+      "bash",
+      ["-c", `cargo-deny() { printf '%s\\n' "$@"; }; ${expanded}`],
+      {
+        encoding: "utf8",
+        timeout: 1000,
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.stdout.trim().split("\n"), [
+      "--manifest-path",
+      manifest,
+      "check",
+      "--config",
+      "/fixture/deny.toml",
+    ]);
+  }
 });
