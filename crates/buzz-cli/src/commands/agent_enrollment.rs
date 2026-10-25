@@ -282,7 +282,7 @@ pub(super) async fn enroll(
     }
     bounded(&runtime_id, 256, "runtime ID")?;
     bounded(&display_name, 120, "display name")?;
-    if !["local", "herdr", "factory"].contains(&cohort.as_str()) {
+    if !["local", "herdr", "factory", "openrig"].contains(&cohort.as_str()) {
         return Err(CliError::Usage("invalid cohort".into()));
     }
     let channel = uuid::Uuid::parse_str(&channel)
