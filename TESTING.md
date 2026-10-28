@@ -112,6 +112,15 @@ curl -s http://localhost:8080/_readiness        # → {"status":"ready"}
 > `BUZZ_HEALTH_PORT`) so K8s probes bypass auth middleware. The main app
 > port also exposes `/health` for convenience.
 
+Health and metrics bind independently of `BUZZ_BIND_ADDR`. Their defaults remain
+`0.0.0.0:8080` and `0.0.0.0:9102`. To keep both probe listeners on loopback, set
+`BUZZ_HEALTH_BIND_IP=127.0.0.1` and `BUZZ_METRICS_BIND_IP=127.0.0.1`; use `::1`
+for IPv6 loopback. These settings accept IP literals only (no brackets, port,
+or hostname), and malformed values refuse startup before listeners activate.
+`BUZZ_HEALTH_PORT` and `BUZZ_METRICS_PORT` still select the ports independently.
+Remote Kubernetes probes or Prometheus scrapers require an address they can reach;
+loopback is suitable only when the probe/scraper runs in the same network namespace.
+
 The relay starts in dev mode (`BUZZ_REQUIRE_AUTH_TOKEN=false`) with the stable
 relay identity generated in `.env`. See the env vars table at the bottom if
 you need to lock it down.

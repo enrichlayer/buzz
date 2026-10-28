@@ -158,13 +158,21 @@ jobs:
           test "${#images[@]}" -eq 1
           bash desktop/scripts/fix-appimage.sh "${images[0]}"
       - name: Stage Linux updater artifact
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
           set -euo pipefail
           mapfile -t images < <(find desktop/src-tauri/target/release/bundle/appimage -name '*.AppImage' -type f)
           test "${#images[@]}" -eq 1
           mkdir staged
-          cp "${images[0]}" "staged/Buzz_${VERSION}_linux-x86_64.AppImage"
-          cp "${images[0]}.sig" "staged/Buzz_${VERSION}_linux-x86_64.AppImage.sig"
+          APPIMAGE="staged/Buzz_${VERSION}_linux-x86_64.AppImage"
+          cp "${images[0]}" "$APPIMAGE"
+          cp "${images[0]}.sig" "$APPIMAGE.sig"
+          PREFIX="desktop/$SOURCE_SHA/$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT/linux-x86_64"
+          python3 scripts/enrichlayer-cli-sidecar.py \
+            "$VERSION" "$SOURCE_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
+            "$GITHUB_WORKFLOW_REF" "$GITHUB_WORKFLOW_SHA" "$PREFIX" \
+            "$APPIMAGE" "$APPIMAGE.sig" "$APPIMAGE.cli-sidecar.json"
       - name: Store verified build artifacts in private R2
         id: upload
         env:

@@ -404,7 +404,9 @@ async fn run_relay_main(boot: BootTracker) -> anyhow::Result<()> {
         bind_addr = %config.bind_addr,
         relay_url = %config.relay_url,
         health_port = config.health_port,
+        health_bind_ip = %config.health_bind_ip,
         metrics_port = config.metrics_port,
+        metrics_bind_ip = %config.metrics_bind_ip,
         max_frame_bytes = config.max_frame_bytes,
         audit_enabled = config.audit_enabled,
         push_enabled = config.push_enabled,
@@ -421,7 +423,12 @@ async fn run_relay_main(boot: BootTracker) -> anyhow::Result<()> {
         );
     let (boot, ()) = boot.run_required(
         StartupPhase::MetricsBind,
-        || relay_metrics::try_install(config.metrics_port, usage_idle_timeout_secs),
+        || {
+            relay_metrics::try_install_on(
+                (config.metrics_bind_ip, config.metrics_port).into(),
+                usage_idle_timeout_secs,
+            )
+        },
         |error| match error.failure() {
             relay_metrics::MetricsInstallFailure::Bind => LifecycleReason::Bind,
             relay_metrics::MetricsInstallFailure::RecorderConflict => {
@@ -2026,6 +2033,34 @@ async fn run_periodic_until_cancelled<Tick, TickFuture>(
 /// roughly the 5s grace plus the ack wait.
 const GRACEFUL_DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
+async fn bind_health_listener(config: &Config) -> std::io::Result<tokio::net::TcpListener> {
+    tokio::net::TcpListener::bind((config.health_bind_ip, config.health_port)).await
+}
+
+#[cfg(test)]
+mod probe_binding_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn health_listener_binds_explicit_ipv4_and_ipv6() {
+        for ip in ["127.0.0.1", "::1"] {
+            let mut config = Config::from_env().expect("config");
+            config.health_bind_ip = ip.parse().unwrap();
+            config.health_port = 0;
+            let listener = bind_health_listener(&config).await.expect("health bind");
+            let address = listener.local_addr().unwrap();
+            assert_eq!(address.ip(), config.health_bind_ip);
+            assert_ne!(address.port(), 0);
+            let connection = tokio::net::TcpStream::connect(address)
+                .await
+                .expect("health connect");
+            let (_, peer) = listener.accept().await.expect("health accept");
+            assert_eq!(peer.ip(), config.health_bind_ip);
+            drop(connection);
+        }
+    }
+}
+
 async fn serve(
     router: axum::Router,
     health_router: axum::Router,
@@ -2036,7 +2071,7 @@ async fn serve(
     let config = &state.config;
 
     let step = StepTimer::start(StartupStep::HealthBind);
-    let health_listener = tokio::net::TcpListener::bind(("0.0.0.0", config.health_port))
+    let health_listener = bind_health_listener(config)
         .await
         .map_err(|e| anyhow::anyhow!("Failed to bind health port {}: {e}", config.health_port))?;
     step.finish();
