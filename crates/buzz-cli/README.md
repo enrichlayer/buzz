@@ -20,6 +20,44 @@ export BUZZ_PRIVATE_KEY="nsec1..."
 buzz channels list
 ```
 
+## Declarative OpenRig configuration
+
+`buzz agents config validate|plan|apply|status` reconciles a strict public JSON
+manifest with durable enrollment identities and signed Buzz policy. Apply writes
+an owner-signed handoff for the existing protected runtime operator; enrollment
+does not prove deployment, effective runtime policy, presence or a team reply.
+See [AGENT_CONFIG.md](AGENT_CONFIG.md) for the manifest, adoption/recovery rules,
+command sequence and protected-host verification contract. OpenRig AgentSpec and
+RigSpec remain the canonical topology and runtime configuration.
+
+## External runtime enrollment
+
+An owner can provision a separate, delegated Buzz identity for a real runtime.
+The command keeps its signed provisioning journal and the runtime credential in
+the private `--state-dir`. To resume the same identity, keep the same state
+directory, relay, owner, cohort, and runtime ID. Changing those binding values
+selects a different journal and can provision another identity. Changing the
+channel for an existing journal is refused. Do not put this directory in a model
+child's workspace or pass the owner key to a runtime.
+
+The OpenRig manager uses the stable runtime ID `openrig:<rig-id>:engineering.manager`
+and the `openrig` cohort. The existing OpenRig host launcher owns the private
+state directory and supplies its enrolled credential only to that manager
+runtime. Implementer and reviewer sessions use their own scoped identities.
+
+```bash
+buzz agents enroll \
+  --state-dir <private-owner-state-directory> \
+  --channel <existing-channel-uuid> \
+  --runtime-id 'openrig:<rig-id>:engineering.manager' \
+  --cohort openrig \
+  --display-name 'OpenRig Engineering Manager'
+```
+
+The JSON receipt reports the delegated public key, channel, cohort, runtime ID,
+and private credential-file path. It never includes the private key. The host
+must validate the receipt and relay membership before starting the manager.
+
 ## Usage
 
 All output is JSON on stdout. Errors are JSON on stderr. Exit codes: 0=ok, 1=user error, 2=network, 3=auth, 4=other, 5=write conflict.
@@ -123,6 +161,7 @@ The table below mirrors that tree for readers who are not at a terminal.
 
 | Group | Subcommand | Description |
 |-------|-----------|-------------|
+| `agents` | `enroll` | Provision/resume one external runtime identity with a durable owner journal |
 | `messages` | `send` | Send a message to a channel |
 | | `sign` | Build and sign a message without publishing it |
 | | `publish-event` | Publish an exact, verified signed message event |

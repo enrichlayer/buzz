@@ -96,6 +96,28 @@ export BUZZ_PRIVATE_KEY="nsec1..."   # from the mint output
 
 ## 5. Unit Tests
 
+For declarative configuration changes, run the production-path suite:
+
+```bash
+cargo test -p buzz-cli --lib agent_config
+```
+
+It drives the real CLI dispatch and HTTP client against an isolated signed-event
+relay fixture: local validation, strict fields/spec hashes, stale plans,
+partial publication/replay, exact-key adoption, immutable bindings, revocation,
+delegated-owner denial, exclusive apply and signed-handoff tampering. It does
+not qualify native OpenRig runtime request authorization.
+
+For the real workflow, use [AGENT_CONFIG.md](AGENT_CONFIG.md) with an isolated
+relay/community, an owner key, an existing shared channel and a private state
+directory. Run validate → plan → apply → status; verify identical agent public
+keys on a fresh plan/apply and inspect the signed handoff and exact relay event
+IDs. Use the protected runtime operator for the next stage. An authorized
+non-owner teammate must get a same-thread reply while an excluded author is
+denied; the human must confirm that in Buzz before review readiness. Keep the
+runtime-policy, presence and messaging fields pending until independent proof.
+Never apply test configuration to an unqualified live channel.
+
 ```bash
 cargo test -p buzz-cli
 # Expected: see cargo test -p buzz-cli for current count
@@ -636,3 +658,52 @@ buzz channels delete --channel "$FORUM_ID" | jq .
 | 60 | `notes ls` | ☐ | Own, --author all, --tag, --limit |
 | 61 | `notes rm` | ☐ | Delete→get 404, double-delete idempotent, missing slug → NotFound |
 | 62 | `users set-status` | ☐ | Text+emoji, text only, emoji-only (`--text ""`), `--clear`, `--clear` + `--text` → exit 1 |
+
+### Offline declarative handoff consumer
+
+`cargo test -p buzz-cli --lib agent_config` includes the offline
+`agents config verify-handoff` dispatch, shared producer/consumer parity and
+negative controls for independent scope/generation pins, key adoption, signed
+payload/domain/signature/ID tampering, strict schemas, bounds and spec bytes.
+The local dispatch is exercised with deliberately invalid relay/key/auth-tag
+arguments to prove it returns before credential parsing or relay construction.
+One-manager fixtures cover both exact existing adoption and null-adoption first
+enrollment; private native workers have no public Buzz identity requirement.
+The suite checks that verification creates no state and changes no input file.
+
+For a command exercise, use synthetic public fixtures and the strict expected
+scope in [AGENT_CONFIG.md](AGENT_CONFIG.md#offline-handoff-verification). Run
+`buzz agents config verify-handoff --file <manifest> --handoff <generation>
+--expected <independently-supplied-scope>`; success reports
+`signed_configuration_verified: true`, while `current_heads` and
+`generation_freshness` remain `not_verified`, and native/runtime checks remain
+pending. Change the expected public key and require a nonzero exit. Do not use
+these file-only results as protected-host runtime acceptance.
+
+### Authenticated declarative head reader
+
+`cargo test -p buzz-cli --lib current_heads_tests` targets the production
+`agents config verify-heads` dispatcher and its ordinary authenticated CLI path.
+Synthetic fixtures produce a real signed handoff, retain a delegated manager
+reader, and remove the fixture's private enrollment directory before checking.
+The command must report exact signed head IDs, preserve public inputs, create no
+private state and publish nothing. Invalid CLI credentials must fail before reads.
+Run the broader `cargo test -p buzz-cli --lib agent_config` afterward to include
+offline behavior and existing producer apply/status compatibility.
+
+Negative controls cover stale profile/directory/membership, missing/ambiguous
+responses, revoked owner/manager, wrong directory owner/address, wrong relay
+membership signer/channel, invalid current signatures, exact finite allowlist
+mismatch, and independent expected owner/community/channel or client URL mismatch.
+Revocation and scope/policy cases re-sign and independently re-pin the deliberately
+bad head in a valid synthetic handoff so an unrelated ID mismatch cannot mask the
+guard under test. No synthetic result qualifies original native seats or custody.
+
+For an operator-controlled command exercise, use the same independently qualified
+public inputs as offline verification and existing managed reader auth, run
+`buzz agents config verify-heads --file <manifest> --handoff <generation>
+--expected <independent-scope>`, and require exact `observed_heads` IDs plus
+`current_heads: matched_sequential_strong_reads`. Then use a synthetic obsolete
+generation and require a nonzero exit. This live exercise is separate from unit
+tests and requires the existing runtime owner's authorization; it establishes no
+atomic activation, native effective policy, runtime presence or messaging proof.

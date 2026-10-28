@@ -16,24 +16,24 @@ use std::{
 const MAX_JOURNAL_BYTES: u64 = 64 * 1024;
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct Binding {
-    relay: String,
-    owner: String,
-    channel: String,
-    runtime_id: String,
-    cohort: String,
-    display_name: String,
+pub(super) struct Binding {
+    pub(super) relay: String,
+    pub(super) owner: String,
+    pub(super) channel: String,
+    pub(super) runtime_id: String,
+    pub(super) cohort: String,
+    pub(super) display_name: String,
 }
 
 #[derive(Serialize, Deserialize)]
-struct Journal {
+pub(super) struct Journal {
     version: u32,
-    binding: Binding,
+    pub(super) binding: Binding,
     private_key: String,
     auth_tag: String,
-    profile: Event,
-    directory: Event,
-    membership: Event,
+    pub(super) profile: Event,
+    pub(super) directory: Event,
+    pub(super) membership: Event,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq)]
@@ -59,7 +59,7 @@ fn bounded(value: &str, limit: usize, label: &str) -> Result<(), CliError> {
     Ok(())
 }
 
-fn make_journal(owner: &BuzzClient, binding: Binding) -> Result<Journal, CliError> {
+pub(super) fn make_journal(owner: &BuzzClient, binding: Binding) -> Result<Journal, CliError> {
     let keys = Keys::generate();
     let pubkey = keys.public_key().to_hex();
     let auth_tag = buzz_sdk::nip_oa::compute_auth_tag(owner.keys(), &keys.public_key(), "")
@@ -114,7 +114,7 @@ fn make_journal(owner: &BuzzClient, binding: Binding) -> Result<Journal, CliErro
 // Unix is the initial external-runtime target (macOS laptops and Linux Factory).
 // Refuse on other platforms until their private-file ACL implementation exists.
 #[cfg(unix)]
-fn private_dir(path: &Path) -> Result<(), CliError> {
+pub(super) fn private_dir(path: &Path) -> Result<(), CliError> {
     use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
     match fs::DirBuilder::new().mode(0o700).create(path) {
         Ok(()) => {}
@@ -130,13 +130,13 @@ fn private_dir(path: &Path) -> Result<(), CliError> {
     Ok(())
 }
 #[cfg(not(unix))]
-fn private_dir(_: &Path) -> Result<(), CliError> {
+pub(super) fn private_dir(_: &Path) -> Result<(), CliError> {
     Err(failure(
         "external enrollment currently requires Unix private-file permissions",
     ))
 }
 
-fn read_journal(path: &Path, binding: &Binding) -> Result<Journal, CliError> {
+pub(super) fn read_journal(path: &Path, binding: &Binding) -> Result<Journal, CliError> {
     let metadata = fs::symlink_metadata(path).map_err(failure)?;
     if !metadata.is_file() || metadata.len() > MAX_JOURNAL_BYTES {
         return Err(failure("invalid enrollment journal file"));
@@ -198,7 +198,7 @@ fn read_journal(path: &Path, binding: &Binding) -> Result<Journal, CliError> {
     Ok(journal)
 }
 
-fn persist_new(path: &Path, value: &impl Serialize) -> Result<(), CliError> {
+pub(super) fn persist_new(path: &Path, value: &impl Serialize) -> Result<(), CliError> {
     let parent = path
         .parent()
         .ok_or_else(|| failure("missing enrollment parent"))?;
@@ -230,7 +230,7 @@ fn persist_new(path: &Path, value: &impl Serialize) -> Result<(), CliError> {
     result.and(cleanup)
 }
 
-fn journal_path(dir: &Path, binding: &Binding) -> PathBuf {
+pub(super) fn journal_path(dir: &Path, binding: &Binding) -> PathBuf {
     // Display name is not identity. Subsequent launches retain the first name;
     // cohort prevents a reused provider ID crossing lanes.
     let id = json!([
@@ -245,7 +245,7 @@ fn journal_path(dir: &Path, binding: &Binding) -> PathBuf {
     ))
 }
 
-async fn publish_exact(client: &BuzzClient, event: &Event) -> Result<(), CliError> {
+pub(super) async fn publish_exact(client: &BuzzClient, event: &Event) -> Result<(), CliError> {
     let filter = json!({"kinds": [event.kind.as_u16()], "ids": [event.id.to_hex()], "limit": 1,
         "consistency": "strong"});
     let found: Vec<Event> = serde_json::from_str(&client.query(&filter).await?).map_err(failure)?;
@@ -275,6 +275,21 @@ pub(super) async fn enroll(
     cohort: String,
     display_name: String,
 ) -> Result<(), CliError> {
+    let receipt = provision(owner, state_dir, channel, runtime_id, cohort, display_name).await?;
+    println!("{receipt}");
+    Ok(())
+}
+
+/// Provision without printing, for declarative reconciliation. The receipt is
+/// public; keys and owner-signed journals remain in the private state directory.
+pub(super) async fn provision(
+    owner: &BuzzClient,
+    state_dir: PathBuf,
+    channel: String,
+    runtime_id: String,
+    cohort: String,
+    display_name: String,
+) -> Result<serde_json::Value, CliError> {
     if owner.auth_tag_owner_hex().is_some() {
         return Err(CliError::Auth(
             "enrollment requires the owner identity, not an agent delegation".into(),
@@ -282,7 +297,7 @@ pub(super) async fn enroll(
     }
     bounded(&runtime_id, 256, "runtime ID")?;
     bounded(&display_name, 120, "display name")?;
-    if !["local", "herdr", "factory"].contains(&cohort.as_str()) {
+    if !["local", "herdr", "factory", "openrig"].contains(&cohort.as_str()) {
         return Err(CliError::Usage("invalid cohort".into()));
     }
     let channel = uuid::Uuid::parse_str(&channel)
@@ -380,18 +395,16 @@ pub(super) async fn enroll(
             "runtime credential differs from enrollment; refusing replacement",
         ));
     }
-    println!(
-        "{}",
+    Ok(
         json!({"enrolled": true, "pubkey": pubkey, "owner": binding.owner,
         "relay": binding.relay, "channel": binding.channel, "cohort": binding.cohort,
         "display_name": journal.binding.display_name,
         "runtime_id": binding.runtime_id, "credentials_file": credential_path,
-        "events": {"profile": journal.profile.id, "directory": journal.directory.id, "membership": journal.membership.id}})
-    );
-    Ok(())
+        "events": {"profile": journal.profile.id, "directory": journal.directory.id, "membership": journal.membership.id}}),
+    )
 }
 
-fn valid_membership(
+pub(super) fn valid_membership(
     event: &Event,
     relay_key: &nostr::PublicKey,
     channel: &str,

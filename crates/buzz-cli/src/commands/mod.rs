@@ -1,3 +1,8 @@
+pub(crate) mod agent_config;
+pub(crate) mod agent_config_handoff;
+mod agent_config_heads;
+mod agent_config_manifest;
+mod agent_config_state;
 mod agent_enrollment;
 pub mod agents;
 pub mod channel_templates;
