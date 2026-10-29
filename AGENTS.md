@@ -29,12 +29,12 @@ and runtime evidence answer different questions.
 
 Open work in progress as a draft PR. Mark it ready for review only when this
 checklist holds for the current change. Scale it to what changed:
-documentation-only changes need content, link, and diff checks plus human
-confirmation, not app runs.
+documentation-only changes need content, link, and diff checks, not app runs.
 
-1. **Agent review ran** under [Reviewing](#reviewing), and its recommended
-   blockers were fixed or explicitly declined by the human author. Optional
-   suggestions do not gate readiness.
+1. **An independent agent review ran** under [Reviewing](#reviewing), performed by
+   an agent other than the one that authored the change. Its recommended blockers
+   were fixed or explicitly declined by the human author. Optional suggestions do
+   not gate readiness.
 2. **An agent exercised the changed behavior.** Client changes: the affected flow
    in the app, using the native app or a device when the behavior needs it
    (browser or headless Playwright counts only for what it can exercise). Relay
@@ -46,7 +46,7 @@ confirmation, not app runs.
    or hold a PR, but human execution is not a universal readiness gate.
 3. **Add `buzz-review-completed` to the PR description** once steps 1–2 hold. It
    attests the checklist, and automated reviewers may skip review because of it.
-   If later edits invalidate the review or runtime evidence, remove it and return
+   If later edits invalidate the review or step-2 evidence, remove it and return
    the PR to draft until the affected steps are redone.
 
 ## Reviewing

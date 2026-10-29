@@ -29,8 +29,9 @@ The source must be the merge commit of exactly one main PR with:
 
 Dismissed reviews and approvals of an earlier head are ignored, not counted.
 The PR-body `buzz-review-completed` attestation from [AGENTS.md](../AGENTS.md)
-remains required by the review process and release gate. It records the existing
-human-test requirement and never substitutes for independent approval. A direct main push,
+remains required by the review process and release gate. It attests the
+`AGENTS.md` readiness checklist (independent agent review and exercised evidence)
+and never substitutes for independent approval. A direct main push,
 self-approval or missing checks cannot release. The workflow gate applies even
 when branch protection is not configured.
 
