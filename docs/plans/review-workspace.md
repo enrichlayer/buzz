@@ -328,7 +328,14 @@ The contract reuses the labelled kind:1 convention above; no new event kind.
 
 Readers: `desktop/src/features/projects/reviewBundles.ts` parses roots and
 verdicts and checks head coverage; `crates/buzz-cli/src/commands/pr_bundle.rs`
-emits them.
+emits them. Each stacked pull request must explicitly name its immediate
+comparison branch with `buzz pr open --target-branch`: for `main → A → B`,
+open A with `--branch-name A --target-branch main` and B with
+`--branch-name B --target-branch A`. The CLI carries this through
+`GitPullRequestMeta.target_branch` as the existing `target-branch` tag; the
+desktop's local and remote diff requests then compare B against A, not main.
+Omitting the tag preserves the repository-default comparison for ordinary PRs.
+A `merge-base` commit alone does not identify the target branch.
 
 ### Desktop rendering
 
@@ -394,3 +401,37 @@ desktop compares a verdict's commit with the pull request's exactly. Who may pos
 that is neither a requested reviewer nor the repo owner is readable but does
 not change review state.
 
+### Bounded delivery hardening
+
+`buzz pr comment`, `review`, `request-review`, `bundle open` and `bundle review`
+report success and emit their link only after a JSON response has boolean
+`accepted: true` and `event_id` exactly equal to the submitted signed event ID.
+Missing, malformed, duplicate or mismatched proof fails with non-retryable
+`delivery_unknown`; the relay may have stored the event, but the caller must
+not record it as delivered or blindly re-sign it. A duplicate-event response
+is valid only when it contains that same exact acceptance proof.
+
+Mirrored-root authors and independent reviewers must remain distinct signing
+identities, even if the mirror author is also the repository owner. Request the
+reviewer on **every member**, not only on the bundle root. The regression below
+publishes CLI-produced mirrored roots, per-member requests, author and reviewer
+verdicts to a loopback HTTP fixture, then checks that only the distinct reviewer's
+verdicts count in the production desktop projection. It also exercises both
+production diff-request paths for a CLI-produced two-member stack and rejects
+negative acceptance fixtures without stdout/link emission. It is not the
+hand-authored browser fixture.
+
+Activate Hermit and run from `desktop/` (requires the Rust toolchain and installed
+desktop dependencies; the test builds this checkout's CLI):
+
+```sh
+node --import ./test-loader.mjs --experimental-strip-types --test \
+  tests/integration/pr-cli-delivery.test.mjs
+```
+
+This proves local delivery validation and target-branch propagation, not private
+review delivery. Review notes still use relay kind:1/global visibility: **do not
+publish private review content** or claim private-channel support. Separate
+deployed author/reviewer identities, diff-identity verdict carry across changed
+SHAs (a bare JJ change ID is insufficient), and private GitLab diff delivery
+remain blockers for later slices. Exact-SHA verdict coverage is unchanged.

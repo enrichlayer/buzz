@@ -208,7 +208,7 @@ pub(crate) async fn cmd_bundle_open(
     };
     let event = client.sign_event(note(content, tags)?)?;
     let event_id = event.id.to_hex();
-    let resp = client.submit_event(event).await?;
+    let resp = client.submit_accepted_event(event).await?;
     let link = crate::links::bundle_link(&event_id, &repo.owner, &repo.id);
     crate::client::print_create_response(&resp, "link", &link);
     Ok(())
@@ -300,7 +300,7 @@ pub(crate) async fn cmd_bundle_review(
         content
     };
     let event = client.sign_event(note(content, tags)?)?;
-    let resp = client.submit_event(event).await?;
+    let resp = client.submit_accepted_event(event).await?;
     let link = crate::links::bundle_link(bundle, &repo.owner, &repo.id);
     crate::client::print_create_response(&resp, "link", &link);
     Ok(())

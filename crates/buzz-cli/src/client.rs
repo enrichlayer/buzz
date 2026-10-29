@@ -985,6 +985,39 @@ impl BuzzClient {
         }
     }
 
+    /// Submit a review event and require proof that this exact signed event was
+    /// accepted. A successful HTTP status alone is not delivery evidence.
+    pub(crate) async fn submit_accepted_event(
+        &self,
+        event: nostr::Event,
+    ) -> Result<String, CliError> {
+        #[derive(serde::Deserialize)]
+        struct Acceptance {
+            accepted: bool,
+            event_id: String,
+        }
+
+        let event_id = event.id.to_hex();
+        let response = self.submit_event(event).await?;
+        // Serde permits structs to deserialize from sequences. Require the
+        // relay's acknowledgement to be a JSON object before using the derived
+        // struct parser, which still rejects duplicate object fields.
+        if !response.trim_start().starts_with('{') {
+            return Err(CliError::DeliveryUnknown(format!(
+                "no valid acceptance proof for event {event_id}"
+            )));
+        }
+        let proof: Acceptance = serde_json::from_str(&response).map_err(|_| {
+            CliError::DeliveryUnknown(format!("no valid acceptance proof for event {event_id}"))
+        })?;
+        if !proof.accepted || proof.event_id != event_id {
+            return Err(CliError::DeliveryUnknown(format!(
+                "relay did not confirm acceptance of event {event_id}"
+            )));
+        }
+        Ok(response)
+    }
+
     /// Submit a moderation command (kinds 9040–9044) with non-idempotent retry policy.
     async fn submit_moderation_event(&self, event: nostr::Event) -> Result<String, CliError> {
         let url = format!("{}/events", self.relay_url);
@@ -1777,6 +1810,38 @@ mod retry_policy_tests {
         EventBuilder::new(Kind::TextNote, "hi")
             .sign_with_keys(keys)
             .unwrap()
+    }
+
+    #[tokio::test]
+    async fn review_delivery_requires_exact_event_acceptance() {
+        let event = make_stored_event(&Keys::generate());
+        let id = event.id.to_hex();
+        let proof = |accepted, event_id: &str| {
+            serde_json::json!({"accepted": accepted, "event_id": event_id}).to_string()
+        };
+        let valid = proof(true, &id);
+        for response in [
+            valid.clone(),
+            proof(false, &id),
+            proof(true, &"f".repeat(64)),
+            "{\"accepted\":true}".into(),
+            format!("{{\"event_id\":\"{id}\"}}"),
+            format!("{{\"accepted\":\"true\",\"event_id\":\"{id}\"}}"),
+            format!("{{\"accepted\":false,\"accepted\":true,\"event_id\":\"{id}\"}}"),
+            format!("[true,\"{id}\"]"),
+            "not json".into(),
+        ] {
+            let expected = response == valid;
+            let (url, attempts) = test_server(move |_| (StatusCode::OK, response.clone())).await;
+            let result = test_client(&url).submit_accepted_event(event.clone()).await;
+            assert_eq!(result.is_ok(), expected, "{result:?}");
+            if let Err(error) = result {
+                assert!(matches!(error, CliError::DeliveryUnknown(_)));
+                assert!(!crate::error::is_retryable_error(&error));
+                assert!(error.to_string().contains(&id));
+            }
+            assert_eq!(attempts.load(Ordering::SeqCst), 1);
+        }
     }
 
     /// A moderation command (kind 9040) that fails the first attempt with HTTP 429

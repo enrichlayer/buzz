@@ -252,7 +252,7 @@ async fn publish_note(
     link: &str,
 ) -> Result<(), CliError> {
     let event = client.sign_event(note(content, tags)?)?;
-    let resp = client.submit_event(event).await?;
+    let resp = client.submit_accepted_event(event).await?;
     crate::client::print_create_response(&resp, "link", link);
     Ok(())
 }
@@ -522,8 +522,9 @@ mod tests {
                 "/events",
                 post(|State(state): State<TestState>, body: Bytes| async move {
                     let event: nostr::Event = serde_json::from_slice(&body).unwrap();
+                    let id = event.id.to_hex();
                     state.lock().unwrap().1.push(event);
-                    serde_json::json!({"accepted": true, "message": ""}).to_string()
+                    serde_json::json!({"event_id": id, "accepted": true, "message": ""}).to_string()
                 }),
             )
             .with_state(state.clone());
