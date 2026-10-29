@@ -1763,6 +1763,9 @@ pub enum PrCmd {
         /// Recommended branch name
         #[arg(long)]
         branch_name: Option<String>,
+        /// Comparison branch (the immediate parent branch for a stacked PR)
+        #[arg(long)]
+        target_branch: Option<String>,
         /// Most recent common ancestor with the target branch
         #[arg(long)]
         merge_base: Option<String>,

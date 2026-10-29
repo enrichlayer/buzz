@@ -1654,6 +1654,9 @@ pub struct GitPullRequestMeta {
     pub clone_urls: Vec<String>,
     /// Recommended branch name (`branch-name` tag).
     pub branch_name: Option<String>,
+    /// Explicit comparison branch (`target-branch` tag); stacked PRs name
+    /// their immediate parent branch rather than the repository default.
+    pub target_branch: Option<String>,
     /// Most recent common ancestor with the target branch (`merge-base` tag).
     pub merge_base: Option<String>,
     /// Root patch event this PR revises, which should then be closed
@@ -1717,6 +1720,9 @@ pub fn build_git_pull_request(
     if let Some(ref base) = meta.merge_base {
         check_commit_hex(base, "merge_base")?;
         tags.push(tag(&["merge-base", base])?);
+    }
+    if let Some(ref branch) = meta.target_branch {
+        tags.push(tag(&["target-branch", branch])?);
     }
     if let Some(ref patch) = meta.revision_of {
         let patch_id = check_hex_exact(patch, 64, "revision_of")?;
@@ -4699,6 +4705,7 @@ mod tests {
             commit: "c".repeat(40),
             clone_urls: vec!["https://example.com/repo.git".to_string()],
             branch_name: Some("feat/x".to_string()),
+            target_branch: Some("feat/parent".to_string()),
             labels: vec!["enhancement".to_string()],
             channel_id: Some("11111111-1111-4111-8111-111111111111".to_string()),
             ..Default::default()
@@ -4713,6 +4720,7 @@ mod tests {
         assert!(has_tag(&ev, "t", "enhancement"));
         assert!(has_tag(&ev, "h", "11111111-1111-4111-8111-111111111111"));
         assert!(has_tag(&ev, "branch-name", "feat/x"));
+        assert!(has_tag(&ev, "target-branch", "feat/parent"));
         assert_eq!(
             full_clone_tag(&ev),
             vec!["https://example.com/repo.git".to_string()]
