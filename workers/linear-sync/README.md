@@ -11,8 +11,13 @@ adding this package does not start a worker or copy issues.
 ## Runtime contract
 
 - Build `workers/linear-sync/Dockerfile` on Linux through the Linear Sync Worker
-  GitHub workflow. Admit the resulting digest and exact source revision before
-  deployment; a `review-*` image is a candidate, not a production release.
+  GitHub workflow. Dispatch it on protected `main` after the change is reviewed
+  and merged. After tests and image publishing succeed, a separate job signs the
+  exact image digest with GitHub OIDC, publishes SLSA provenance to GitHub and
+  GHCR, and verifies the signature and source revision. Pull requests and other
+  refs can build review candidates but cannot run this signing job.
+  Admit the resulting digest and exact source revision before deployment;
+  signed provenance proves the build's origin, not production admission.
 - Run one worker on the pilot's managed remote host with a persistent volume at
   `/data`, owned by uid 1000. Never run replicas with separate outbox volumes on
   the same queue. The SQLite writer lock also serializes overlapping processes
@@ -79,3 +84,21 @@ Podman mount options. The home tmpfs uses `U` to inherit the container user's
 ownership; raw `uid=` and `gid=` options are rejected by the pilot's Podman.
 
 Reference: [Temporal TypeScript guide](https://docs.temporal.io/develop/typescript).
+
+## Verify a protected build
+
+Use the full source SHA and image digest from the successful workflow run's
+summary. Authenticate to GHCR with a credential that has `read:packages`, then:
+
+```sh
+gh attestation verify "oci://ghcr.io/enrichlayer/buzz-linear-sync@${IMAGE_DIGEST}" \
+  --repo enrichlayer/buzz \
+  --signer-workflow enrichlayer/buzz/.github/workflows/linear-sync-worker.yml \
+  --cert-identity https://github.com/enrichlayer/buzz/.github/workflows/linear-sync-worker.yml@refs/heads/main \
+  --source-ref refs/heads/main \
+  --source-digest "$SOURCE_SHA" \
+  --deny-self-hosted-runners
+```
+
+A green image job without a successful `attest` job is not a qualified signed
+build. Do not remove the source, signer, or digest checks to accept a candidate.
